@@ -79,7 +79,9 @@ function Header({ tier, onTierChange, dateRange, onDateRangeChange }) {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand-mark">
-            <div className="brand-glyph">F</div>
+            <div className="brand-glyph">
+              <img src="uploads/fc-logo.png" alt="FridgeChannel" />
+            </div>
             <div className="brand-name">FridgeChannel <span className="muted">Dashboard</span></div>
           </div>
           <div className="breadcrumb">
@@ -142,18 +144,49 @@ function ExecutiveSummary({ tier }) {
   );
 }
 
+const DASHBOARD_MODULES = [
+  {
+    id: "revenue",
+    Component: RevenueModule,
+  },
+  {
+    id: "retention",
+    Component: RetentionModule,
+  },
+  {
+    id: "cta",
+    Component: CTAModule,
+  },
+  {
+    id: "usage",
+    Component: ReachAndEngagementModule,
+  },
+];
+
+function getVisibleModules(tier) {
+  return DASHBOARD_MODULES.filter(({ id }) => {
+    const access = window.ACCESS[id]?.[tier];
+    return access && access !== "locked" && access !== "hidden";
+  });
+}
+
 function App() {
   const [tier, setTier] = useStateApp("retention_moat");
   const [dateRange, setDateRange] = useStateApp("30day");
+  const visibleModules = getVisibleModules(tier);
 
   return (
     <div className="app">
       <Header tier={tier} onTierChange={setTier} dateRange={dateRange} onDateRangeChange={setDateRange} />
       <main>
-        <RevenueModule tier={tier} dateRange={dateRange} />
-        <RetentionModule tier={tier} dateRange={dateRange} />
-        <CTAModule tier={tier} dateRange={dateRange} />
-        <ReachAndEngagementModule tier={tier} dateRange={dateRange} />
+        {visibleModules.map(({ id, Component }, index) => (
+          <Component
+            key={id}
+            tier={tier}
+            dateRange={dateRange}
+            num={String(index + 1).padStart(2, "0")}
+          />
+        ))}
       </main>
       <footer className="foot">FC Brand Dashboard · mock data for package-gated product experience</footer>
     </div>

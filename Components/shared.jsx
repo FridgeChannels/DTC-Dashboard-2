@@ -129,7 +129,7 @@ function MetricCard({
 }) {
   const [tipOpen, setTipOpen] = useStateS(false);
 
-  if (visibility === "hidden") return null;
+  if (visibility === "hidden" || visibility === "locked") return null;
 
   const isLocked = visibility === "locked";
   const isEmpty = isEmptyMetricValue(value);
@@ -241,6 +241,8 @@ window.LockedModule = LockedModule;
 
 // ---------- Module-level filters ----------
 function ModuleFilterChip({ label, value, locked }) {
+  if (locked) return null;
+
   return (
     <button className={`filter-chip module-filter ${locked ? "locked" : ""}`} disabled={locked} title={locked ? "Upgrade plan to use this filter" : `${label}: ${value}`}>
       {locked && <I.lock />}
@@ -276,7 +278,7 @@ function ModuleHead({ num, title, sub, tierState, action }) {
       </div>
       <div className="module-head-right">
         {action}
-        {tierState === "basic" && <span className="module-tier-badge upgrade">Basic · upgrade for full drilldown</span>}
+        {tierState === "basic" && <span className="module-tier-badge">Basic access</span>}
         {tierState === "locked" && <span className="module-tier-badge upgrade"><I.lock /> Locked on this plan</span>}
         {tierState === "full" && <span className="module-tier-badge">Full access</span>}
       </div>
@@ -287,6 +289,8 @@ window.ModuleHead = ModuleHead;
 
 // ---------- Panel (chart container) ----------
 function Panel({ title, sub, action, children, locked, requiredTier, lockedNote }) {
+  if (locked) return null;
+
   return (
     <div className="card" style={{ position: "relative" }}>
       <div className="panel-head">

@@ -1,6 +1,6 @@
 const { useState: useS } = React;
 
-function RevenueModule({ tier, dateRange = "30day" }) {
+function RevenueModule({ tier, dateRange = "30day", num = "01" }) {
   const access = window.ACCESS.revenue[tier];
   const d = window.fcData;
   const rangeMeta = getDateRangeMeta(dateRange);
@@ -16,41 +16,31 @@ function RevenueModule({ tier, dateRange = "30day" }) {
   if (access === "locked") {
     return (
       <section className="module">
-        <ModuleHead num="01" title="Revenue Impact" sub="Attributed revenue, repeat purchase, and revenue mix." tierState="locked" />
+        <ModuleHead num={num} title="Revenue Impact" sub="Attributed revenue, repeat purchase, and revenue mix." tierState="locked" />
         <LockedModule
           title="Unlock Revenue Impact"
           requiredTier="ltv_lift"
           description="Upgrade to see FC attributed revenue, repeat purchase revenue, revenue per active household, and coupon-driven revenue."
-          metrics={["FC Attributed Revenue", "Repeat Customer Revenue", "Revenue / Active HH", "Owned vs paid revenue mix"]}
+          metrics={["FC Attributed Revenue", "Repeat Customer Revenue", "Revenue / Active HH", "Coupon Redeemed Revenue"]}
         />
       </section>
     );
   }
 
-  const ownedPaidRows = d.ownedPaidMix.map((row) => ({ ...row, label: row.month }));
   return (
     <section className="module">
-      <ModuleHead num="01" title="Revenue Impact" sub="Attributed revenue, repeat purchase, and revenue mix."
+      <ModuleHead num={num} title="Revenue Impact" sub="Attributed revenue, repeat purchase, and revenue mix."
                   tierState={access === "basic" ? "basic" : "full"} />
       <div className="grid grid-4">
         <MetricCard title="FC Attributed Revenue" value={fmtMoney(revenue)} delta={revenueDelta} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("fcRevenue", tier)} requiredTier="ltv_lift" spark={seriesForRange(d.revSeries, dateRange)} sparkComparison={seriesForRange(d.revPrev, dateRange)} tooltip="Orders directly linked to FC CTA, coupon, or reward actions within the attribution window." />
-        <MetricCard title="Repeat Customer Revenue" value={fmtMoney(repeatRevenue)} delta={repeatDelta} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("repeatRevenue", tier)} requiredTier="ltv_lift" spark={seriesForRange(d.repeatRevSeries, dateRange)} />
-        <MetricCard title="Revenue / Active HH" value={"$" + revPerHH.toFixed(2)} delta={0.094} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("revPerHH", tier)} requiredTier="retention_moat" />
-        <MetricCard title="Coupon Redeemed Revenue" value={fmtMoney(couponRevenue)} delta={0.061} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("couponRevenue", tier)} requiredTier="ltv_lift" />
+        <MetricCard title="Repeat Customer Revenue" value={fmtMoney(repeatRevenue)} delta={repeatDelta} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("repeatRevenue", tier)} requiredTier="ltv_lift" spark={seriesForRange(d.repeatRevSeries, dateRange)} tooltip="Revenue from customers who made another purchase after an FC-attributed interaction." />
+        <MetricCard title="Revenue / Active HH" value={"$" + revPerHH.toFixed(2)} delta={0.094} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("revPerHH", tier)} requiredTier="retention_moat" tooltip="FC attributed revenue divided by active households in the selected date range." />
+        <MetricCard title="Coupon Redeemed Revenue" value={fmtMoney(couponRevenue)} delta={0.061} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("couponRevenue", tier)} requiredTier="ltv_lift" tooltip="Revenue from orders where an FC-delivered coupon was redeemed." />
       </div>
 
-      <div className="grid grid-2" style={{ marginTop: 14, gridTemplateColumns: "1.35fr 1fr" }}>
+      <div className="grid" style={{ marginTop: 14 }}>
         <Panel title="FC attributed revenue trend" sub={`Daily revenue in the ${rangeMeta.periodLabel}.`}>
           <AreaChart data={seriesForRange(d.revSeries, dateRange)} comparison={seriesForRange(d.revPrev, dateRange)} yFormat={fmtMoney} labels={seriesForRange(d.revSeries, dateRange).map((_, i) => String(i + 1))} />
-        </Panel>
-        <Panel title="Owned vs paid revenue mix" sub="Owned FC influence is growing over time." locked={tier === "ltv_lift"} requiredTier="retention_moat" lockedNote="Revenue mix drilldown requires Retention Moat.">
-          <StackedBars
-            rows={ownedPaidRows}
-            series={[
-              { key: "owned", label: "Owned", color: "var(--accent)" },
-              { key: "paid", label: "Paid", color: "oklch(0.82 0.04 250)" },
-            ]}
-          />
         </Panel>
       </div>
     </section>
@@ -58,26 +48,26 @@ function RevenueModule({ tier, dateRange = "30day" }) {
 }
 window.RevenueModule = RevenueModule;
 
-function RetentionModule({ tier, dateRange = "30day" }) {
+function RetentionModule({ tier, dateRange = "30day", num = "02" }) {
   const access = window.ACCESS.retention[tier];
   const d = window.fcData;
   const r = d.retention;
-  const [lifecycleView, setLifecycleView] = useS("cards");
+  const [lifecycleView, setLifecycleView] = useS("table");
   const rangeMeta = getDateRangeMeta(dateRange);
   const periodScale = dateRange === "7day" ? 0.25 : dateRange === "90day" ? 3 : dateRange === "mtd" ? 0.6 : 1;
   const ctaClicks = Math.round(d.totals.ctaClicks * periodScale);
   const ctaTaken = Math.round(d.totals.ctaTaken * periodScale);
   
-  const c1 = 1.0;
-  const c2 = 0.65;
-  const c3 = 0.52;
-  const c4 = 0.18;
-  const c5 = 0.11;
+  const c1 = 0.50;
+  const c2 = 0.60;
+  const c3 = 0.60;
+  const c4 = 0.60;
+  const c5 = 0.50;
   
   const conversionSteps = [
     { label: "C1 Sticking", value: c1, display: (c1*100).toFixed(0)+"%" },
     { label: "C2 Habit", value: c2, display: (c2*100).toFixed(0)+"%" },
-    { label: "C3 Weekly Tap", value: c3, display: (c3*100).toFixed(0)+"%" },
+    { label: "C3 Weekly Tap", value: c3, display: "3x", meta: "3.0x avg." },
     { label: "C4 CTA Click", value: c4, display: (c4*100).toFixed(0)+"%" },
     { label: "C5 Take", value: c5, display: (c5*100).toFixed(0)+"%" },
   ];
@@ -85,7 +75,7 @@ function RetentionModule({ tier, dateRange = "30day" }) {
   if (access === "locked") {
     return (
       <section className="module">
-        <ModuleHead num="02" title="Retention & Lifecycle" sub="Retention, repeat behavior, and winback signal." tierState="locked" />
+        <ModuleHead num={num} title="Retention & Lifecycle" sub="Retention, repeat behavior, and winback signal." tierState="locked" />
         <LockedModule
           title="Unlock Retention & Lifecycle"
           requiredTier="ltv_lift"
@@ -98,14 +88,13 @@ function RetentionModule({ tier, dateRange = "30day" }) {
 
   return (
     <section className="module">
-      <ModuleHead num="02" title="Retention & Lifecycle" sub="Retention, repeat behavior, and winback signal."
+      <ModuleHead num={num} title="Retention & Lifecycle" sub="Retention, repeat behavior, and winback signal."
                   tierState={access === "basic" ? "basic" : "full"}
                   action={<ModuleFilters tier={tier} lifecycle />} />
       <div className="grid grid-4">
-        <MetricCard title="30-day Retention" value={(r.d30 * 100).toFixed(1)} unit="%" delta={0.032} visibility={getVis("d30", tier)} requiredTier="ltv_lift" />
-        <MetricCard title="60-day Retention" value={(r.d60 * 100).toFixed(1)} unit="%" delta={0.026} visibility={getVis("d60", tier)} requiredTier="ltv_lift" />
-        <MetricCard title="Repeat Purchase Rate" value={(r.repeat * 100).toFixed(1)} unit="%" delta={0.041} visibility={getVis("repeat", tier)} requiredTier="ltv_lift" />
-        <MetricCard title="Winback Rate" value={(r.winback * 100).toFixed(1)} unit="%" delta={0.061} visibility={getVis("winback", tier)} requiredTier="retention_moat" />
+        <MetricCard title="30-day Retention" value={(r.d30 * 100).toFixed(1)} unit="%" delta={0.032} visibility={getVis("d30", tier)} requiredTier="ltv_lift" tooltip="Share of activated households that remained engaged 30 days after activation." />
+        <MetricCard title="Repeat Purchase Rate" value={(r.repeat * 100).toFixed(1)} unit="%" delta={0.041} visibility={getVis("repeat", tier)} requiredTier="ltv_lift" tooltip="Share of FC-engaged customers who made at least one repeat purchase." />
+        <MetricCard title="Winback Rate" value={(r.winback * 100).toFixed(1)} unit="%" delta={0.061} visibility={getVis("winback", tier)} requiredTier="retention_moat" tooltip="Share of previously inactive households that returned after a winback CTA or content touch." />
       </div>
 
       
@@ -119,8 +108,8 @@ function RetentionModule({ tier, dateRange = "30day" }) {
           />
           <div className="dotted" />
           <div className="row" style={{ gap: 14 }}>
-            <span className="pip pos"><span className="d" />C2 habit formation is the middle-of-funnel lift point</span>
-            <span className="pip neg" style={{ marginLeft: "auto" }}><span className="d" />C4 CTA click rate is the largest conversion gap</span>
+            <span className="pip pos"><span className="d" />C2 habit and C4 click intent are both at 60%</span>
+            <span className="pip neg" style={{ marginLeft: "auto" }}><span className="d" />C5 take-rate is the final conversion point to improve</span>
           </div>
       </Panel>
 
@@ -257,7 +246,7 @@ function RetentionModule({ tier, dateRange = "30day" }) {
 }
 window.RetentionModule = RetentionModule;
 
-function ReachAndEngagementModule({ tier, dateRange = "30day" }) {
+function ReachAndEngagementModule({ tier, dateRange = "30day", num = "04" }) {
   const d = window.fcData;
   const rangeMeta = getDateRangeMeta(dateRange);
   const activationRate = d.totals.shipped > 0 ? d.totals.activated / d.totals.shipped : 0;
@@ -266,14 +255,11 @@ function ReachAndEngagementModule({ tier, dateRange = "30day" }) {
 
   return (
     <section className="module">
-      <ModuleHead num="04" title="Usage & In-Home Reach" sub="Activation, household reach, usage rhythm, and habit formation."
+      <ModuleHead num={num} title="Usage & In-Home Reach" sub="Activation, household reach, usage rhythm, and habit formation."
                   tierState={tier === "presence" ? "basic" : "full"}
                   action={<ModuleFilters tier={tier} lifecycle />} />
-      <div className="grid grid-2">
-        <MetricCard title="Activated Households" value={fmtNum(d.totals.activatedHH)} delta={0.082} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("activatedHH", tier)} spark={seriesForRange(d.activatedHHSeries, dateRange)} />
-        <MetricCard title="Active Households" value={fmtNum(activeHH)} delta={0.057} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("activeHH", tier)} spark={seriesForRange(d.activeHHSeries, dateRange)} />
-        
-        
+      <div className="grid">
+        <MetricCard title="Activated Households" value={fmtNum(d.totals.activatedHH)} visibility={getVis("activatedHH", tier)} spark={seriesForRange(d.activatedHHSeries, dateRange)} tooltip="Households that have completed device setup or activation at least once." />
       </div>
 
       <div className="grid grid-2" style={{ marginTop: 14, gridTemplateColumns: "1fr 1fr" }}>
@@ -282,8 +268,9 @@ function ReachAndEngagementModule({ tier, dateRange = "30day" }) {
             steps={[
               { label: "Shipped devices", value: d.totals.shipped },
               { label: "Activated devices", value: d.totals.activated },
-              { label: "Active households", value: activeHH },
+              { label: "Recently active households", value: activeHH },
             ]}
+            valueFormat={(s) => fmtInt(s.value)}
           />
         </Panel>
         <Panel title="Habit formation" sub="Weeks of repeat in-home interaction." locked={tier === "presence"} requiredTier="ltv_lift" lockedNote="Habit formation requires LTV Lift.">
@@ -299,7 +286,7 @@ function ReachAndEngagementModule({ tier, dateRange = "30day" }) {
 }
 window.ReachAndEngagementModule = ReachAndEngagementModule;
 
-function CTAModule({ tier, dateRange = "30day" }) {
+function CTAModule({ tier, dateRange = "30day", num = "03" }) {
   const access = window.ACCESS.cta[tier];
   const d = window.fcData;
   const rangeMeta = getDateRangeMeta(dateRange);
@@ -310,7 +297,7 @@ function CTAModule({ tier, dateRange = "30day" }) {
     return (
       <section className="module">
         <ModuleHead
-          num="03"
+          num={num}
           title="CTA & Conversion"
           sub="Impression → click → take → revenue."
           tierState="locked"
@@ -363,50 +350,12 @@ function CTAModule({ tier, dateRange = "30day" }) {
 
   return (
     <section className="module">
-      <ModuleHead num="03" title="CTA & Conversion" sub="Impression → click → take → revenue."
+      <ModuleHead num={num} title="CTA & Conversion" sub="Impression → click → take → revenue."
                   tierState={access === "basic" ? "basic" : "full"} />
 
       <div className="grid grid-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <MetricCard title="CTA Impressions" value={fmtNum(ctaImpressions)} delta={0.082} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("ctaImpressions", tier)} requiredTier="ltv_lift" tooltip="该时间区间内被 tap 的总次数（活跃 HH × 周均 tap 频率 × 周数）。" />
+        <MetricCard title="CTA Impressions" value={fmtNum(ctaImpressions)} delta={0.082} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("ctaImpressions", tier)} requiredTier="ltv_lift" tooltip="Estimated CTA exposure in the selected date range, based on active households, weekly tap frequency, and period length." />
         <MetricCard title="Revenue / CTA Click" value={"$" + revPerClick.toFixed(2)} delta={0.084} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("revPerClick", tier)} requiredTier="retention_moat" tooltip="FC attributed revenue divided by CTA clicks." />
-      </div>
-
-      <div className="grid" style={{ marginTop: 14 }}>
-        <Panel title="Coupon claim vs redeem gap" sub="How many claimed coupons actually get used.">
-          <div style={{ display: "grid", gap: 16, marginTop: 8 }}>
-            <div>
-              <div className="row-between" style={{ marginBottom: 4 }}>
-                <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>Coupon impressions</span>
-                <span className="mono" style={{ fontSize: 12 }}>{fmtNum(Math.round(48200 * periodScale))}</span>
-              </div>
-              <div style={{ height: 24, background: "var(--bg-sunken)", borderRadius: 4, overflow: "hidden" }}>
-                <div style={{ width: "100%", height: "100%", background: "oklch(0.92 0.04 38)" }} />
-              </div>
-            </div>
-            <div>
-              <div className="row-between" style={{ marginBottom: 4 }}>
-                <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>Claimed</span>
-                <span className="mono" style={{ fontSize: 12 }}>{fmtNum(Math.round(48200 * periodScale * couponClaim))} · {(couponClaim*100).toFixed(0)}%</span>
-              </div>
-              <div style={{ height: 24, background: "var(--bg-sunken)", borderRadius: 4, overflow: "hidden" }}>
-                <div style={{ width: `${couponClaim*100}%`, height: "100%", background: "oklch(0.72 0.10 38)" }} />
-              </div>
-            </div>
-            <div>
-              <div className="row-between" style={{ marginBottom: 4 }}>
-                <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>Redeemed</span>
-                <span className="mono" style={{ fontSize: 12 }}>{fmtNum(Math.round(48200 * periodScale * couponClaim * couponRedeem))} · {(couponClaim*couponRedeem*100).toFixed(0)}% of impr.</span>
-              </div>
-              <div style={{ height: 24, background: "var(--bg-sunken)", borderRadius: 4, overflow: "hidden" }}>
-                <div style={{ width: `${couponClaim*couponRedeem*100}%`, height: "100%", background: "var(--accent)" }} />
-              </div>
-            </div>
-          </div>
-          <div className="dotted" />
-          <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
-            <b style={{ color: "var(--ink)" }}>{(100 - couponRedeem*100).toFixed(0)}%</b> of claimed coupons go unused — biggest revenue leak. Try shortening expiration or push reminders at day 7.
-          </div>
-        </Panel>
       </div>
 
       <div style={{ marginTop: 14 }}></div>
@@ -417,35 +366,27 @@ function CTAModule({ tier, dateRange = "30day" }) {
         requiredTier="retention_moat"
         lockedNote="CTA lifecycle drilldown requires Retention Moat."
         action={
-          <div style={{ display: "flex", gap: 8 }}>
-            <select 
-              value={selectedStage} 
-              onChange={(e) => setSelectedStage(e.target.value)}
-              style={{ 
-                background: "var(--bg-sunken)", border: "1px solid var(--line)", 
-                padding: "4px 8px", borderRadius: 6, fontSize: 12, outline: "none", cursor: "pointer",
-                fontFamily: "inherit", color: "var(--ink-2)"
-              }}
-            >
-              <option value="All Stages">All Stages</option>
-              {d.lifecycle.map(l => (
-                <option key={l.stage} value={l.stage}>{l.stage}</option>
-              ))}
-            </select>
-            <select 
-              value={selectedCta} 
-              onChange={(e) => setSelectedCta(e.target.value)}
-              style={{ 
-                background: "var(--bg-sunken)", border: "1px solid var(--line)", 
-                padding: "4px 8px", borderRadius: 6, fontSize: 12, outline: "none", cursor: "pointer",
-                fontFamily: "inherit", color: "var(--ink-2)", maxWidth: 160
-              }}
-            >
-              <option value="All CTAs">All CTAs</option>
-              {allCtaNames.map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
+          <div className="panel-actions">
+            <label className="panel-select">
+              <span>Stage</span>
+              <select value={selectedStage} onChange={(e) => setSelectedStage(e.target.value)}>
+                <option value="All Stages">All Stages</option>
+                {d.lifecycle.map(l => (
+                  <option key={l.stage} value={l.stage}>{l.stage}</option>
+                ))}
+              </select>
+              <I.chevDown />
+            </label>
+            <label className="panel-select">
+              <span>CTA</span>
+              <select value={selectedCta} onChange={(e) => setSelectedCta(e.target.value)}>
+                <option value="All CTAs">All CTAs</option>
+                {allCtaNames.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+              <I.chevDown />
+            </label>
           </div>
         }
       >
@@ -494,6 +435,44 @@ function CTAModule({ tier, dateRange = "30day" }) {
           </table>
         </div>
       </Panel>
+
+      <div className="grid" style={{ marginTop: 14 }}>
+        <Panel title="Coupon usage funnel" sub="How many shoppers saw a coupon, saved it, and actually used it.">
+          <div style={{ display: "grid", gap: 16, marginTop: 8 }}>
+            <div>
+              <div className="row-between" style={{ marginBottom: 4 }}>
+                <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>Saw coupon</span>
+                <span className="mono" style={{ fontSize: 12 }}>{fmtNum(Math.round(48200 * periodScale))}</span>
+              </div>
+              <div style={{ height: 24, background: "var(--bg-sunken)", borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ width: "100%", height: "100%", background: "oklch(0.92 0.04 38)" }} />
+              </div>
+            </div>
+            <div>
+              <div className="row-between" style={{ marginBottom: 4 }}>
+                <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>Saved coupon</span>
+                <span className="mono" style={{ fontSize: 12 }}>{fmtNum(Math.round(48200 * periodScale * couponClaim))} · {(couponClaim*100).toFixed(0)}%</span>
+              </div>
+              <div style={{ height: 24, background: "var(--bg-sunken)", borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ width: `${couponClaim*100}%`, height: "100%", background: "oklch(0.72 0.10 38)" }} />
+              </div>
+            </div>
+            <div>
+              <div className="row-between" style={{ marginBottom: 4 }}>
+                <span style={{ fontSize: 12.5, color: "var(--ink-2)" }}>Used coupon</span>
+                <span className="mono" style={{ fontSize: 12 }}>{fmtNum(Math.round(48200 * periodScale * couponClaim * couponRedeem))} · {(couponClaim*couponRedeem*100).toFixed(0)}% of views</span>
+              </div>
+              <div style={{ height: 24, background: "var(--bg-sunken)", borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ width: `${couponClaim*couponRedeem*100}%`, height: "100%", background: "var(--accent)" }} />
+              </div>
+            </div>
+          </div>
+          <div className="dotted" />
+          <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+            <b style={{ color: "var(--ink)" }}>{(100 - couponRedeem*100).toFixed(0)}%</b> of saved coupons were not used. This is the follow-up opportunity: remind shoppers before the offer expires.
+          </div>
+        </Panel>
+      </div>
     </section>
   );
 }
@@ -502,7 +481,7 @@ window.CTAModule = CTAModule;
 // ============================================================
 // 5. Content & Optimization
 // ============================================================
-function ContentModule({ tier }) {
+function ContentModule({ tier, num = "05" }) {
   const access = window.ACCESS.content[tier];
   const d = window.fcData;
   const maxPlays = Math.max(...d.contentPillars.map(p => p.plays));
@@ -514,7 +493,7 @@ function ContentModule({ tier }) {
 
   return (
     <section className="module">
-      <ModuleHead num="05" title="Content & Optimization" sub="What's being played, finished, and converting."
+      <ModuleHead num={num} title="Content & Optimization" sub="What's being played, finished, and converting."
                   tierState={tier === "presence" ? "basic" : "full"} />
 
       <div className="grid grid-4">

@@ -1,0 +1,724 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: F
+        - generic [ref=e8]: FridgeChannel Dashboard
+      - generic [ref=e9]:
+        - text: GlowHaus Skincare /
+        - generic [ref=e10]: Presence Package
+      - generic [ref=e11]: Updated 2026-05-22 10:00 Asia/Shanghai
+      - generic "Plan tier" [ref=e13]:
+        - button "Presence" [active] [ref=e14] [cursor=pointer]: Presence
+        - button "LTV Lift" [ref=e16] [cursor=pointer]: LTV Lift
+        - button "Retention Moat" [ref=e18] [cursor=pointer]: Retention Moat
+  - generic [ref=e21]:
+    - generic "Date range" [ref=e22]:
+      - button "7D" [ref=e23] [cursor=pointer]
+      - button "30D" [ref=e24] [cursor=pointer]
+      - button "90D" [ref=e25] [cursor=pointer]
+      - button "MTD" [ref=e26] [cursor=pointer]
+      - button "Custom" [ref=e27] [cursor=pointer]
+    - button "Program Spring Launch" [ref=e28] [cursor=pointer]:
+      - generic [ref=e29]: Program
+      - generic [ref=e30]: Spring Launch
+      - img [ref=e31]
+    - button "Product All lines" [ref=e33] [cursor=pointer]:
+      - generic [ref=e34]: Product
+      - generic [ref=e35]: All lines
+      - img [ref=e36]
+    - button "Batch All batches" [ref=e38] [cursor=pointer]:
+      - generic [ref=e39]: Batch
+      - generic [ref=e40]: All batches
+      - img [ref=e41]
+    - button "Cohort Locked" [disabled] [ref=e2011]:
+      - img [ref=e2012]
+      - generic [ref=e44]: Cohort
+      - generic [ref=e45]: Locked
+    - button "Lifecycle Locked" [disabled] [ref=e2015]:
+      - img [ref=e2016]
+      - generic [ref=e49]: Lifecycle
+      - generic [ref=e50]: Locked
+    - button "Segment Locked" [disabled] [ref=e2019]:
+      - img [ref=e2020]
+      - generic [ref=e54]: Segment
+      - generic [ref=e55]: Locked
+    - button "Pillar Basic" [ref=e2023] [cursor=pointer]:
+      - generic [ref=e59]: Pillar
+      - generic [ref=e60]: Basic
+      - img [ref=e61]
+    - button "CTA Locked" [disabled] [ref=e2024]:
+      - img [ref=e2025]
+      - generic [ref=e64]: CTA
+      - generic [ref=e65]: Locked
+    - generic [ref=e68]:
+      - button "Export" [ref=e69] [cursor=pointer]:
+        - img [ref=e70]
+        - text: Export
+      - button "Upgrade" [ref=e2028] [cursor=pointer]
+  - main [ref=e72]:
+    - generic [ref=e73]:
+      - generic [ref=e74]:
+        - generic [ref=e75]:
+          - text: EXECUTIVE SUMMARY
+          - heading "In-home retention performance" [level=1] [ref=e76]
+        - paragraph [ref=e77]: Core in-home reach and activation signal. Same dashboard structure, different data depth.
+      - generic [ref=e78]:
+        - generic [ref=e2029]:
+          - generic [ref=e2030]: In-Home Brand Reach
+          - generic [ref=e2031]: 15.3khouseholds
+          - generic [ref=e2032]:
+            - generic "+8.2% vs prev" [ref=e2033]:
+              - img [ref=e2034]
+              - text: +8.2%
+            - generic [ref=e2036]: households
+          - img [ref=e2038]
+        - generic [ref=e2043]:
+          - generic [ref=e2044]: Activated Households
+          - generic [ref=e2045]: 15.3khouseholds
+          - generic [ref=e2046]:
+            - generic "+8.2% vs prev" [ref=e2047]:
+              - img [ref=e2048]
+              - text: +8.2%
+            - generic [ref=e2050]: households
+          - img [ref=e2052]
+        - generic [ref=e2057]:
+          - generic [ref=e2058]: Sticking Rate
+          - generic [ref=e2059]: 78.0%
+          - generic [ref=e2060]:
+            - generic "+2.4% vs prev" [ref=e2061]:
+              - img [ref=e2062]
+              - text: +2.4%
+            - generic [ref=e2064]: vs prev
+        - generic [ref=e2065]:
+          - generic [ref=e2066]: First Tap Rate
+          - generic [ref=e2067]: 87.9%
+          - generic [ref=e2068]:
+            - generic "+1.4% vs prev" [ref=e2069]:
+              - img [ref=e2070]
+              - text: +1.4%
+            - generic [ref=e2072]: vs prev
+        - generic [ref=e2073]:
+          - generic [ref=e2074]: Brand Touches / Household
+          - generic [ref=e2075]: 18.2x
+          - generic [ref=e2076]:
+            - generic "+6.4% vs prev" [ref=e2077]:
+              - img [ref=e2078]
+              - text: +6.4%
+            - generic [ref=e2080]: vs prev
+        - generic [ref=e2081]:
+          - generic [ref=e2082]:
+            - img [ref=e2083]
+            - text: Revenue Impact
+          - generic [ref=e2086]: •••
+          - generic [ref=e2088]: Upgrade to LTV Lift
+    - generic [ref=e139]:
+      - generic [ref=e140]:
+        - generic [ref=e141]:
+          - generic [ref=e142]: MODULE 01
+          - heading "Revenue Impact" [level=2] [ref=e143]
+          - generic [ref=e144]: What FC contributed to your top and bottom line.
+        - generic [ref=e2090]:
+          - img [ref=e2091]
+          - text: Locked on this plan
+      - generic [ref=e2094]:
+        - generic [ref=e2095]:
+          - img [ref=e2096]
+          - generic [ref=e2107]:
+            - img [ref=e2108]
+            - text: Preview
+        - generic [ref=e2111]:
+          - generic [ref=e2112]:
+            - img [ref=e2113]
+            - text: LTV Lift required
+          - heading "Unlock Revenue Impact" [level=3] [ref=e2115]
+          - paragraph [ref=e2116]: See exactly how FC engagement turns into orders, repeat revenue, and revenue per active household — with full attribution windows and direct-vs-influenced toggles.
+          - list [ref=e2117]:
+            - listitem [ref=e2118]: FC Attributed Revenue (direct + influenced)
+            - listitem [ref=e2119]: Repeat Customer Revenue
+            - listitem [ref=e2120]: Revenue per Active Household
+            - listitem [ref=e2121]: Coupon Redeemed Revenue
+          - generic [ref=e2122]:
+            - button "Upgrade plan" [ref=e2123] [cursor=pointer]
+            - button "Talk to your CS rep" [ref=e2124] [cursor=pointer]
+    - generic [ref=e545]:
+      - generic [ref=e546]:
+        - generic [ref=e547]:
+          - generic [ref=e548]: MODULE 02
+          - heading "Retention & Lifecycle" [level=2] [ref=e549]
+          - generic [ref=e550]: Cohort retention, repeat purchase, winback.
+        - generic [ref=e2125]:
+          - img [ref=e2126]
+          - text: Locked on this plan
+      - generic [ref=e2129]:
+        - generic [ref=e2130]:
+          - img [ref=e2131]
+          - generic [ref=e2229]:
+            - img [ref=e2230]
+            - text: Preview
+        - generic [ref=e2233]:
+          - generic [ref=e2234]:
+            - img [ref=e2235]
+            - text: LTV Lift required
+          - heading "Unlock Retention & Lifecycle" [level=3] [ref=e2237]
+          - paragraph [ref=e2238]: See how customers stick — cohort retention curves, repeat purchase rate, winback effectiveness, and how each lifecycle stage performs.
+          - list [ref=e2239]:
+            - listitem [ref=e2240]: 30 / 60 / 90-day retention curves
+            - listitem [ref=e2241]: Repeat purchase & reactivation rate
+            - listitem [ref=e2242]: Winback journey performance
+            - listitem [ref=e2243]: Lifecycle stage performance (Retention Moat)
+          - generic [ref=e2244]:
+            - button "Upgrade plan" [ref=e2245] [cursor=pointer]
+            - button "Talk to your CS rep" [ref=e2246] [cursor=pointer]
+    - generic [ref=e993]:
+      - generic [ref=e994]:
+        - generic [ref=e995]:
+          - generic [ref=e996]: MODULE 03
+          - heading "Usage & Engagement" [level=2] [ref=e997]
+          - generic [ref=e998]: Habit formation, routine retention, weekly tap frequency.
+        - generic [ref=e999]: Basic · upgrade for full drilldown
+      - generic [ref=e1000]:
+        - generic [ref=e1001]:
+          - generic [ref=e1002]:
+            - generic [ref=e1003]:
+              - text: Active Households
+              - generic [ref=e1004]: i
+            - generic "+6.2% vs prev" [ref=e1005]:
+              - img [ref=e1006]
+              - text: +6.2%
+          - generic [ref=e1009]: 10.7k
+          - generic [ref=e1010]: vs. previous period
+          - img [ref=e1012]
+        - generic [ref=e1017]:
+          - generic [ref=e1018]:
+            - generic [ref=e1019]:
+              - text: Habit Formation Rate
+              - generic [ref=e1020]: i
+            - img [ref=e2247]
+          - generic [ref=e1025]: $•••,•••
+          - generic [ref=e2250]: Upgrade to LTV Lift
+        - generic [ref=e1029]:
+          - generic [ref=e1030]:
+            - generic [ref=e1031]:
+              - text: Weekly Tap Frequency
+              - generic [ref=e1032]: i
+            - generic "+4.1% vs prev" [ref=e1033]:
+              - img [ref=e1034]
+              - text: +4.1%
+          - generic [ref=e1037]: 3.2×/wk
+          - generic [ref=e1038]: vs. previous period
+          - img [ref=e1040]
+      - generic [ref=e1057]:
+        - generic [ref=e1058]:
+          - generic [ref=e1060]:
+            - generic [ref=e1061]: Habit formation · weeks of consistent activity
+            - generic [ref=e1062]: Distribution of activated households by consecutive weeks with ≥1 tap. 4+ weeks = habit formed.
+          - generic [ref=e2251]:
+            - img [ref=e2252]
+            - text: Habit Formation requires LTV Lift.
+        - generic [ref=e1092]:
+          - generic [ref=e1094]:
+            - generic [ref=e1095]: WAU / MAU stickiness
+            - generic [ref=e1096]: A higher ratio means more weekly active habit, not just monthly visits.
+          - generic [ref=e1098]:
+            - img [ref=e2255]
+            - text: Requires LTV Lift.
+      - generic [ref=e1121]:
+        - generic [ref=e1122]:
+          - generic [ref=e1124]:
+            - generic [ref=e1125]: Weekly tap frequency · last 12 weeks
+            - generic [ref=e1126]: Per-household average. Trending up means stronger routine.
+          - img [ref=e1128]:
+            - generic [ref=e1130]: 0.0×
+            - generic [ref=e1132]: 0.8×
+            - generic [ref=e1134]: 1.6×
+            - generic [ref=e1136]: 2.4×
+            - generic [ref=e1138]: 3.2×
+            - generic [ref=e1143]: W1
+            - generic [ref=e1144]: W3
+            - generic [ref=e1145]: W5
+            - generic [ref=e1146]: W7
+            - generic [ref=e1147]: W9
+            - generic [ref=e1148]: W11
+            - generic [ref=e1149]: W12
+        - generic [ref=e1150]:
+          - generic [ref=e1152]:
+            - generic [ref=e1153]: Active households · 30-day trend
+            - generic [ref=e1154]: Daily distinct households with ≥1 valid event.
+          - img [ref=e1156]:
+            - generic [ref=e1158]: "0"
+            - generic [ref=e1160]: 2.9k
+            - generic [ref=e1162]: 5.9k
+            - generic [ref=e1164]: 8.8k
+            - generic [ref=e1166]: 11.7k
+            - generic [ref=e1171]: 4/23
+            - generic [ref=e1172]: 4/29
+            - generic [ref=e1173]: 5/5
+            - generic [ref=e1174]: 5/11
+            - generic [ref=e1175]: 5/17
+            - generic [ref=e1176]: 5/22
+    - generic [ref=e1177]:
+      - generic [ref=e1178]:
+        - generic [ref=e1179]:
+          - generic [ref=e1180]: MODULE 04
+          - heading "In-Home Reach" [level=2] [ref=e1181]
+          - generic [ref=e1182]: From shipped device to active household.
+        - generic [ref=e1183]: Basic · upgrade for full drilldown
+      - generic [ref=e1184]:
+        - generic [ref=e1185]:
+          - generic [ref=e1186]:
+            - generic [ref=e1187]:
+              - text: Activated Devices
+              - generic [ref=e1188]: i
+            - generic "+8.2% vs prev" [ref=e1189]:
+              - img [ref=e1190]
+              - text: +8.2%
+          - generic [ref=e1193]: 14.4k
+          - generic [ref=e1194]: vs. previous period
+        - generic [ref=e1195]:
+          - generic [ref=e1196]:
+            - generic [ref=e1197]:
+              - text: Activated Households
+              - generic [ref=e1198]: i
+            - generic "+7.4% vs prev" [ref=e1199]:
+              - img [ref=e1200]
+              - text: +7.4%
+          - generic [ref=e1203]: 15.3k
+          - generic [ref=e1204]: vs. previous period
+        - generic [ref=e1205]:
+          - generic [ref=e1206]:
+            - generic [ref=e1207]:
+              - text: Sticking Rate
+              - generic [ref=e1208]: i
+            - generic "+2.4% vs prev" [ref=e1209]:
+              - img [ref=e1210]
+              - text: +2.4%
+          - generic [ref=e1213]: 78.1%
+          - generic [ref=e1214]: vs. previous period
+        - generic [ref=e1215]:
+          - generic [ref=e1216]:
+            - generic [ref=e1217]:
+              - text: First Tap Rate
+              - generic [ref=e1218]: i
+            - generic "+1.4% vs prev" [ref=e1219]:
+              - img [ref=e1220]
+              - text: +1.4%
+          - generic [ref=e1223]: 87.9%
+          - generic [ref=e1224]: vs. previous period
+        - generic [ref=e1225]:
+          - generic [ref=e1226]:
+            - generic [ref=e1227]:
+              - text: Time to First Activation
+              - generic [ref=e1228]: i
+            - generic "-8.4% vs prev" [ref=e1229]:
+              - img [ref=e1230]
+              - text: "-8.4%"
+          - generic [ref=e1233]: 4.2days
+          - generic [ref=e1234]: vs. previous period
+          - generic [ref=e1235]: faster by 0.4 days
+      - generic [ref=e1236]:
+        - generic [ref=e1238]:
+          - generic [ref=e1239]: Activation funnel
+          - generic [ref=e1240]: Where households drop off between box arriving and active in-home use.
+        - generic [ref=e1242]:
+          - generic [ref=e1243]:
+            - generic [ref=e1244]:
+              - generic [ref=e1245]: Shipped devices
+              - generic [ref=e1246]: boxes left warehouse
+            - generic [ref=e1248]: 18,420
+            - generic [ref=e1249]: 100.0% of top
+            - generic [ref=e1250]: —
+          - generic [ref=e1251]:
+            - generic [ref=e1252]:
+              - generic [ref=e1253]: Activated devices
+              - generic [ref=e1254]: device woke up + paired
+            - generic [ref=e1256]: 14,380
+            - generic [ref=e1257]: 78.1% of top
+            - generic [ref=e1259]:
+              - text: step
+              - generic [ref=e1260]: 21.9% ↓
+          - generic [ref=e1261]:
+            - generic [ref=e1262]:
+              - generic [ref=e1263]: First tap households
+              - generic [ref=e1264]: household completed first tap
+            - generic [ref=e1266]: 12,640
+            - generic [ref=e1267]: 68.6% of top
+            - generic [ref=e1269]:
+              - text: step
+              - generic [ref=e1270]: 12.1% ↓
+          - generic [ref=e1271]:
+            - generic [ref=e1272]:
+              - generic [ref=e1273]: Active households
+              - generic [ref=e1274]: ≥1 event in last 30 days
+            - generic [ref=e1276]: 10,665
+            - generic [ref=e1277]: 57.9% of top
+            - generic [ref=e1279]:
+              - text: step
+              - generic [ref=e1280]: 15.6% ↓
+      - generic [ref=e1281]:
+        - generic [ref=e1282]:
+          - generic [ref=e1284]:
+            - generic [ref=e1285]: Device batch performance
+            - generic [ref=e1286]: Compare campaigns and batches across the activation chain.
+          - table [ref=e1289]:
+            - rowgroup [ref=e1290]:
+              - row "Batch / Campaign Shipped Activated Sticking First Tap Active Touches / HH" [ref=e1291]:
+                - columnheader "Batch / Campaign" [ref=e1292]
+                - columnheader "Shipped" [ref=e1293]
+                - columnheader "Activated" [ref=e1294]
+                - columnheader "Sticking" [ref=e1295]
+                - columnheader "First Tap" [ref=e1296]
+                - columnheader "Active" [ref=e1297]
+                - columnheader "Touches / HH" [ref=e1298]
+            - rowgroup [ref=e1299]:
+              - row "Holiday Drop · Nov 2025 5,420 4,380 80.8% 92.6% 74% 18.4×" [ref=e1300]:
+                - cell "Holiday Drop · Nov 2025" [ref=e1301]
+                - cell "5,420" [ref=e1302]
+                - cell "4,380" [ref=e1303]
+                - cell "80.8%" [ref=e1304]:
+                  - generic [ref=e1308]: 80.8%
+                - cell "92.6%" [ref=e1309]
+                - cell "74%" [ref=e1310]
+                - cell "18.4×" [ref=e1311]
+              - row "Skincare Refill · Q1 '26 4,180 3,420 81.8% 94.2% 71% 16.2×" [ref=e1312]:
+                - cell "Skincare Refill · Q1 '26" [ref=e1313]
+                - cell "4,180" [ref=e1314]
+                - cell "3,420" [ref=e1315]
+                - cell "81.8%" [ref=e1316]:
+                  - generic [ref=e1320]: 81.8%
+                - cell "94.2%" [ref=e1321]
+                - cell "71%" [ref=e1322]
+                - cell "16.2×" [ref=e1323]
+              - row "Influencer Box · Mar '26 2,840 2,480 87.3% 96.1% 82% 21.8×" [ref=e1324]:
+                - cell "Influencer Box · Mar '26" [ref=e1325]
+                - cell "2,840" [ref=e1326]
+                - cell "2,480" [ref=e1327]
+                - cell "87.3%" [ref=e1328]:
+                  - generic [ref=e1332]: 87.3%
+                - cell "96.1%" [ref=e1333]
+                - cell "82%" [ref=e1334]
+                - cell "21.8×" [ref=e1335]
+              - row "Loyalty Program · Apr '26 3,680 2,920 79.3% 91.8% 78% 19.6×" [ref=e1336]:
+                - cell "Loyalty Program · Apr '26" [ref=e1337]
+                - cell "3,680" [ref=e1338]
+                - cell "2,920" [ref=e1339]
+                - cell "79.3%" [ref=e1340]:
+                  - generic [ref=e1344]: 79.3%
+                - cell "91.8%" [ref=e1345]
+                - cell "78%" [ref=e1346]
+                - cell "19.6×" [ref=e1347]
+              - row "Spring Launch · May '26 2,300 1,180 51.3% 84.2% 68% 12.4×" [ref=e1348]:
+                - cell "Spring Launch · May '26" [ref=e1349]
+                - cell "2,300" [ref=e1350]
+                - cell "1,180" [ref=e1351]
+                - cell "51.3%" [ref=e1352]:
+                  - generic [ref=e1356]: 51.3%
+                - cell "84.2%" [ref=e1357]
+                - cell "68%" [ref=e1358]
+                - cell "12.4×" [ref=e1359]
+        - generic [ref=e1360]:
+          - generic [ref=e1362]:
+            - generic [ref=e1363]: In-Home Brand Reach
+            - generic [ref=e1364]: Activated households over time — the size of your owned channel.
+          - generic [ref=e1365]:
+            - generic [ref=e1366]:
+              - generic [ref=e1367]: 15.3k
+              - generic "+7.4% vs prev" [ref=e1368]:
+                - img [ref=e1369]
+                - text: +7.4%
+            - generic [ref=e1372]: households · 36756 estimated people in fridge view
+            - img [ref=e1373]:
+              - generic [ref=e1375]: "0"
+              - generic [ref=e1377]: 4.2k
+              - generic [ref=e1379]: 8.4k
+              - generic [ref=e1381]: 12.6k
+              - generic [ref=e1383]: 16.8k
+              - generic [ref=e1388]: 4/23
+              - generic [ref=e1389]: 4/29
+              - generic [ref=e1390]: 5/5
+              - generic [ref=e1391]: 5/11
+              - generic [ref=e1392]: 5/17
+              - generic [ref=e1393]: 5/22
+            - generic [ref=e1395]:
+              - generic [ref=e1396]:
+                - generic [ref=e1397]: BRAND TOUCHES / HH
+                - generic [ref=e1398]: 18.2×/mo
+              - generic [ref=e1399]:
+                - generic [ref=e1400]: AVG SESSION
+                - generic [ref=e1401]: 42sec
+    - generic [ref=e1402]:
+      - generic [ref=e1403]:
+        - generic [ref=e1404]:
+          - generic [ref=e1405]: MODULE 05
+          - heading "CTA & Conversion" [level=2] [ref=e1406]
+          - generic [ref=e1407]: Impression → click → take → revenue.
+        - generic [ref=e2258]:
+          - img [ref=e2259]
+          - text: Locked on this plan
+      - generic [ref=e2262]:
+        - generic [ref=e2263]:
+          - img [ref=e2264]
+          - generic [ref=e2270]:
+            - img [ref=e2271]
+            - text: Preview
+        - generic [ref=e2274]:
+          - generic [ref=e2275]:
+            - img [ref=e2276]
+            - text: LTV Lift required
+          - heading "Unlock CTA & Conversion" [level=3] [ref=e2278]
+          - paragraph [ref=e2279]: Track how CTAs perform — from impression through click, take-rate, coupon redemption, and revenue per click.
+          - list [ref=e2280]:
+            - listitem [ref=e2281]: CTA Click Rate & Take-rate
+            - listitem [ref=e2282]: Coupon Claim vs Redeem gap
+            - listitem [ref=e2283]: Revenue per CTA Click
+            - listitem [ref=e2284]: CTA performance by segment (Retention Moat)
+          - generic [ref=e2285]:
+            - button "Upgrade plan" [ref=e2286] [cursor=pointer]
+            - button "Talk to your CS rep" [ref=e2287] [cursor=pointer]
+    - generic [ref=e1677]:
+      - generic [ref=e1678]:
+        - generic [ref=e1679]:
+          - generic [ref=e1680]: MODULE 06
+          - heading "Content & Optimization" [level=2] [ref=e1681]
+          - generic [ref=e1682]: What's being played, finished, and converting.
+        - generic [ref=e1683]: Basic · upgrade for full drilldown
+      - generic [ref=e1684]:
+        - generic [ref=e1685]:
+          - generic [ref=e1686]:
+            - generic [ref=e1687]:
+              - text: Audio Play Rate
+              - generic [ref=e1688]: i
+            - generic "+2.2% vs prev" [ref=e1689]:
+              - img [ref=e1690]
+              - text: +2.2%
+          - generic [ref=e1693]: 84.2%
+          - generic [ref=e1694]: vs. previous period
+        - generic [ref=e1695]:
+          - generic [ref=e1696]:
+            - generic [ref=e1697]:
+              - text: Completion Rate
+              - generic [ref=e1698]: i
+            - generic "+3.4% vs prev" [ref=e1699]:
+              - img [ref=e1700]
+              - text: +3.4%
+          - generic [ref=e1703]: 74.8%
+          - generic [ref=e1704]: vs. previous period
+      - generic [ref=e1725]:
+        - generic [ref=e1726]:
+          - generic [ref=e1728]:
+            - generic [ref=e1729]: Content pillar performance
+            - generic [ref=e1730]: Plays, completion, and what each pillar drives in revenue.
+          - generic [ref=e1731]:
+            - generic [ref=e1732]:
+              - generic [ref=e1733]:
+                - generic [ref=e1734]:
+                  - generic [ref=e1735]: Product Education
+                  - generic [ref=e1736]: 48.1k plays
+                - generic [ref=e1741]:
+                  - generic [ref=e1742]: 74%
+                  - generic [ref=e1743]: complete
+                - generic [ref=e1744]:
+                  - generic [ref=e1745]: 38%
+                  - generic [ref=e1746]: take
+                - generic [ref=e1747]:
+                  - generic [ref=e1748]: $92.4k
+                  - generic [ref=e1749]: revenue
+              - generic [ref=e1750]:
+                - generic [ref=e1751]:
+                  - generic [ref=e1752]: Interesting Tips
+                  - generic [ref=e1753]: 42.2k plays
+                - generic [ref=e1758]:
+                  - generic [ref=e1759]: 78%
+                  - generic [ref=e1760]: complete
+                - generic [ref=e1761]:
+                  - generic [ref=e1762]: 32%
+                  - generic [ref=e1763]: take
+                - generic [ref=e1764]:
+                  - generic [ref=e1765]: $48.2k
+                  - generic [ref=e1766]: revenue
+              - generic [ref=e1767]:
+                - generic [ref=e1768]:
+                  - generic [ref=e1769]: Problem → Solution
+                  - generic [ref=e1770]: 38.6k plays
+                - generic [ref=e1775]:
+                  - generic [ref=e1776]: 82%
+                  - generic [ref=e1777]: complete
+                - generic [ref=e1778]:
+                  - generic [ref=e1779]: 46%
+                  - generic [ref=e1780]: take
+                - generic [ref=e1781]:
+                  - generic [ref=e1782]: $118.4k
+                  - generic [ref=e1783]: revenue
+              - generic [ref=e1784]:
+                - generic [ref=e1785]:
+                  - generic [ref=e1786]: Lifestyle & Scenarios
+                  - generic [ref=e1787]: 31.4k plays
+                - generic [ref=e1792]:
+                  - generic [ref=e1793]: 69%
+                  - generic [ref=e1794]: complete
+                - generic [ref=e1795]:
+                  - generic [ref=e1796]: 29%
+                  - generic [ref=e1797]: take
+                - generic [ref=e1798]:
+                  - generic [ref=e1799]: $32.1k
+                  - generic [ref=e1800]: revenue
+              - generic [ref=e1801]:
+                - generic [ref=e1802]:
+                  - generic [ref=e1803]: Branding Voice
+                  - generic [ref=e1804]: 28.1k plays
+                - generic [ref=e1809]:
+                  - generic [ref=e1810]: 61%
+                  - generic [ref=e1811]: complete
+                - generic [ref=e1812]:
+                  - generic [ref=e1813]: 21%
+                  - generic [ref=e1814]: take
+                - generic [ref=e1815]:
+                  - generic [ref=e1816]: $18.4k
+                  - generic [ref=e1817]: revenue
+              - generic [ref=e1818]:
+                - generic [ref=e1819]:
+                  - generic [ref=e1820]: Newness & Refresh
+                  - generic [ref=e1821]: 22.1k plays
+                - generic [ref=e1826]:
+                  - generic [ref=e1827]: 71%
+                  - generic [ref=e1828]: complete
+                - generic [ref=e1829]:
+                  - generic [ref=e1830]: 36%
+                  - generic [ref=e1831]: take
+                - generic [ref=e1832]:
+                  - generic [ref=e1833]: $38.4k
+                  - generic [ref=e1834]: revenue
+              - generic [ref=e1835]:
+                - generic [ref=e1836]:
+                  - generic [ref=e1837]: Social Proof
+                  - generic [ref=e1838]: 18.4k plays
+                - generic [ref=e1843]:
+                  - generic [ref=e1844]: 84%
+                  - generic [ref=e1845]: complete
+                - generic [ref=e1846]:
+                  - generic [ref=e1847]: 52%
+                  - generic [ref=e1848]: take
+                - generic [ref=e1849]:
+                  - generic [ref=e1850]: $64.8k
+                  - generic [ref=e1851]: revenue
+            - generic [ref=e1852]:
+              - generic [ref=e1853]: Plays
+              - generic [ref=e1855]: Completed plays
+        - generic [ref=e1857]:
+          - generic [ref=e1859]:
+            - generic [ref=e1860]: Drop-off curve
+            - generic [ref=e1861]: When listeners leave during a typical audio piece. Steeper = bigger problem.
+          - generic [ref=e2288]:
+            - img [ref=e2289]
+            - text: Drop-off analysis requires LTV Lift.
+      - generic [ref=e1892]:
+        - generic [ref=e1894]:
+          - generic [ref=e1895]: Top content
+          - generic [ref=e1896]: Individual content performance ranked by FC attributed revenue.
+        - generic:
+          - generic:
+            - table:
+              - rowgroup:
+                - row "Content Title Pillar Lifecycle Plays Completion Replay CTR Take FC Revenue":
+                  - columnheader "Content Title"
+                  - columnheader "Pillar"
+                  - columnheader "Lifecycle"
+                  - columnheader "Plays"
+                  - columnheader "Completion"
+                  - columnheader "Replay"
+                  - columnheader "CTR"
+                  - columnheader "Take"
+                  - columnheader "FC Revenue"
+              - rowgroup:
+                - row "Why your serum stops working at 30 Problem → Solution Renewal Window 8,420 86% 31% 28.2% 51% $28.4k":
+                  - cell "Why your serum stops working at 30"
+                  - cell "Problem → Solution"
+                  - cell "Renewal Window"
+                  - cell "8,420"
+                  - cell "86%":
+                    - generic:
+                      - generic: 86%
+                  - cell "31%"
+                  - cell "28.2%"
+                  - cell "51%"
+                  - cell "$28.4k"
+                - row "The 10pm skin reset ritual Lifestyle & Scenarios Routine Building 7,180 74% 22% 18.2% 34% $12.8k":
+                  - cell "The 10pm skin reset ritual"
+                  - cell "Lifestyle & Scenarios"
+                  - cell "Routine Building"
+                  - cell "7,180"
+                  - cell "74%":
+                    - generic:
+                      - generic: 74%
+                  - cell "22%"
+                  - cell "18.2%"
+                  - cell "34%"
+                  - cell "$12.8k"
+                - row "How retinol actually works Product Education Onboarding 9,820 79% 28% 19.8% 42% $18.4k":
+                  - cell "How retinol actually works"
+                  - cell "Product Education"
+                  - cell "Onboarding"
+                  - cell "9,820"
+                  - cell "79%":
+                    - generic:
+                      - generic: 79%
+                  - cell "28%"
+                  - cell "19.8%"
+                  - cell "42%"
+                  - cell "$18.4k"
+                - row "From a customer in Brooklyn Social Proof New Customer 5,240 88% 14% 31.2% 58% $22.1k":
+                  - cell "From a customer in Brooklyn"
+                  - cell "Social Proof"
+                  - cell "New Customer"
+                  - cell "5,240"
+                  - cell "88%":
+                    - generic:
+                      - generic: 88%
+                  - cell "14%"
+                  - cell "31.2%"
+                  - cell "58%"
+                  - cell "$22.1k"
+                - row "Wait, are you skipping SPF? Interesting Tips Routine Building 6,840 81% 36% 16.2% 32% $9.4k":
+                  - cell "Wait, are you skipping SPF?"
+                  - cell "Interesting Tips"
+                  - cell "Routine Building"
+                  - cell "6,840"
+                  - cell "81%":
+                    - generic:
+                      - generic: 81%
+                  - cell "36%"
+                  - cell "16.2%"
+                  - cell "32%"
+                  - cell "$9.4k"
+                - row "Meet the new vitamin C concentrate Newness & Refresh Loyalty Anniversary 4,180 72% 18% 24.6% 44% $28.1k":
+                  - cell "Meet the new vitamin C concentrate"
+                  - cell "Newness & Refresh"
+                  - cell "Loyalty Anniversary"
+                  - cell "4,180"
+                  - cell "72%":
+                    - generic:
+                      - generic: 72%
+                  - cell "18%"
+                  - cell "24.6%"
+                  - cell "44%"
+                  - cell "$28.1k"
+                - row "Our founder on slow skincare Branding Voice High-value 3,420 64% 16% 10.8% 22% $6.8k":
+                  - cell "Our founder on slow skincare"
+                  - cell "Branding Voice"
+                  - cell "High-value"
+                  - cell "3,420"
+                  - cell "64%":
+                    - generic:
+                      - generic: 64%
+                  - cell "16%"
+                  - cell "10.8%"
+                  - cell "22%"
+                  - cell "$6.8k"
+        - generic [ref=e2293]:
+          - generic [ref=e2294]:
+            - img [ref=e2295]
+            - text: LTV Lift
+          - generic [ref=e2298]: Top content
+          - generic [ref=e2299]: Per-content performance requires LTV Lift or above.
+          - button "Upgrade plan" [ref=e2300] [cursor=pointer]
+  - contentinfo [ref=e2010]: FC Brand Dashboard · mock data for package-gated product experience

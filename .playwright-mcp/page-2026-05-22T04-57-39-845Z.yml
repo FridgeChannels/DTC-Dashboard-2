@@ -1,0 +1,746 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: F
+        - generic [ref=e8]: FridgeChannel Dashboard
+      - generic [ref=e9]:
+        - text: GlowHaus Skincare /
+        - generic [ref=e10]: Retention Moat Package
+      - generic [ref=e11]: Updated 2026-05-22 10:00 Asia/Shanghai
+      - generic "Plan tier" [ref=e13]:
+        - button "Presence" [ref=e14] [cursor=pointer]: Presence
+        - button "LTV Lift" [ref=e16] [cursor=pointer]: LTV Lift
+        - button "Retention Moat" [ref=e18] [cursor=pointer]: Retention Moat
+  - generic [ref=e21]:
+    - generic [ref=e22]:
+      - generic [ref=e23]: Date range
+      - combobox "Date range" [ref=e24] [cursor=pointer]:
+        - option "7 day"
+        - option "30 day" [selected]
+        - option "90 day"
+        - option "Month to date"
+        - option "Custom range"
+      - img
+    - button "Export" [ref=e26] [cursor=pointer]:
+      - img [ref=e27]
+      - text: Export
+  - main [ref=e29]:
+    - generic [ref=e30]:
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - generic [ref=e33]: MODULE 01
+          - heading "Revenue Impact" [level=2] [ref=e34]
+          - generic [ref=e35]: What FC contributed to your top and bottom line.
+        - generic [ref=e36]:
+          - button "Lifecycle All stages" [ref=e38] [cursor=pointer]:
+            - generic [ref=e39]: Lifecycle
+            - generic [ref=e40]: All stages
+            - img [ref=e41]
+          - generic [ref=e43]: Full access
+      - generic [ref=e44]:
+        - generic [ref=e45]:
+          - generic [ref=e47]:
+            - text: FC Attributed Revenue
+            - generic [ref=e48]: i
+          - generic [ref=e49]:
+            - generic [ref=e50]: $665.8k
+            - generic "+23.3% vs prev" [ref=e51]:
+              - img [ref=e52]
+              - text: +23.3%
+          - generic [ref=e54]:
+            - generic [ref=e55]: vs. $540.1k previous 30 days
+            - generic [ref=e56]: · 10,665 active households contributing
+          - img [ref=e58]:
+            - generic [ref=e60]: $0k
+            - generic [ref=e62]: $8k
+            - generic [ref=e64]: $16k
+            - generic [ref=e66]: $24k
+            - generic [ref=e68]: $33k
+            - generic [ref=e74]: 4/23
+            - generic [ref=e75]: 4/29
+            - generic [ref=e76]: 5/5
+            - generic [ref=e77]: 5/11
+            - generic [ref=e78]: 5/17
+            - generic [ref=e79]: 5/22
+          - generic [ref=e80]:
+            - generic [ref=e81]: Current period
+            - generic [ref=e83]: Previous period
+        - generic [ref=e85]:
+          - generic [ref=e86]:
+            - generic [ref=e87]:
+              - text: Repeat Customer Revenue
+              - generic [ref=e88]: i
+            - generic "+22.4% vs prev" [ref=e89]:
+              - img [ref=e90]
+              - text: +22.4%
+          - generic [ref=e93]: $349.6k
+          - generic [ref=e94]: vs. previous 30 days
+          - generic [ref=e95]:
+            - generic [ref=e96]: 53% of FC revenue
+            - text: · up from 46%
+          - img [ref=e98]
+        - generic [ref=e103]:
+          - generic [ref=e104]:
+            - generic [ref=e105]:
+              - text: Revenue / Active Household
+              - generic [ref=e106]: i
+            - generic "+9.4% vs prev" [ref=e107]:
+              - img [ref=e108]
+              - text: +9.4%
+          - generic [ref=e111]: $62.43
+          - generic [ref=e112]: vs. previous 30 days
+          - generic [ref=e113]: "benchmark: $48.20 in category"
+          - img [ref=e115]
+      - generic [ref=e120]:
+        - generic [ref=e121]:
+          - generic [ref=e122]:
+            - generic [ref=e123]:
+              - text: Coupon Redeemed Revenue
+              - generic [ref=e124]: i
+            - generic "+14.2% vs prev" [ref=e125]:
+              - img [ref=e126]
+              - text: +14.2%
+          - generic [ref=e129]: $119.8k
+          - generic [ref=e130]: vs. previous 30 days
+        - generic [ref=e131]:
+          - generic [ref=e132]:
+            - generic [ref=e133]:
+              - text: LTV Signal · FC vs Non-FC
+              - generic [ref=e134]: i
+            - generic "+4.0% vs prev" [ref=e135]:
+              - img [ref=e136]
+              - text: +4.0%
+          - generic [ref=e139]: +38%
+          - generic [ref=e140]: vs. previous 30 days
+          - generic [ref=e142]: $184.20 vs $133.20 (30d)
+        - generic [ref=e143]:
+          - generic [ref=e144]:
+            - generic [ref=e145]:
+              - text: Avg Order Value · FC
+              - generic [ref=e146]: i
+            - generic "+1.8% vs prev" [ref=e147]:
+              - img [ref=e148]
+              - text: +1.8%
+          - generic [ref=e151]: $62.40
+          - generic [ref=e152]: vs. previous 30 days
+          - generic [ref=e154]: +$1.10 vs previous 30 days
+      - generic [ref=e156]:
+        - generic [ref=e158]:
+          - generic [ref=e159]: Owned vs Paid Revenue Mix
+          - generic [ref=e160]: last 30 days. Higher owned = lower paid-channel dependency.
+        - generic [ref=e161]:
+          - img [ref=e162]:
+            - generic [ref=e165]: Dec
+            - generic [ref=e166]: Jan
+            - generic [ref=e167]: Feb
+            - generic [ref=e168]: Mar
+            - generic [ref=e169]: Apr
+            - generic [ref=e170]: May
+            - generic [ref=e171]: 0%
+            - generic [ref=e172]: 50%
+            - generic [ref=e173]: 100%
+          - generic [ref=e174]:
+            - generic [ref=e175]: Owned
+            - generic [ref=e177]: Paid
+            - generic [ref=e179]: Owned share +18pp YoY
+    - generic [ref=e181]:
+      - generic [ref=e182]:
+        - generic [ref=e183]:
+          - generic [ref=e184]: MODULE 02
+          - heading "Retention & Lifecycle" [level=2] [ref=e185]
+          - generic [ref=e186]: Activation-anchored retention, repeat purchase, winback.
+        - generic [ref=e187]:
+          - button "Lifecycle All stages" [ref=e189] [cursor=pointer]:
+            - generic [ref=e190]: Lifecycle
+            - generic [ref=e191]: All stages
+            - img [ref=e192]
+          - generic [ref=e194]: Full access
+      - generic [ref=e195]:
+        - generic [ref=e196]:
+          - generic [ref=e198]:
+            - text: Retention signal
+            - generic [ref=e199]: i
+          - generic [ref=e201]:
+            - generic [ref=e202]: 30 DAY
+            - generic [ref=e203]: 41.2%
+            - generic "+3.2% vs prev" [ref=e204]:
+              - img [ref=e205]
+              - text: +3.2%
+          - generic [ref=e209]:
+            - generic [ref=e210]: 30d
+            - generic [ref=e213]: 41%
+        - generic [ref=e214]:
+          - generic [ref=e215]:
+            - generic [ref=e216]:
+              - text: Repeat Purchase Rate
+              - generic [ref=e217]: i
+            - generic "+4.2% vs prev" [ref=e218]:
+              - img [ref=e219]
+              - text: +4.2%
+          - generic [ref=e222]: 34.2%
+          - generic [ref=e223]: vs. previous 30 days
+          - img [ref=e225]
+        - generic [ref=e230]:
+          - generic [ref=e231]:
+            - generic [ref=e232]:
+              - text: Reactivation Rate
+              - generic [ref=e233]: i
+            - generic "+2.4% vs prev" [ref=e234]:
+              - img [ref=e235]
+              - text: +2.4%
+          - generic [ref=e238]: 18.4%
+          - generic [ref=e239]: vs. previous 30 days
+          - img [ref=e241]
+        - generic [ref=e246]:
+          - generic [ref=e247]:
+            - generic [ref=e248]:
+              - text: Winback Rate
+              - generic [ref=e249]: i
+            - generic "+6.1% vs prev" [ref=e250]:
+              - img [ref=e251]
+              - text: +6.1%
+          - generic [ref=e254]: 24.6%
+          - generic [ref=e255]: vs. previous 30 days
+          - img [ref=e257]
+      - generic [ref=e262]:
+        - generic [ref=e264]:
+          - generic [ref=e265]: Lifecycle stage performance
+          - generic [ref=e266]: How each stage is performing across activity, engagement, and revenue.
+        - generic [ref=e267]:
+          - generic [ref=e268]:
+            - generic [ref=e269]:
+              - generic [ref=e270]: New Customer
+              - generic [ref=e271]: HOUSEHOLDS
+              - generic [ref=e272]: 4.3k
+              - generic [ref=e275]:
+                - generic [ref=e276]:
+                  - generic [ref=e277]: CTR
+                  - generic [ref=e278]: 18.4%
+                - generic [ref=e279]:
+                  - generic [ref=e280]: TAKE
+                  - generic [ref=e281]: 34%
+                - generic [ref=e282]:
+                  - generic [ref=e283]: REPEAT
+                  - generic [ref=e284]: 11%
+                - generic [ref=e285]:
+                  - generic [ref=e286]: REV
+                  - generic [ref=e287]: $38.4k
+            - generic [ref=e288]:
+              - generic [ref=e289]: Onboarding
+              - generic [ref=e290]: HOUSEHOLDS
+              - generic [ref=e291]: 3.1k
+              - generic [ref=e294]:
+                - generic [ref=e295]:
+                  - generic [ref=e296]: CTR
+                  - generic [ref=e297]: 21.8%
+                - generic [ref=e298]:
+                  - generic [ref=e299]: TAKE
+                  - generic [ref=e300]: 41%
+                - generic [ref=e301]:
+                  - generic [ref=e302]: REPEAT
+                  - generic [ref=e303]: 18%
+                - generic [ref=e304]:
+                  - generic [ref=e305]: REV
+                  - generic [ref=e306]: $42.2k
+            - generic [ref=e307]:
+              - generic [ref=e308]: Routine Building
+              - generic [ref=e309]: HOUSEHOLDS
+              - generic [ref=e310]: 5.7k
+              - generic [ref=e313]:
+                - generic [ref=e314]:
+                  - generic [ref=e315]: CTR
+                  - generic [ref=e316]: 14.6%
+                - generic [ref=e317]:
+                  - generic [ref=e318]: TAKE
+                  - generic [ref=e319]: 32%
+                - generic [ref=e320]:
+                  - generic [ref=e321]: REPEAT
+                  - generic [ref=e322]: 29%
+                - generic [ref=e323]:
+                  - generic [ref=e324]: REV
+                  - generic [ref=e325]: $68.4k
+            - generic [ref=e326]:
+              - generic [ref=e327]: Renewal Window
+              - generic [ref=e328]: HOUSEHOLDS
+              - generic [ref=e329]: 2.8k
+              - generic [ref=e332]:
+                - generic [ref=e333]:
+                  - generic [ref=e334]: CTR
+                  - generic [ref=e335]: 26.2%
+                - generic [ref=e336]:
+                  - generic [ref=e337]: TAKE
+                  - generic [ref=e338]: 48%
+                - generic [ref=e339]:
+                  - generic [ref=e340]: REPEAT
+                  - generic [ref=e341]: 51%
+                - generic [ref=e342]:
+                  - generic [ref=e343]: REV
+                  - generic [ref=e344]: $92.1k
+            - generic [ref=e345]:
+              - generic [ref=e346]: Winback
+              - generic [ref=e347]: HOUSEHOLDS
+              - generic [ref=e348]: 1.8k
+              - generic [ref=e351]:
+                - generic [ref=e352]:
+                  - generic [ref=e353]: CTR
+                  - generic [ref=e354]: 19.8%
+                - generic [ref=e355]:
+                  - generic [ref=e356]: TAKE
+                  - generic [ref=e357]: 29%
+                - generic [ref=e358]:
+                  - generic [ref=e359]: REPEAT
+                  - generic [ref=e360]: 22%
+                - generic [ref=e361]:
+                  - generic [ref=e362]: REV
+                  - generic [ref=e363]: $28.6k
+          - generic [ref=e364]:
+            - generic [ref=e365]:
+              - generic [ref=e366]: Seasonal Care
+              - generic [ref=e367]: HOUSEHOLDS
+              - generic [ref=e368]: 2.1k
+              - generic [ref=e371]:
+                - generic [ref=e372]:
+                  - generic [ref=e373]: CTR
+                  - generic [ref=e374]: 17.2%
+                - generic [ref=e375]:
+                  - generic [ref=e376]: TAKE
+                  - generic [ref=e377]: 36%
+                - generic [ref=e378]:
+                  - generic [ref=e379]: REPEAT
+                  - generic [ref=e380]: 26%
+                - generic [ref=e381]:
+                  - generic [ref=e382]: REV
+                  - generic [ref=e383]: $31.3k
+            - generic [ref=e384]:
+              - generic [ref=e385]: Loyalty Anniversary
+              - generic [ref=e386]: HOUSEHOLDS
+              - generic [ref=e387]: 1.5k
+              - generic [ref=e390]:
+                - generic [ref=e391]:
+                  - generic [ref=e392]: CTR
+                  - generic [ref=e393]: 29.8%
+                - generic [ref=e394]:
+                  - generic [ref=e395]: TAKE
+                  - generic [ref=e396]: 52%
+                - generic [ref=e397]:
+                  - generic [ref=e398]: REPEAT
+                  - generic [ref=e399]: 62%
+                - generic [ref=e400]:
+                  - generic [ref=e401]: REV
+                  - generic [ref=e402]: $88.4k
+    - generic [ref=e403]:
+      - generic [ref=e404]:
+        - generic [ref=e405]:
+          - generic [ref=e406]: MODULE 03
+          - heading "Usage & Engagement" [level=2] [ref=e407]
+          - generic [ref=e408]: Habit formation, routine retention, weekly tap frequency.
+        - generic [ref=e410]: Full access
+      - generic [ref=e411]:
+        - generic [ref=e412]:
+          - generic [ref=e413]:
+            - generic [ref=e414]:
+              - text: Active Households
+              - generic [ref=e415]: i
+            - generic "+6.2% vs prev" [ref=e416]:
+              - img [ref=e417]
+              - text: +6.2%
+          - generic [ref=e420]: 10.7k
+          - generic [ref=e421]: vs. previous 30 days
+          - img [ref=e423]
+        - generic [ref=e428]:
+          - generic [ref=e429]:
+            - generic [ref=e430]:
+              - text: Habit Formation Rate
+              - generic [ref=e431]: i
+            - generic "+5.2% vs prev" [ref=e432]:
+              - img [ref=e433]
+              - text: +5.2%
+          - generic [ref=e436]: 39%
+          - generic [ref=e437]: vs. previous 30 days
+          - generic [ref=e439]: 6.0k habit-formed households
+        - generic [ref=e440]:
+          - generic [ref=e441]:
+            - generic [ref=e442]:
+              - text: Weekly Tap Frequency
+              - generic [ref=e443]: i
+            - generic "+4.1% vs prev" [ref=e444]:
+              - img [ref=e445]
+              - text: +4.1%
+          - generic [ref=e448]: 2.6×/wk
+          - generic [ref=e449]: vs. previous 30 days
+          - img [ref=e451]
+        - generic [ref=e456]:
+          - generic [ref=e457]:
+            - generic [ref=e458]:
+              - text: WAU / MAU Stickiness
+              - generic [ref=e459]: i
+            - generic "+1.8% vs prev" [ref=e460]:
+              - img [ref=e461]
+              - text: +1.8%
+          - generic [ref=e464]: 67.4%
+          - generic [ref=e465]: vs. previous 30 days
+          - generic [ref=e467]: 8.4k WAU / 12.5k MAU
+      - generic [ref=e468]:
+        - generic [ref=e469]:
+          - generic [ref=e471]:
+            - generic [ref=e472]: Habit formation · weeks of consistent activity
+            - generic [ref=e473]: Distribution of activated households by consecutive weeks with ≥1 tap. 4+ weeks = habit formed.
+          - generic [ref=e474]:
+            - generic [ref=e475]:
+              - generic [ref=e476]:
+                - generic [ref=e478]: 18%
+                - generic [ref=e481]: 16%
+                - generic [ref=e484]: 14%
+                - generic [ref=e487]: 13%
+                - generic [ref=e490]: 39%
+              - generic [ref=e492]:
+                - generic [ref=e493]: 0 weeks
+                - generic [ref=e494]: 1 week
+                - generic [ref=e495]: 2 weeks
+                - generic [ref=e496]: 3 weeks
+                - generic [ref=e497]: 4+ weeks
+            - generic [ref=e498]:
+              - generic [ref=e499]: 39% of activated households formed the habit
+              - generic [ref=e501]: "benchmark: 28% category avg"
+        - generic [ref=e503]:
+          - generic [ref=e505]:
+            - generic [ref=e506]: WAU / MAU stickiness
+            - generic [ref=e507]: A higher ratio means more weekly active habit, not just monthly visits.
+          - generic [ref=e509]:
+            - img [ref=e511]:
+              - generic [ref=e514]: 67%
+            - generic [ref=e515]:
+              - generic [ref=e516]:
+                - generic [ref=e518]:
+                  - generic [ref=e519]: Weekly Active
+                  - generic [ref=e520]: 8.4k
+                - generic [ref=e524]:
+                  - generic [ref=e525]: Monthly Active
+                  - generic [ref=e526]: 12.5k
+              - generic [ref=e530]:
+                - text: Ratio of
+                - generic [ref=e531]: 67%
+                - text: means most monthly users come back weekly — strong habit signal.
+      - generic [ref=e532]:
+        - generic [ref=e533]:
+          - generic [ref=e535]:
+            - generic [ref=e536]: Weekly tap frequency · last 30 days
+            - generic [ref=e537]: Per-household average. Trending up means stronger routine.
+          - img [ref=e539]:
+            - generic [ref=e541]: 0.0×
+            - generic [ref=e543]: 0.8×
+            - generic [ref=e545]: 1.6×
+            - generic [ref=e547]: 2.4×
+            - generic [ref=e549]: 3.2×
+            - generic [ref=e554]: 30d-11
+            - generic [ref=e555]: 30d-9
+            - generic [ref=e556]: 30d-7
+            - generic [ref=e557]: 30d-5
+            - generic [ref=e558]: 30d-3
+            - generic [ref=e559]: 30d-1
+            - generic [ref=e560]: 30d-0
+        - generic [ref=e561]:
+          - generic [ref=e563]:
+            - generic [ref=e564]: Active households · last 30 days
+            - generic [ref=e565]: Daily distinct households with ≥1 valid event.
+          - img [ref=e567]:
+            - generic [ref=e569]: "0"
+            - generic [ref=e571]: 2.9k
+            - generic [ref=e573]: 5.9k
+            - generic [ref=e575]: 8.8k
+            - generic [ref=e577]: 11.7k
+            - generic [ref=e582]: 4/23
+            - generic [ref=e583]: 4/29
+            - generic [ref=e584]: 5/5
+            - generic [ref=e585]: 5/11
+            - generic [ref=e586]: 5/17
+            - generic [ref=e587]: 5/22
+    - generic [ref=e588]:
+      - generic [ref=e589]:
+        - generic [ref=e590]:
+          - generic [ref=e591]: MODULE 04
+          - heading "In-Home Reach" [level=2] [ref=e592]
+          - generic [ref=e593]: From shipped device to active household.
+        - generic [ref=e595]: Full access
+      - generic [ref=e596]:
+        - generic [ref=e597]:
+          - generic [ref=e598]:
+            - generic [ref=e599]:
+              - text: Activated Devices
+              - generic [ref=e600]: i
+            - generic "+8.2% vs prev" [ref=e601]:
+              - img [ref=e602]
+              - text: +8.2%
+          - generic [ref=e605]: 14.4k
+          - generic [ref=e606]: vs. previous 30 days
+        - generic [ref=e607]:
+          - generic [ref=e608]:
+            - generic [ref=e609]:
+              - text: Sticking Rate
+              - generic [ref=e610]: i
+            - generic "+2.4% vs prev" [ref=e611]:
+              - img [ref=e612]
+              - text: +2.4%
+          - generic [ref=e615]: 78.1%
+          - generic [ref=e616]: vs. previous 30 days
+      - generic [ref=e618]:
+        - generic [ref=e620]:
+          - generic [ref=e621]: In-Home Brand Reach
+          - generic [ref=e622]: Activated households over time — the size of your owned channel.
+        - generic [ref=e623]:
+          - generic [ref=e624]:
+            - generic [ref=e625]: 15.3k
+            - generic "+7.4% vs prev" [ref=e626]:
+              - img [ref=e627]
+              - text: +7.4%
+          - generic [ref=e630]: last 30 days · 36756 estimated people in fridge view
+          - img [ref=e631]:
+            - generic [ref=e633]: "0"
+            - generic [ref=e635]: 4.2k
+            - generic [ref=e637]: 8.4k
+            - generic [ref=e639]: 12.6k
+            - generic [ref=e641]: 16.8k
+            - generic [ref=e646]: 4/23
+            - generic [ref=e647]: 4/29
+            - generic [ref=e648]: 5/5
+            - generic [ref=e649]: 5/11
+            - generic [ref=e650]: 5/17
+            - generic [ref=e651]: 5/22
+          - generic [ref=e653]:
+            - generic [ref=e654]:
+              - generic [ref=e655]: BRAND TOUCHES / HH
+              - generic [ref=e656]: 18.2×/mo
+            - generic [ref=e657]:
+              - generic [ref=e658]: AVG SESSION
+              - generic [ref=e659]: 42sec
+    - generic [ref=e660]:
+      - generic [ref=e661]:
+        - generic [ref=e662]:
+          - generic [ref=e663]: MODULE 05
+          - heading "CTA & Conversion" [level=2] [ref=e664]
+          - generic [ref=e665]: Impression → click → take → revenue.
+        - generic [ref=e666]:
+          - generic [ref=e667]:
+            - button "Lifecycle All stages" [ref=e668] [cursor=pointer]:
+              - generic [ref=e669]: Lifecycle
+              - generic [ref=e670]: All stages
+              - img [ref=e671]
+            - button "CTA All CTA types" [ref=e673] [cursor=pointer]:
+              - generic [ref=e674]: CTA
+              - generic [ref=e675]: All CTA types
+              - img [ref=e676]
+          - generic [ref=e678]: Full access
+      - generic [ref=e679]:
+        - generic [ref=e680]:
+          - generic [ref=e681]:
+            - generic [ref=e682]:
+              - text: CTA Impressions
+              - generic [ref=e683]: i
+            - generic "+8.2% vs prev" [ref=e684]:
+              - img [ref=e685]
+              - text: +8.2%
+          - generic [ref=e688]: 412.8k
+          - generic [ref=e689]: vs. previous 30 days
+        - generic [ref=e690]:
+          - generic [ref=e691]:
+            - generic [ref=e692]:
+              - text: CTA Click Rate
+              - generic [ref=e693]: i
+            - generic "+2.4% vs prev" [ref=e694]:
+              - img [ref=e695]
+              - text: +2.4%
+          - generic [ref=e698]: 13.6%
+          - generic [ref=e699]: vs. previous 30 days
+        - generic [ref=e700]:
+          - generic [ref=e701]:
+            - generic [ref=e702]:
+              - text: CTA Take-rate
+              - generic [ref=e703]: i
+            - generic "+4.8% vs prev" [ref=e704]:
+              - img [ref=e705]
+              - text: +4.8%
+          - generic [ref=e708]: 32.8%
+          - generic [ref=e709]: vs. previous 30 days
+        - generic [ref=e710]:
+          - generic [ref=e711]:
+            - generic [ref=e712]:
+              - text: Coupon Claim Rate
+              - generic [ref=e713]: i
+            - generic "+1.2% vs prev" [ref=e714]:
+              - img [ref=e715]
+              - text: +1.2%
+          - generic [ref=e718]: 42.2%
+          - generic [ref=e719]: vs. previous 30 days
+        - generic [ref=e720]:
+          - generic [ref=e721]:
+            - generic [ref=e722]:
+              - text: Coupon Redeem Rate
+              - generic [ref=e723]: i
+            - generic "-2.2% vs prev" [ref=e724]:
+              - img [ref=e725]
+              - text: "-2.2%"
+          - generic [ref=e728]: 58.6%
+          - generic [ref=e729]: vs. previous 30 days
+        - generic [ref=e730]:
+          - generic [ref=e731]:
+            - generic [ref=e732]:
+              - text: Revenue / CTA Click
+              - generic [ref=e733]: i
+            - generic "+8.4% vs prev" [ref=e734]:
+              - img [ref=e735]
+              - text: +8.4%
+          - generic [ref=e738]: $6.83
+          - generic [ref=e739]: vs. previous 30 days
+      - generic [ref=e740]:
+        - generic [ref=e741]:
+          - generic [ref=e743]:
+            - generic [ref=e744]: Conversion funnel
+            - generic [ref=e745]: C1-C5 from physical placement to CTA action · last 30 days.
+          - generic [ref=e746]:
+            - generic [ref=e747]:
+              - generic [ref=e748]:
+                - generic [ref=e749]:
+                  - generic [ref=e750]: C1 · Sticking Rate
+                  - generic [ref=e751]: 贴到冰箱上的概率
+                - generic [ref=e753]: 78.1%
+                - generic [ref=e754]: 30d
+                - generic [ref=e755]: —
+              - generic [ref=e756]:
+                - generic [ref=e757]:
+                  - generic [ref=e758]: C2 · Habit Formation Rate
+                  - generic [ref=e759]: 养成固定频率打开习惯的用户比例
+                - generic [ref=e761]: 39%
+                - generic [ref=e762]: 30d
+                - generic [ref=e763]: —
+              - generic [ref=e764]:
+                - generic [ref=e765]:
+                  - generic [ref=e766]: C3 · Weekly Tap Frequency
+                  - generic [ref=e767]: 每周主动触发次数
+                - generic [ref=e769]: 2.6×/wk
+                - generic [ref=e770]: 30d
+                - generic [ref=e771]: —
+              - generic [ref=e772]:
+                - generic [ref=e773]:
+                  - generic [ref=e774]: C4 · CTA Click Rate
+                  - generic [ref=e775]: 点击 CTA 的概率
+                - generic [ref=e777]: 13.6%
+                - generic [ref=e778]: 30d
+                - generic [ref=e779]: —
+              - generic [ref=e780]:
+                - generic [ref=e781]:
+                  - generic [ref=e782]: C5 · CTA Take-rate
+                  - generic [ref=e783]: 点击 CTA 并主动承接的概率
+                - generic [ref=e785]: 32.8%
+                - generic [ref=e786]: 30d
+                - generic [ref=e787]: —
+            - generic [ref=e789]:
+              - generic [ref=e790]: C2 habit formation is the middle-of-funnel lift point
+              - generic [ref=e792]: C4 CTA click rate is the largest conversion gap
+        - generic [ref=e794]:
+          - generic [ref=e796]:
+            - generic [ref=e797]: Coupon claim vs redeem gap
+            - generic [ref=e798]: How many claimed coupons actually get used.
+          - generic [ref=e799]:
+            - generic [ref=e800]:
+              - generic [ref=e802]:
+                - generic [ref=e803]: Coupon impressions
+                - generic [ref=e804]: 48.2k
+              - generic [ref=e808]:
+                - generic [ref=e809]: Claimed
+                - generic [ref=e810]: 20.3k · 42%
+              - generic [ref=e814]:
+                - generic [ref=e815]: Redeemed
+                - generic [ref=e816]: 11.9k · 25% of impr.
+            - generic [ref=e820]:
+              - generic [ref=e821]: 41%
+              - text: of claimed coupons go unused — biggest revenue leak. Try shortening expiration or push reminders at day 7.
+      - generic [ref=e822]:
+        - generic [ref=e824]:
+          - generic [ref=e825]: CTA performance · by lifecycle stage
+          - generic [ref=e826]: Which CTAs work, where, and how much revenue they bring.
+        - table [ref=e829]:
+          - rowgroup [ref=e830]:
+            - row "CTA Type Lifecycle Impr. Clicks CTR Take-rate FC Revenue" [ref=e831]:
+              - columnheader "CTA" [ref=e832]
+              - columnheader "Type" [ref=e833]
+              - columnheader "Lifecycle" [ref=e834]
+              - columnheader "Impr." [ref=e835]
+              - columnheader "Clicks" [ref=e836]
+              - columnheader "CTR" [ref=e837]
+              - columnheader "Take-rate" [ref=e838]
+              - columnheader "FC Revenue" [ref=e839]
+          - rowgroup [ref=e840]:
+            - row "Refill in 1 tap purchase Renewal Window 84,200 18,420 21.9% 45.7% $142.8k" [ref=e841]:
+              - cell "Refill in 1 tap" [ref=e842]
+              - cell "purchase" [ref=e843]:
+                - generic [ref=e844]: purchase
+              - cell "Renewal Window" [ref=e845]
+              - cell "84,200" [ref=e846]
+              - cell "18,420" [ref=e847]
+              - cell "21.9%" [ref=e848]:
+                - generic [ref=e852]: 21.9%
+              - cell "45.7%" [ref=e853]:
+                - generic [ref=e857]: 45.7%
+              - cell "$142.8k" [ref=e858]
+            - row "Claim 15% loyalty reward coupon Loyalty Anniversary 32,800 6,840 20.9% 45.6% $78.4k" [ref=e859]:
+              - cell "Claim 15% loyalty reward" [ref=e860]
+              - cell "coupon" [ref=e861]:
+                - generic [ref=e862]: coupon
+              - cell "Loyalty Anniversary" [ref=e863]
+              - cell "32,800" [ref=e864]
+              - cell "6,840" [ref=e865]
+              - cell "20.9%" [ref=e866]:
+                - generic [ref=e870]: 20.9%
+              - cell "45.6%" [ref=e871]:
+                - generic [ref=e875]: 45.6%
+              - cell "$78.4k" [ref=e876]
+            - row "Start auto-refill subscription Routine Building 48,420 8,120 16.8% 35.0% $64.2k" [ref=e877]:
+              - cell "Start auto-refill" [ref=e878]
+              - cell "subscription" [ref=e879]:
+                - generic [ref=e880]: subscription
+              - cell "Routine Building" [ref=e881]
+              - cell "48,420" [ref=e882]
+              - cell "8,120" [ref=e883]
+              - cell "16.8%" [ref=e884]:
+                - generic [ref=e888]: 16.8%
+              - cell "35.0%" [ref=e889]:
+                - generic [ref=e893]: 35.0%
+              - cell "$64.2k" [ref=e894]
+            - row "Rate this product review Loyalty Anniversary 18,420 2,640 14.3% 44.7% $0" [ref=e895]:
+              - cell "Rate this product" [ref=e896]
+              - cell "review" [ref=e897]:
+                - generic [ref=e898]: review
+              - cell "Loyalty Anniversary" [ref=e899]
+              - cell "18,420" [ref=e900]
+              - cell "2,640" [ref=e901]
+              - cell "14.3%" [ref=e902]:
+                - generic [ref=e906]: 14.3%
+              - cell "44.7%" [ref=e907]:
+                - generic [ref=e911]: 44.7%
+              - cell "$0" [ref=e912]
+            - row "Read about retinol education Onboarding 64,200 7,840 12.2% 46.9% $28.1k" [ref=e913]:
+              - cell "Read about retinol" [ref=e914]
+              - cell "education" [ref=e915]:
+                - generic [ref=e916]: education
+              - cell "Onboarding" [ref=e917]
+              - cell "64,200" [ref=e918]
+              - cell "7,840" [ref=e919]
+              - cell "12.2%" [ref=e920]:
+                - generic [ref=e924]: 12.2%
+              - cell "46.9%" [ref=e925]:
+                - generic [ref=e929]: 46.9%
+              - cell "$28.1k" [ref=e930]
+            - 'row "Win back: free shipping coupon Winback 28,400 4,120 14.5% 28.6% $18.4k" [ref=e931]':
+              - 'cell "Win back: free shipping" [ref=e932]'
+              - cell "coupon" [ref=e933]:
+                - generic [ref=e934]: coupon
+              - cell "Winback" [ref=e935]
+              - cell "28,400" [ref=e936]
+              - cell "4,120" [ref=e937]
+              - cell "14.5%" [ref=e938]:
+                - generic [ref=e942]: 14.5%
+              - cell "28.6%" [ref=e943]:
+                - generic [ref=e947]: 28.6%
+              - cell "$18.4k" [ref=e948]
+  - contentinfo [ref=e949]: FC Brand Dashboard · mock data for package-gated product experience

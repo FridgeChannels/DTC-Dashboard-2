@@ -1,0 +1,102 @@
+[     565ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:29904
+[     702ms] [WARNING] You are using the in-browser Babel transformer. Be sure to precompile your scripts for production - https://babeljs.io/docs/setup/ @ https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:2
+[    1129ms] SyntaxError: /http:/localhost:8000/Components/modules.jsx: Identifier 'CTAModule' has already been declared. (199:9)
+
+  197 |   );
+  198 | }
+> 199 | function CTAModule({ tier, dateRange = "30day" }) {
+      |          ^
+  200 |   const access = window.ACCESS.cta[tier];
+  201 |   const d = window.fcData;
+  202 |   const rangeMeta = getDateRangeMeta(dateRange);
+    at e (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:260002)
+    at r.raise (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:312098)
+    at t.checkRedeclarationInScope (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:270664)
+    at t.declareName (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:270028)
+    at r.declareName (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:273002)
+    at r.registerFunctionStatementId (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:527042)
+    at r.parseFunction (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:526655)
+    at r.parseFunctionStatement (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:519029)
+    at r.parseStatementContent (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:512264)
+    at r.parseStatementLike (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:511686)
+    at r.parseStatementLike (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:379262)
+    at r.parseModuleItem (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:511181)
+    at r.parseBlockOrModuleBlockBody (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:523506)
+    at r.parseBlockBody (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:523339)
+    at r.parseProgram (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:508590)
+    at r.parseTopLevel (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:507296)
+    at r.parseTopLevel (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:397777)
+    at r.parse (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:550298)
+    at aR (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:550496)
+    at https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:1117838
+    at Generator.<anonymous> (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:1068)
+    at Generator.next (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:1898)
+    at Generator.<anonymous> (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:826)
+    at Generator.next (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:1898)
+    at Generator.<anonymous> (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:826)
+    at Generator.next (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:1898)
+    at Generator.<anonymous> (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:826)
+    at Generator.next (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:1898)
+    at iF (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:945723)
+    at sync (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:943814)
+    at stopHiding - secret - don't use this - v1 (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:1069523)
+    at SV (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:1126275)
+    at FEe (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:3132179)
+    at https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:3127986
+    at SEe (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:3128384)
+    at n (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:3128645)
+    at a (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:3129038)
+    at d.src.i.onreadystatechange (https://unpkg.com/@babel/standalone@7.29.0/babel.min.js:3:3129295)
+[    1184ms] ReferenceError: RevenueModule is not defined
+    at App (<anonymous>:217:87)
+    at renderWithHooks (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:15496:20)
+    at mountIndeterminateComponent (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:20113:15)
+    at beginWork (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:21636:18)
+    at HTMLUnknownElement.callCallback (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:4151:16)
+    at Object.invokeGuardedCallbackDev (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:4200:18)
+    at invokeGuardedCallback (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:4264:33)
+    at beginWork$1 (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:27500:9)
+    at performUnitOfWork (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:26609:14)
+    at workLoopSync (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:26515:7)
+    at renderRootSync (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:26483:9)
+    at performConcurrentWorkOnRoot (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:25787:76)
+    at workLoop (https://unpkg.com/react@18.3.1/umd/react.development.js:2653:36)
+    at flushWork (https://unpkg.com/react@18.3.1/umd/react.development.js:2626:16)
+    at MessagePort.performWorkUntilDeadline (https://unpkg.com/react@18.3.1/umd/react.development.js:2920:23)
+[    1186ms] ReferenceError: RevenueModule is not defined
+    at App (<anonymous>:217:87)
+    at renderWithHooks (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:15496:20)
+    at mountIndeterminateComponent (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:20113:15)
+    at beginWork (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:21636:18)
+    at HTMLUnknownElement.callCallback (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:4151:16)
+    at Object.invokeGuardedCallbackDev (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:4200:18)
+    at invokeGuardedCallback (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:4264:33)
+    at beginWork$1 (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:27500:9)
+    at performUnitOfWork (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:26609:14)
+    at workLoopSync (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:26515:7)
+    at renderRootSync (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:26483:9)
+    at recoverFromConcurrentError (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:25899:22)
+    at performConcurrentWorkOnRoot (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:25799:24)
+    at workLoop (https://unpkg.com/react@18.3.1/umd/react.development.js:2653:36)
+    at flushWork (https://unpkg.com/react@18.3.1/umd/react.development.js:2626:16)
+    at MessagePort.performWorkUntilDeadline (https://unpkg.com/react@18.3.1/umd/react.development.js:2920:23)
+[    1183ms] [ERROR] The above error occurred in the <App> component:
+
+    at App (<anonymous>:202:22)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries. @ https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:18713
+[    1187ms] ReferenceError: RevenueModule is not defined
+    at App (<anonymous>:217:87)
+    at renderWithHooks (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:15496:20)
+    at mountIndeterminateComponent (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:20113:15)
+    at beginWork (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:21636:18)
+    at beginWork$1 (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:27475:16)
+    at performUnitOfWork (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:26609:14)
+    at workLoopSync (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:26515:7)
+    at renderRootSync (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:26483:9)
+    at recoverFromConcurrentError (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:25899:22)
+    at performConcurrentWorkOnRoot (https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js:25799:24)
+    at workLoop (https://unpkg.com/react@18.3.1/umd/react.development.js:2653:36)
+    at flushWork (https://unpkg.com/react@18.3.1/umd/react.development.js:2626:16)
+    at MessagePort.performWorkUntilDeadline (https://unpkg.com/react@18.3.1/umd/react.development.js:2920:23)

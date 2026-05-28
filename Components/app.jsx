@@ -55,17 +55,14 @@ function FilterBar({ tier, dateRange, onDateRangeChange }) {
         <label className="select-chip">
           <span className="label">Date range</span>
           <select value={dateRange} onChange={(e) => onDateRangeChange(e.target.value)} aria-label="Date range">
-            <option value="7day">7 day</option>
             <option value="30day">30 day</option>
             <option value="90day">90 day</option>
             <option value="mtd">Month to date</option>
-            <option value="custom">Custom range</option>
           </select>
           <I.chevDown />
         </label>
         <div className="filter-actions">
           <button className="btn"><I.download /> Export</button>
-          {tier !== "retention_moat" && <button className="btn accent">Upgrade</button>}
         </div>
       </div>
     </div>
@@ -156,10 +153,6 @@ const DASHBOARD_MODULES = [
   {
     id: "cta",
     Component: CTAModule,
-  },
-  {
-    id: "usage",
-    Component: ReachAndEngagementModule,
   },
 ];
 

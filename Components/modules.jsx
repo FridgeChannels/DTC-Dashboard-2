@@ -13,19 +13,7 @@ function RevenueModule({ tier, dateRange = "30day", num = "01" }) {
   const revenueDelta = prevRevenue > 0 ? revenue / prevRevenue - 1 : null;
   const repeatDelta = d.totals.repeatRevenuePrev > 0 ? d.totals.repeatRevenue / d.totals.repeatRevenuePrev - 1 : null;
 
-  if (access === "locked") {
-    return (
-      <section className="module">
-        <ModuleHead num={num} title="Revenue Impact" sub="Attributed revenue, repeat purchase, and revenue mix." tierState="locked" />
-        <LockedModule
-          title="Unlock Revenue Impact"
-          requiredTier="ltv_lift"
-          description="Upgrade to see FC attributed revenue, repeat purchase revenue, revenue per active household, and coupon-driven revenue."
-          metrics={["FC Attributed Revenue", "Repeat Customer Revenue", "Revenue / Active HH", "Coupon Redeemed Revenue"]}
-        />
-      </section>
-    );
-  }
+  if (tier === "presence") return null;
 
   return (
     <section className="module">
@@ -36,12 +24,6 @@ function RevenueModule({ tier, dateRange = "30day", num = "01" }) {
         <MetricCard title="Repeat Customer Revenue" value={fmtMoney(repeatRevenue)} delta={repeatDelta} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("repeatRevenue", tier)} requiredTier="ltv_lift" spark={seriesForRange(d.repeatRevSeries, dateRange)} tooltip="Revenue from customers who made another purchase after an FC-attributed interaction." />
         <MetricCard title="Revenue / Active HH" value={"$" + revPerHH.toFixed(2)} delta={0.094} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("revPerHH", tier)} requiredTier="retention_moat" tooltip="FC attributed revenue divided by active households in the selected date range." />
         <MetricCard title="Coupon Redeemed Revenue" value={fmtMoney(couponRevenue)} delta={0.061} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility={getVis("couponRevenue", tier)} requiredTier="ltv_lift" tooltip="Revenue from orders where an FC-delivered coupon was redeemed." />
-      </div>
-
-      <div className="grid" style={{ marginTop: 14 }}>
-        <Panel title="FC attributed revenue trend" sub={`Daily revenue in the ${rangeMeta.periodLabel}.`}>
-          <AreaChart data={seriesForRange(d.revSeries, dateRange)} comparison={seriesForRange(d.revPrev, dateRange)} yFormat={fmtMoney} labels={seriesForRange(d.revSeries, dateRange).map((_, i) => String(i + 1))} />
-        </Panel>
       </div>
     </section>
   );
@@ -66,7 +48,7 @@ function RetentionModule({ tier, dateRange = "30day", num = "02" }) {
   
   const conversionSteps = [
     { label: "C1 Sticking", value: c1, display: (c1*100).toFixed(0)+"%" },
-    { label: "C2 Habit", value: c2, display: (c2*100).toFixed(0)+"%" },
+    { label: "C2 Regular Tap", value: c2, display: (c2*100).toFixed(0)+"%" },
     { label: "C3 Weekly Tap", value: c3, display: "3x", meta: "3.0x avg." },
     { label: "C4 CTA Click", value: c4, display: (c4*100).toFixed(0)+"%" },
     { label: "C5 Take", value: c5, display: (c5*100).toFixed(0)+"%" },
@@ -108,7 +90,7 @@ function RetentionModule({ tier, dateRange = "30day", num = "02" }) {
           />
           <div className="dotted" />
           <div className="row" style={{ gap: 14 }}>
-            <span className="pip pos"><span className="d" />C2 habit and C4 click intent are both at 60%</span>
+            <span className="pip pos"><span className="d" />C2 Regular Tap and C4 click intent are both at 60%</span>
             <span className="pip neg" style={{ marginLeft: "auto" }}><span className="d" />C5 take-rate is the final conversion point to improve</span>
           </div>
       </Panel>
@@ -202,7 +184,7 @@ function RetentionModule({ tier, dateRange = "30day", num = "02" }) {
                   <th>Lifecycle Stage</th>
                   <th className="num">Households</th>
                   <th className="num">C1 (Sticking)</th>
-                  <th className="num">C2 (Habit)</th>
+                  <th className="num">C2 (Regular Tap)</th>
                   <th className="num">C3 (Taps/wk)</th>
                   <th className="num">C4 (CTR)</th>
                   <th className="num">C5 (Take)</th>
@@ -249,38 +231,24 @@ window.RetentionModule = RetentionModule;
 function ReachAndEngagementModule({ tier, dateRange = "30day", num = "04" }) {
   const d = window.fcData;
   const rangeMeta = getDateRangeMeta(dateRange);
-  const activationRate = d.totals.shipped > 0 ? d.totals.activated / d.totals.shipped : 0;
   const activeHH = Math.round(averageForRange(d.activeHHSeries, dateRange));
-  const weeklyTaps = averageForRange(d.tapsPerWeekSeries, dateRange);
+  const revenue = sumForRange(d.revSeries, dateRange);
+  const prevRevenue = sumForRange(d.revPrev, dateRange);
+  const repeatRevenue = sumForRange(d.repeatRevSeries, dateRange);
+  const revenueDelta = prevRevenue > 0 ? revenue / prevRevenue - 1 : null;
+  const repeatDelta = d.totals.repeatRevenuePrev > 0 ? d.totals.repeatRevenue / d.totals.repeatRevenuePrev - 1 : null;
 
   return (
     <section className="module">
-      <ModuleHead num={num} title="Usage & In-Home Reach" sub="Activation, household reach, usage rhythm, and habit formation."
+      <ModuleHead num={num} title="In-Home Presence Overview" sub="Activation, household reach, usage rhythm, and regular tap formation."
                   tierState={tier === "presence" ? "basic" : "full"}
                   action={<ModuleFilters tier={tier} lifecycle />} />
-      <div className="grid">
+      <div className={tier === "presence" ? "grid grid-3" : "grid"}>
+        {tier === "presence" && <MetricCard title="FC Attributed Revenue" value={fmtMoney(revenue)} delta={revenueDelta} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility="full" spark={seriesForRange(d.revSeries, dateRange)} sparkComparison={seriesForRange(d.revPrev, dateRange)} tooltip="Orders directly linked to FC CTA, coupon, or reward actions within the attribution window." />}
         <MetricCard title="Activated Households" value={fmtNum(d.totals.activatedHH)} visibility={getVis("activatedHH", tier)} spark={seriesForRange(d.activatedHHSeries, dateRange)} tooltip="Households that have completed device setup or activation at least once." />
+        {tier === "presence" && <MetricCard title="Repeat Customer Revenue" value={fmtMoney(repeatRevenue)} delta={repeatDelta} compareLabel={`vs. ${rangeMeta.compareLabel}`} visibility="full" spark={seriesForRange(d.repeatRevSeries, dateRange)} tooltip="Revenue from customers who made another purchase after an FC-attributed interaction." />}
       </div>
 
-      <div className="grid grid-2" style={{ marginTop: 14, gridTemplateColumns: "1fr 1fr" }}>
-        <Panel title="Activation funnel" sub="Device shipment to household activation.">
-          <Funnel
-            steps={[
-              { label: "Shipped devices", value: d.totals.shipped },
-              { label: "Activated devices", value: d.totals.activated },
-              { label: "Recently active households", value: activeHH },
-            ]}
-            valueFormat={(s) => fmtInt(s.value)}
-          />
-        </Panel>
-        <Panel title="Habit formation" sub="Weeks of repeat in-home interaction." locked={tier === "presence"} requiredTier="ltv_lift" lockedNote="Habit formation requires LTV Lift.">
-          <VBars data={d.habitDist} highlightIndex={4} />
-          <div className="dotted" />
-          <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
-            <b style={{ color: "var(--ink)" }}>39%</b> of households have reached a 4+ week habit loop.
-          </div>
-        </Panel>
-      </div>
     </section>
   );
 }
@@ -290,7 +258,7 @@ function CTAModule({ tier, dateRange = "30day", num = "03" }) {
   const access = window.ACCESS.cta[tier];
   const d = window.fcData;
   const rangeMeta = getDateRangeMeta(dateRange);
-  const [selectedStage, setSelectedStage] = useS("All Stages");
+  const [selectedStage, setSelectedStage] = useS("Onboarding");
   const [selectedCta, setSelectedCta] = useS("All CTAs");
 
   if (access === "locked") {
@@ -342,11 +310,8 @@ function CTAModule({ tier, dateRange = "30day", num = "03" }) {
   // Filter Data
   const allCtaNames = [...new Set(Object.values(d.ctaPerfMatrix).flat().map(c => c.name))];
   let filteredRows = [];
-  Object.keys(d.ctaPerfMatrix).forEach(stageName => {
-    if (selectedStage !== "All Stages" && stageName !== selectedStage) return;
-    const stageRows = d.ctaPerfMatrix[stageName].filter(c => selectedCta === "All CTAs" || c.name === selectedCta);
-    stageRows.forEach(r => filteredRows.push(r));
-  });
+  const stageRows = d.ctaPerfMatrix[selectedStage] || [];
+  filteredRows = stageRows.filter(c => selectedCta === "All CTAs" || c.name === selectedCta);
 
   return (
     <section className="module">
@@ -370,7 +335,6 @@ function CTAModule({ tier, dateRange = "30day", num = "03" }) {
             <label className="panel-select">
               <span>Stage</span>
               <select value={selectedStage} onChange={(e) => setSelectedStage(e.target.value)}>
-                <option value="All Stages">All Stages</option>
                 {d.lifecycle.map(l => (
                   <option key={l.stage} value={l.stage}>{l.stage}</option>
                 ))}

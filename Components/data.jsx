@@ -245,7 +245,7 @@ const TIERS = {
   ltv_lift: {
     label: "LTV Lift",
     short: "LTV Lift",
-    blurb: "Habit, repeat purchase signal, full content engagement.",
+    blurb: "Regular tap, repeat purchase signal, full content engagement.",
   },
   retention_moat: {
     label: "Retention Moat",
@@ -258,7 +258,7 @@ window.TIERS = TIERS;
 // per-module access map. Used by Module component to decide rendering.
 const ACCESS = {
   revenue: {
-    presence:       "locked",
+    presence:       "basic",
     ltv_lift:       "basic",
     retention_moat: "full",
   },
@@ -274,8 +274,8 @@ const ACCESS = {
   },
   reach: {
     presence:       "full",
-    ltv_lift:       "full",
-    retention_moat: "full",
+    ltv_lift:       "hidden",
+    retention_moat: "hidden",
   },
   cta: {
     presence:       "locked",
@@ -351,7 +351,7 @@ const SUMMARY = {
     { id: "_lockedRevenue",   title: "Revenue Impact",           locked: true, requiredTier: "ltv_lift" },
   ],
   ltv_lift: [
-    { id: "habit",            title: "Habit Formation Rate",     value: 0.39,  unit: "%", trend: 0.052 },
+    { id: "habit",            title: "Regular Tap Rate",         value: 0.39,  unit: "%", trend: 0.052 },
     { id: "weeklyTaps",       title: "Weekly Tap Frequency",     value: 3.2,   unit: "x", trend: 0.041 },
     { id: "routineRet",       title: "Routine Retention (4w)",   value: 0.482, unit: "%", trend: 0.028 },
     { id: "wauMau",           title: "WAU / MAU Stickiness",     value: 0.674, unit: "%", trend: 0.018 },

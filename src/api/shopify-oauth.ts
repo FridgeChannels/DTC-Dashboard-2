@@ -1,0 +1,218 @@
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { env } from "../config/env.js";
+import { readJsonBody, json, errorJson } from "./http.js";
+import { getRequestCustomerId } from "./tenant-context.js";
+import {
+  resolveSecret,
+  storeSecret,
+  shopifyAppClientSecretRef,
+  shopifyAccessTokenRef,
+  shopifyWebhookSecretRef,
+} from "../clients/secrets.client.js";
+import { fetchShopInfo } from "../shopify/shop.api.js";
+import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
+import type { CustomerShopifyConfig } from "../coupons/coupon.types.js";
+
+const oauthStates = new Map<
+  string,
+  { customerId: number; shop: string; createdAt: number }
+>();
+
+function normalizeShopDomain(shop: string): string {
+  return shop
+    .trim()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "")
+    .toLowerCase();
+}
+
+function isValidShopDomain(shop: string): boolean {
+  return /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shop);
+}
+
+function redirect(res: ServerResponse, location: string): void {
+  res.writeHead(302, { Location: location });
+  res.end();
+}
+
+function verifyShopifyOAuthHmac(url: URL, clientSecret: string): boolean {
+  const hmac = url.searchParams.get("hmac");
+  if (!hmac) return false;
+
+  const pairs = [...url.searchParams.entries()]
+    .filter(([key]) => key !== "hmac" && key !== "signature")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`);
+
+  const digest = createHmac("sha256", clientSecret)
+    .update(pairs.join("&"))
+    .digest("hex");
+
+  const a = Buffer.from(digest, "hex");
+  const b = Buffer.from(hmac, "hex");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+async function exchangeCodeForAccessToken(
+  shop: string,
+  code: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<string> {
+  const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Shopify OAuth token exchange failed: ${res.status} ${await res.text()}`);
+  }
+
+  const json = (await res.json()) as { access_token?: string };
+  if (!json.access_token) {
+    throw new Error("Shopify OAuth token exchange returned no access_token");
+  }
+  return json.access_token;
+}
+
+async function getOAuthAppConfig(customerId: number): Promise<{
+  config: CustomerShopifyConfig;
+  clientId: string;
+  clientSecret: string;
+}> {
+  const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(customerId);
+  if (!config?.shopify_app_client_id) {
+    throw new Error("Shopify OAuth App client_id is not configured");
+  }
+
+  const secretRef =
+    config.shopify_app_client_secret_ref ?? shopifyAppClientSecretRef(customerId);
+  const clientSecret = await resolveSecret(secretRef);
+  return {
+    config,
+    clientId: config.shopify_app_client_id,
+    clientSecret,
+  };
+}
+
+export async function handleShopifyOAuthStart(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const body = await readJsonBody<{ shop?: string }>(req);
+  const shop = normalizeShopDomain(body.shop ?? "");
+  const customerId = getRequestCustomerId(req);
+
+  if (!isValidShopDomain(shop)) {
+    errorJson(res, 400, "店铺域名无效，请使用 xxx.myshopify.com 格式。");
+    return;
+  }
+
+  let oauthConfig: Awaited<ReturnType<typeof getOAuthAppConfig>>;
+  try {
+    oauthConfig = await getOAuthAppConfig(customerId);
+  } catch {
+    errorJson(res, 400, "OAuth 配置不完整，请先保存该品牌的 Client ID 和 Client Secret。");
+    return;
+  }
+
+  if (oauthConfig.config.shop_domain !== shop) {
+    errorJson(res, 400, "当前店铺域名与该品牌保存的 Shopify 配置不一致，请先保存配置。");
+    return;
+  }
+
+  const state = randomBytes(24).toString("hex");
+  oauthStates.set(state, { customerId, shop, createdAt: Date.now() });
+
+  const redirectUri = `${env.shopifyAppHost}/api/shopify/oauth/callback`;
+  const params = new URLSearchParams({
+    client_id: oauthConfig.clientId,
+    scope: oauthConfig.config.scopes.join(","),
+    redirect_uri: redirectUri,
+    state,
+  });
+
+  json(res, 200, {
+    authorizeUrl: `https://${shop}/admin/oauth/authorize?${params.toString()}`,
+  });
+}
+
+export async function handleShopifyOAuthCallback(
+  res: ServerResponse,
+  url: URL,
+): Promise<void> {
+  try {
+    const shop = normalizeShopDomain(url.searchParams.get("shop") ?? "");
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+
+    if (!isValidShopDomain(shop) || !code || !state) {
+      redirect(res, "/?shopify_oauth=invalid_callback");
+      return;
+    }
+
+    const savedState = oauthStates.get(state);
+    oauthStates.delete(state);
+
+    if (!savedState || Date.now() - savedState.createdAt > 10 * 60 * 1000) {
+      redirect(res, "/?shopify_oauth=invalid_state");
+      return;
+    }
+
+    if (savedState.shop !== shop) {
+      redirect(res, "/?shopify_oauth=invalid_shop");
+      return;
+    }
+
+    const customerId = savedState.customerId;
+    const oauthConfig = await getOAuthAppConfig(customerId);
+
+    if (!verifyShopifyOAuthHmac(url, oauthConfig.clientSecret)) {
+      redirect(res, "/?shopify_oauth=invalid_hmac");
+      return;
+    }
+
+    const existing = oauthConfig.config;
+    const accessTokenRef = existing?.access_token_ref ?? shopifyAccessTokenRef(customerId);
+    const webhookSecretRef = existing?.webhook_secret_ref ?? shopifyWebhookSecretRef(customerId);
+    const clientSecretRef =
+      existing.shopify_app_client_secret_ref ?? shopifyAppClientSecretRef(customerId);
+    const apiVersion = existing?.api_version ?? env.shopifyApiVersion;
+    const scopes = existing?.scopes ?? [];
+
+    const accessToken = await exchangeCodeForAccessToken(
+      shop,
+      code,
+      oauthConfig.clientId,
+      oauthConfig.clientSecret,
+    );
+    await storeSecret(accessTokenRef, accessToken);
+
+    const shopInfo = await fetchShopInfo(shop, accessToken, apiVersion);
+
+    await shopifyConfigRepo.upsertShopifyConfig({
+      customerId,
+      shopDomain: shop,
+      shopifyShopId: shopInfo.id,
+      authType: "oauth",
+      shopifyAppClientId: existing.shopify_app_client_id,
+      shopifyAppClientSecretRef: clientSecretRef,
+      accessTokenRef,
+      webhookSecretRef,
+      scopes,
+      apiVersion,
+      status: "active",
+    });
+
+    redirect(res, "/?shopify_oauth=success");
+  } catch (err) {
+    console.error(err);
+    redirect(res, "/?shopify_oauth=failed");
+  }
+}

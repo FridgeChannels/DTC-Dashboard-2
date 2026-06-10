@@ -368,3 +368,75 @@ const SUMMARY = {
   ],
 };
 window.SUMMARY = SUMMARY;
+
+// ------------- Brand config defaults -------------
+const SHOPIFY_SCOPES = [
+  { id: "write_discounts", label: "write_discounts", desc: "创建折扣码 / 追加唯一码", required: true },
+  { id: "read_discounts", label: "read_discounts", desc: "查询 FC 创建的券状态", required: true },
+  { id: "read_orders", label: "read_orders", desc: "查订单是否用了券（核销回填）", required: true },
+  { id: "read_customers", label: "read_customers", desc: "绑定 Shopify customer", required: true },
+];
+
+const COUPON_MODES = [
+  {
+    id: "realtime_single",
+    label: "实时单券",
+    badge: "MVP 主力",
+    badgeTone: "accent",
+    desc: "用户扫码 / 完成任务后，立即创建一张唯一折扣码",
+    useCases: ["NFC（magnet）扫码领券", "任务发券", "状态触发"],
+    recommended: true,
+    phase: "mvp",
+  },
+  {
+    id: "bulk_unique",
+    label: "批量唯一码",
+    badge: "规模化",
+    badgeTone: "neutral",
+    desc: "先建一个 Discount，再用 discountRedeemCodeBulkAdd 批量灌唯一码（每次 ≤ 250）",
+    useCases: ["上万 winback 用户每人一码", "Klaviyo 邮件发券"],
+    recommended: false,
+    phase: "next",
+  },
+  {
+    id: "automatic",
+    label: "自动折扣",
+    badge: "不建议",
+    badgeTone: "warn",
+    desc: "无需输码，discountAutomaticBasicCreate",
+    useCases: [],
+    recommended: false,
+    phase: "disabled",
+    warning: "无法一人一券、无法 magnet 归因、用户感知弱",
+  },
+];
+
+const BRAND_CONFIG_DEFAULTS = {
+  brandName: "GlowHaus Skincare",
+  shopify: {
+    authType: "oauth",
+    shopDomain: "",
+    shopifyShopId: "",
+    shopifyAppClientId: "",
+    shopifyAppClientSecretRef: "SHOPIFY_APP_CLIENT_SECRET_REF_glowhaus",
+    accessTokenRef: "SHOPIFY_TOKEN_REF_glowhaus",
+    webhookSecretRef: "SHOPIFY_WEBHOOK_SECRET_REF_glowhaus",
+    apiVersion: "2025-04",
+    scopes: ["write_discounts", "read_discounts", "read_orders", "read_customers"],
+    status: "active",
+    installedAt: "2026-06-01T08:00:00Z",
+  },
+  couponModes: {
+    realtime_single: { enabled: true, default: true },
+    bulk_unique: { enabled: false, default: false },
+    automatic: { enabled: false, default: false },
+  },
+  campaigns: [
+    { key: "winback_15", name: "FC Winback 15% Off", discountType: "percentage", value: 15, status: "active", mode: "realtime_single" },
+    { key: "vip_fs", name: "VIP Free Shipping", discountType: "free_shipping", value: null, status: "draft", mode: "realtime_single" },
+  ],
+};
+
+window.SHOPIFY_SCOPES = SHOPIFY_SCOPES;
+window.COUPON_MODES = COUPON_MODES;
+window.BRAND_CONFIG_DEFAULTS = BRAND_CONFIG_DEFAULTS;

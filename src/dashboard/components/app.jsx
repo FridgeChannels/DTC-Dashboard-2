@@ -69,27 +69,54 @@ function FilterBar({ tier, dateRange, onDateRangeChange }) {
   );
 }
 
-function Header({ tier, onTierChange, dateRange, onDateRangeChange }) {
+function PageNav({ page, onPageChange }) {
+  return (
+    <div className="page-nav" aria-label="Page navigation">
+      <button
+        type="button"
+        className={page === "dashboard" ? "active" : ""}
+        onClick={() => onPageChange("dashboard")}
+      >
+        Dashboard
+      </button>
+      <button
+        type="button"
+        className={page === "config" ? "active" : ""}
+        onClick={() => onPageChange("config")}
+      >
+        Brand Config
+      </button>
+    </div>
+  );
+}
+
+function Header({ page, onPageChange, tier, onTierChange, dateRange, onDateRangeChange }) {
   const activeTier = window.TIERS[tier];
+  const isDashboard = page === "dashboard";
   return (
     <>
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand-mark">
             <div className="brand-glyph">
-              <img src="uploads/fc-logo.png" alt="FridgeChannel" />
+              <img src="assets/fc-logo.png" alt="FridgeChannel" />
             </div>
             <div className="brand-name">FridgeChannel <span className="muted">Dashboard</span></div>
           </div>
           <div className="breadcrumb">
-            GlowHaus Skincare / <b>{activeTier.label} Package</b>
+            GlowHaus Skincare / <b>{isDashboard ? activeTier.label + " Package" : "Brand Config"}</b>
           </div>
           <div className="topbar-spacer" />
-          <div className="last-updated"><span className="dot" /> Updated 2026-05-22 10:00 Asia/Shanghai</div>
-          <TierSwitcher tier={tier} onTierChange={onTierChange} />
+          <PageNav page={page} onPageChange={onPageChange} />
+          {isDashboard && (
+            <>
+              <div className="last-updated"><span className="dot" /> Updated 2026-05-22 10:00 Asia/Shanghai</div>
+              <TierSwitcher tier={tier} onTierChange={onTierChange} />
+            </>
+          )}
         </div>
       </header>
-      <FilterBar tier={tier} dateRange={dateRange} onDateRangeChange={onDateRangeChange} />
+      {isDashboard && <FilterBar tier={tier} dateRange={dateRange} onDateRangeChange={onDateRangeChange} />}
     </>
   );
 }
@@ -164,24 +191,43 @@ function getVisibleModules(tier) {
 }
 
 function App() {
+  const [page, setPage] = useStateApp(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has("shopify_oauth") ? "config" : "dashboard";
+  });
   const [tier, setTier] = useStateApp("retention_moat");
   const [dateRange, setDateRange] = useStateApp("30day");
   const visibleModules = getVisibleModules(tier);
 
   return (
     <div className="app">
-      <Header tier={tier} onTierChange={setTier} dateRange={dateRange} onDateRangeChange={setDateRange} />
+      <Header
+        page={page}
+        onPageChange={setPage}
+        tier={tier}
+        onTierChange={setTier}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+      />
       <main>
-        {visibleModules.map(({ id, Component }, index) => (
-          <Component
-            key={id}
-            tier={tier}
-            dateRange={dateRange}
-            num={String(index + 1).padStart(2, "0")}
-          />
-        ))}
+        {page === "dashboard" ? (
+          visibleModules.map(({ id, Component }, index) => (
+            <Component
+              key={id}
+              tier={tier}
+              dateRange={dateRange}
+              num={String(index + 1).padStart(2, "0")}
+            />
+          ))
+        ) : (
+          <BrandConfigPage onBack={() => setPage("dashboard")} />
+        )}
       </main>
-      <footer className="foot">FC Brand Dashboard · mock data for package-gated product experience</footer>
+      <footer className="foot">
+        {page === "dashboard"
+          ? "FC Brand Dashboard · mock data for package-gated product experience"
+          : "FC Brand Config · Shopify integration & coupon issuance settings"}
+      </footer>
     </div>
   );
 }

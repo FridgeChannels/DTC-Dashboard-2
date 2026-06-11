@@ -80,6 +80,8 @@ export async function upsertShopifyConfig(input: {
   authType: string;
   shopifyAppClientId?: string | null;
   shopifyAppClientSecretRef?: string | null;
+  shopifyCustomerAccountClientId?: string | null;
+  shopifyCustomerAccountClientSecretRef?: string | null;
   accessTokenRef: string;
   webhookSecretRef?: string | null;
   webhookTenantKey?: string | null;
@@ -104,6 +106,9 @@ export async function upsertShopifyConfig(input: {
         auth_type: input.authType,
         shopify_app_client_id: input.shopifyAppClientId ?? null,
         shopify_app_client_secret_ref: input.shopifyAppClientSecretRef ?? null,
+        shopify_customer_account_client_id: input.shopifyCustomerAccountClientId ?? null,
+        shopify_customer_account_client_secret_ref:
+          input.shopifyCustomerAccountClientSecretRef ?? null,
         access_token_ref: input.accessTokenRef,
         webhook_secret_ref: input.webhookSecretRef ?? null,
         webhook_tenant_key: webhookTenantKey,

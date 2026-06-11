@@ -63,6 +63,7 @@ function apiToLocal(data) {
     shopDomain: "",
     shopifyShopId: "",
     shopifyAppClientId: "",
+    shopifyCustomerAccountClientId: "",
     accessTokenRef: `SHOPIFY_TOKEN_REF_${data.customerId}`,
     webhookSecretRef: `SHOPIFY_WEBHOOK_SECRET_REF_${data.customerId}`,
     apiVersion: "2025-04",
@@ -71,6 +72,7 @@ function apiToLocal(data) {
     hasAccessToken: false,
     hasWebhookSecret: false,
     hasShopifyAppClientSecret: false,
+    hasShopifyCustomerAccountClientSecret: false,
   };
 
   return {
@@ -82,6 +84,7 @@ function apiToLocal(data) {
       shopDomain: shopify.shopDomain,
       shopifyShopId: shopify.shopifyShopId || "",
       shopifyAppClientId: shopify.shopifyAppClientId || "",
+      shopifyCustomerAccountClientId: shopify.shopifyCustomerAccountClientId || "",
       accessTokenRef: shopify.accessTokenRef,
       webhookSecretRef: shopify.webhookSecretRef || "",
       webhookTenantKey: shopify.webhookTenantKey || "",
@@ -91,8 +94,10 @@ function apiToLocal(data) {
       hasAccessToken: shopify.hasAccessToken,
       hasWebhookSecret: shopify.hasWebhookSecret,
       hasShopifyAppClientSecret: shopify.hasShopifyAppClientSecret,
+      hasShopifyCustomerAccountClientSecret: shopify.hasShopifyCustomerAccountClientSecret,
     },
     shopifyAppClientSecret: "",
+    shopifyCustomerAccountClientSecret: "",
     shopifyWebhookSigningSecret: "",
     campaigns: data.campaigns || [],
   };
@@ -114,12 +119,17 @@ function localToSavePayload(config) {
   payload.shopify = {
     shopDomain: config.shopify.shopDomain,
     shopifyAppClientId: config.shopify.shopifyAppClientId || null,
+    shopifyCustomerAccountClientId: config.shopify.shopifyCustomerAccountClientId || null,
     apiVersion: config.shopify.apiVersion,
     scopes: config.shopify.scopes,
     status: config.shopify.status,
   };
   if (config.shopifyAppClientSecret) {
     payload.shopify.shopifyAppClientSecret = config.shopifyAppClientSecret;
+  }
+  if (config.shopifyCustomerAccountClientSecret) {
+    payload.shopify.shopifyCustomerAccountClientSecret =
+      config.shopifyCustomerAccountClientSecret;
   }
   if (config.shopifyWebhookSigningSecret) {
     payload.shopify.shopifyWebhookSigningSecret = config.shopifyWebhookSigningSecret;
@@ -132,6 +142,7 @@ function serializeShopifyForCompare(shopify) {
   return JSON.stringify({
     shopDomain: shopify.shopDomain,
     shopifyAppClientId: shopify.shopifyAppClientId,
+    shopifyCustomerAccountClientId: shopify.shopifyCustomerAccountClientId,
     apiVersion: shopify.apiVersion,
     scopes: [...shopify.scopes].sort(),
     status: shopify.status,
@@ -633,7 +644,11 @@ function BrandConfigPage({ section = "shopify" }) {
 
   const hasUnsavedShopifyFormChanges = () => {
     if (!config?.shopify || shopifySavedBaseline === null) return false;
-    if (config.shopifyAppClientSecret.trim() || config.shopifyWebhookSigningSecret.trim()) {
+    if (
+      config.shopifyAppClientSecret.trim() ||
+      config.shopifyCustomerAccountClientSecret.trim() ||
+      config.shopifyWebhookSigningSecret.trim()
+    ) {
       return true;
     }
     return serializeShopifyForCompare(config.shopify) !== shopifySavedBaseline;
@@ -665,6 +680,7 @@ function BrandConfigPage({ section = "shopify" }) {
       const local = {
         ...apiToLocal(data),
         shopifyAppClientSecret: "",
+        shopifyCustomerAccountClientSecret: "",
         shopifyWebhookSigningSecret: "",
       };
       setConfig(local);
@@ -917,6 +933,63 @@ function BrandConfigPage({ section = "shopify" }) {
               onClick={handleConnectShopify}
             >
               {connecting ? "Redirecting…" : "Connect Shopify"}
+            </button>
+          </div>
+        </Panel>
+
+        <Panel title="Customer Account API (Consumer Shopify Login)">
+          <p className="cfg-hint" style={{ marginTop: 0, marginBottom: 16 }}>
+            与上方 Admin OAuth 不同。请在 Shopify 后台 → Sales channels → Headless → Customer Account API settings 复制 UUID 格式的 Client ID / Secret。
+            Callback URL 填 <span className="mono">{(config?.webhookPublicBaseUrl || window.location.origin).replace(/\/$/, "")}/shopify/customer/callback</span>
+          </p>
+          <div className="cfg-form grid grid-2">
+            <ConfigField
+              label="Customer Account Client ID"
+              hint="UUID 格式，不是 32 位 Admin Client ID"
+              mono
+              fullRow
+            >
+              <input
+                className="cfg-input mono"
+                value={shopify.shopifyCustomerAccountClientId}
+                onChange={(e) => updateShopify("shopifyCustomerAccountClientId", e.target.value)}
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              />
+            </ConfigField>
+            <ConfigField
+              label="Customer Account Client Secret"
+              hint={
+                shopify.hasShopifyCustomerAccountClientSecret
+                  ? "Configured · leave blank to keep current value"
+                  : "From Headless → Customer Account API credentials"
+              }
+              mono
+              fullRow
+            >
+              <input
+                className="cfg-input mono"
+                type="password"
+                value={config.shopifyCustomerAccountClientSecret}
+                onChange={(e) =>
+                  patch((prev) => ({ ...prev, shopifyCustomerAccountClientSecret: e.target.value }))
+                }
+                placeholder={
+                  shopify.hasShopifyCustomerAccountClientSecret
+                    ? "•••••••• (configured)"
+                    : "Customer Account client secret"
+                }
+                autoComplete="off"
+              />
+            </ConfigField>
+          </div>
+          <div className="row cfg-shopify-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+            <button
+              type="button"
+              className="btn"
+              disabled={saving}
+              onClick={handleSaveShopifyConfig}
+            >
+              {saving ? "Saving…" : "Save Customer Account credentials"}
             </button>
           </div>
         </Panel>

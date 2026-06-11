@@ -5,6 +5,7 @@ import {
   shopifyAppClientSecretRef,
   shopifyAccessTokenRef,
   shopifyWebhookSecretRef,
+  shopifyCustomerAccountClientSecretRef,
 } from "../clients/secrets.client.js";
 import { fetchShopInfo } from "../shopify/shop.api.js";
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
@@ -24,6 +25,7 @@ export interface BrandConfigResponse {
     shopDomain: string;
     shopifyShopId: string | null;
     shopifyAppClientId: string | null;
+    shopifyCustomerAccountClientId: string | null;
     accessTokenRef: string;
     webhookSecretRef: string | null;
     webhookTenantKey: string | null;
@@ -33,6 +35,7 @@ export interface BrandConfigResponse {
     hasAccessToken: boolean;
     hasWebhookSecret: boolean;
     hasShopifyAppClientSecret: boolean;
+    hasShopifyCustomerAccountClientSecret: boolean;
   } | null;
   couponModes: {
     defaultMode: CouponModeId;
@@ -64,7 +67,9 @@ export interface SaveBrandConfigInput {
   shopify?: {
     shopDomain: string;
     shopifyAppClientId?: string | null;
+    shopifyCustomerAccountClientId?: string | null;
     shopifyAppClientSecret?: string;
+    shopifyCustomerAccountClientSecret?: string;
     shopifyWebhookSigningSecret?: string;
     apiVersion: string;
     scopes: string[];
@@ -127,6 +132,7 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
         shopDomain: shopifyConfig.shop_domain,
         shopifyShopId: shopifyConfig.shopify_shop_id,
         shopifyAppClientId: shopifyConfig.shopify_app_client_id,
+        shopifyCustomerAccountClientId: shopifyConfig.shopify_customer_account_client_id,
         accessTokenRef: shopifyConfig.access_token_ref,
         webhookSecretRef: shopifyConfig.webhook_secret_ref,
         webhookTenantKey,
@@ -140,6 +146,10 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
         hasShopifyAppClientSecret: await hasSecret(
           shopifyConfig.shopify_app_client_secret_ref ??
             shopifyAppClientSecretRef(customerId),
+        ),
+        hasShopifyCustomerAccountClientSecret: await hasSecret(
+          shopifyConfig.shopify_customer_account_client_secret_ref ??
+            shopifyCustomerAccountClientSecretRef(customerId),
         ),
       }
     : null;
@@ -175,12 +185,21 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
 
     const accessTokenRef = shopifyAccessTokenRef(input.customerId);
     const clientSecretRef = shopifyAppClientSecretRef(input.customerId);
+    const customerAccountClientSecretRef = shopifyCustomerAccountClientSecretRef(
+      input.customerId,
+    );
     const existing = await shopifyConfigRepo.getShopifyConfigByCustomerId(input.customerId);
     const webhookSecretRef = shopifyWebhookSecretRef(input.customerId);
     const legacyWebhookRef = existing?.webhook_secret_ref;
 
     if (s.shopifyAppClientSecret) {
       await storeSecret(clientSecretRef, s.shopifyAppClientSecret);
+    }
+    if (s.shopifyCustomerAccountClientSecret) {
+      await storeSecret(
+        customerAccountClientSecretRef,
+        s.shopifyCustomerAccountClientSecret,
+      );
     }
     if (s.shopifyWebhookSigningSecret?.trim()) {
       await storeSecret(webhookSecretRef, s.shopifyWebhookSigningSecret.trim());
@@ -212,6 +231,10 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
     const shouldPersistClientSecretRef =
       Boolean(s.shopifyAppClientId) &&
       (Boolean(s.shopifyAppClientSecret) || (await hasSecret(clientSecretRef)));
+    const shouldPersistCustomerAccountClientSecretRef =
+      Boolean(s.shopifyCustomerAccountClientSecret) ||
+      (Boolean(s.shopifyCustomerAccountClientId) &&
+        (await hasSecret(customerAccountClientSecretRef)));
     const shouldPersistWebhookSecretRef =
       Boolean(s.shopifyWebhookSigningSecret?.trim()) ||
       Boolean(s.shopifyAppClientSecret) ||
@@ -224,6 +247,10 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
       authType: "oauth",
       shopifyAppClientId: s.shopifyAppClientId ?? null,
       shopifyAppClientSecretRef: shouldPersistClientSecretRef ? clientSecretRef : null,
+      shopifyCustomerAccountClientId: s.shopifyCustomerAccountClientId ?? null,
+      shopifyCustomerAccountClientSecretRef: shouldPersistCustomerAccountClientSecretRef
+        ? customerAccountClientSecretRef
+        : null,
       accessTokenRef,
       webhookSecretRef: shouldPersistWebhookSecretRef
         ? webhookSecretRef

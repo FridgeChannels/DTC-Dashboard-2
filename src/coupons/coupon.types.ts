@@ -48,6 +48,8 @@ export interface CustomerShopifyConfig {
   auth_type: ShopifyAuthType;
   shopify_app_client_id: string | null;
   shopify_app_client_secret_ref: string | null;
+  shopify_customer_account_client_id: string | null;
+  shopify_customer_account_client_secret_ref: string | null;
   access_token_ref: string;
   scopes: string[];
   api_version: string;

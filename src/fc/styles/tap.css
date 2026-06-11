@@ -1,0 +1,174 @@
+:root {
+  --bg: oklch(0.985 0.005 75);
+  --bg-elev: oklch(1 0 0);
+  --ink: oklch(0.18 0.012 75);
+  --ink-2: oklch(0.36 0.012 75);
+  --ink-3: oklch(0.55 0.012 75);
+  --line: oklch(0.91 0.006 75);
+  --accent: oklch(0.58 0.14 38);
+  --accent-soft: oklch(0.92 0.05 38);
+  --pos: oklch(0.55 0.10 165);
+  --pos-soft: oklch(0.93 0.04 165);
+  --neg: oklch(0.55 0.14 30);
+  --neg-soft: oklch(0.94 0.04 30);
+  --radius: 16px;
+  --shadow: 0 12px 40px -20px oklch(0.18 0.012 75 / 0.18);
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top, oklch(0.97 0.02 38), transparent 42%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font-family: inherit; }
+
+.tap-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px 40px;
+}
+
+.tap-card {
+  width: min(420px, 100%);
+  padding: 28px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow);
+}
+
+.tap-brand {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.tap-brand .eyebrow {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.tap-brand h1 {
+  margin: 0 0 8px;
+  font-size: 26px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.tap-brand p {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 14px;
+}
+
+.tap-alert {
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.tap-alert.success {
+  background: var(--pos-soft);
+  color: oklch(0.35 0.08 165);
+}
+
+.tap-alert.error {
+  background: var(--neg-soft);
+  color: oklch(0.40 0.10 30);
+}
+
+.tap-profile {
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  margin-bottom: 20px;
+}
+
+.tap-profile h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.tap-profile p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.tap-meta {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.tap-meta span strong {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.tap-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.tap-btn {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 14px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.tap-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.tap-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.tap-btn.primary {
+  background: var(--accent);
+  color: white;
+}
+
+.tap-btn.shopify {
+  background: #111;
+  color: white;
+}
+
+.tap-foot {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.tap-loading {
+  text-align: center;
+  color: var(--ink-3);
+  padding: 24px 0;
+}

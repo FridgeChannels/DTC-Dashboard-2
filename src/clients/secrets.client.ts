@@ -70,3 +70,7 @@ export function shopifyAccessTokenRef(customerId: number): string {
 export function shopifyWebhookSecretRef(customerId: number): string {
   return `SHOPIFY_WEBHOOK_SECRET_REF_${customerId}`;
 }
+
+export function shopifyCustomerAccountClientSecretRef(customerId: number): string {
+  return `SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_SECRET_REF_${customerId}`;
+}

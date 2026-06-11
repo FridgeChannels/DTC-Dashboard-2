@@ -33,6 +33,12 @@ import {
   handleAuthRegister,
 } from "./api/auth/handlers.js";
 import { serveStatic } from "./api/serve-static.js";
+import { serveFcStatic } from "./api/serve-fc-static.js";
+import {
+  handleConsumerMe,
+  handleShopifyCustomerOAuthCallback,
+  handleShopifyCustomerOAuthStart,
+} from "./api/shopify-customer-oauth.js";
 
 function redirect(res: ServerResponse, location: string): void {
   res.writeHead(302, { Location: location });
@@ -86,6 +92,21 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/auth/callback") {
     await handleAuthCallback(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/auth/shopify/customer/start") {
+    await handleShopifyCustomerOAuthStart(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/shopify/customer/callback") {
+    await handleShopifyCustomerOAuthCallback(res, url);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/consumer/me") {
+    await handleConsumerMe(req, res);
     return;
   }
 
@@ -173,6 +194,12 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  // ---- 静态前端（消费者 FC 页，独立于 dashboard）----
+  if (req.method === "GET" || req.method === "HEAD") {
+    const fcHandled = await serveFcStatic(url.pathname, res);
+    if (fcHandled) return;
+  }
+
   // ---- 静态前端（dashboard）----
   if (req.method === "GET" || req.method === "HEAD") {
     const handled = await serveStatic(url.pathname, res);
@@ -186,6 +213,7 @@ const server = createServer(async (req, res) => {
 server.listen(env.port, () => {
   console.log(`FC service listening on http://localhost:${env.port}`);
   console.log(`  • Dashboard:  http://localhost:${env.port}/`);
+  console.log(`  • FC Tap:     http://localhost:${env.port}/tap?shop=your-store.myshopify.com&tag_id=abc123`);
   console.log(`  • Health:     http://localhost:${env.port}/health`);
   console.log(
     `  • Webhook:    http://localhost:${env.port}/webhooks/shopify/{tenantKey}/orders-payment`,

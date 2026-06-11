@@ -22,6 +22,10 @@ export function generateRandomSuffix(length = 6): string {
   return result;
 }
 
+export function generateCampaignKey(): string {
+  return `camp_${generateRandomSuffix(8).toLowerCase()}`;
+}
+
 export function generateCouponCode(campaignKey: string): string {
   const short = campaignKeyToShort(campaignKey);
   const random = generateRandomSuffix(6);

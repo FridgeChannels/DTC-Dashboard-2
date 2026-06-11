@@ -1,5 +1,5 @@
 // ============================================================
-// FC Brand Dashboard — DTC 品牌配置页（接入 API + Shopify Admin）
+// FC Brand Dashboard — brand configuration (API + Shopify Admin)
 // ============================================================
 const { useState: useStateBC, useEffect: useEffectBC, useCallback: useCallbackBC } = React;
 
@@ -7,7 +7,7 @@ const API = {
   async getConfig(customerId) {
     const q = customerId ? `?customerId=${customerId}` : "";
     const res = await fetch(`/api/brand-config${q}`);
-    if (!res.ok) throw new Error((await res.json()).error || "加载失败");
+    if (!res.ok) throw new Error((await res.json()).error || "Failed to load");
     return res.json();
   },
   async saveConfig(payload) {
@@ -16,18 +16,8 @@ const API = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error((await res.json()).error || "保存失败");
+    if (!res.ok) throw new Error((await res.json()).error || "Failed to save");
     return res.json();
-  },
-  async testShopify(payload) {
-    const res = await fetch("/api/brand-config/test-shopify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "连接测试失败");
-    return data;
   },
   async startShopifyOAuth(payload) {
     const res = await fetch("/api/shopify/oauth/start", {
@@ -36,7 +26,7 @@ const API = {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "发起 Shopify OAuth 授权失败");
+    if (!res.ok) throw new Error(data.error || "Failed to start Shopify OAuth");
     return data;
   },
   async createCampaign(payload) {
@@ -46,7 +36,23 @@ const API = {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "创建券活动失败");
+    if (!res.ok) throw new Error(data.error || "Failed to create campaign");
+    return data;
+  },
+  async updateCampaign(campaignId, payload) {
+    const res = await fetch("/api/coupon-campaigns", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ campaign_id: campaignId, ...payload }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to update campaign");
+    return data;
+  },
+  async syncCampaigns() {
+    const res = await fetch("/api/coupon-campaigns/sync", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to sync campaigns");
     return data;
   },
 };
@@ -67,20 +73,10 @@ function apiToLocal(data) {
     hasShopifyAppClientSecret: false,
   };
 
-  const couponModes = {};
-  if (data.couponModes?.modes) {
-    Object.entries(data.couponModes.modes).forEach(([k, v]) => {
-      couponModes[k] = { enabled: v.enabled, default: v.default };
-    });
-  } else {
-    couponModes.realtime_single = { enabled: true, default: true };
-    couponModes.bulk_unique = { enabled: false, default: false };
-    couponModes.automatic = { enabled: false, default: false };
-  }
-
   return {
     customerId: data.customerId,
     brandName: data.brandName,
+    webhookPublicBaseUrl: data.webhookPublicBaseUrl || window.location.origin,
     shopify: {
       authType: shopify.authType,
       shopDomain: shopify.shopDomain,
@@ -88,6 +84,7 @@ function apiToLocal(data) {
       shopifyAppClientId: shopify.shopifyAppClientId || "",
       accessTokenRef: shopify.accessTokenRef,
       webhookSecretRef: shopify.webhookSecretRef || "",
+      webhookTenantKey: shopify.webhookTenantKey || "",
       apiVersion: shopify.apiVersion,
       scopes: shopify.scopes || [],
       status: shopify.status,
@@ -96,54 +93,90 @@ function apiToLocal(data) {
       hasShopifyAppClientSecret: shopify.hasShopifyAppClientSecret,
     },
     shopifyAppClientSecret: "",
-    accessToken: "",
-    webhookSecret: "",
-    couponModes,
+    shopifyWebhookSigningSecret: "",
     campaigns: data.campaigns || [],
   };
 }
 
 function localToSavePayload(config) {
-  const defaultMode = Object.entries(config.couponModes).find(([, v]) => v.default)?.[0] || "realtime_single";
-  const modes = {};
-  Object.entries(config.couponModes).forEach(([k, v]) => {
-    modes[k] = { enabled: v.enabled };
-  });
-
   const payload = {
     customerId: config.customerId,
-    couponModes: { defaultMode, modes },
+    couponModes: {
+      defaultMode: "realtime_single",
+      modes: {
+        realtime_single: { enabled: true },
+        bulk_unique: { enabled: false },
+        automatic: { enabled: false },
+      },
+    },
   };
 
   payload.shopify = {
-    authType: config.shopify.authType,
     shopDomain: config.shopify.shopDomain,
-    shopifyShopId: config.shopify.shopifyShopId || null,
     shopifyAppClientId: config.shopify.shopifyAppClientId || null,
     apiVersion: config.shopify.apiVersion,
     scopes: config.shopify.scopes,
     status: config.shopify.status,
   };
-  if (config.shopify.authType === "oauth" && config.shopifyAppClientSecret) {
+  if (config.shopifyAppClientSecret) {
     payload.shopify.shopifyAppClientSecret = config.shopifyAppClientSecret;
   }
-  if (config.shopify.authType === "custom_app") {
-    payload.shopify.accessTokenRef = config.shopify.accessTokenRef;
-    payload.shopify.webhookSecretRef = config.shopify.webhookSecretRef || null;
-    if (config.accessToken) payload.shopify.accessToken = config.accessToken;
-    if (config.webhookSecret) payload.shopify.webhookSecret = config.webhookSecret;
+  if (config.shopifyWebhookSigningSecret) {
+    payload.shopify.shopifyWebhookSigningSecret = config.shopifyWebhookSigningSecret;
   }
 
   return payload;
 }
 
-function ConfigField({ label, hint, children, mono }) {
+function serializeShopifyForCompare(shopify) {
+  return JSON.stringify({
+    shopDomain: shopify.shopDomain,
+    shopifyAppClientId: shopify.shopifyAppClientId,
+    apiVersion: shopify.apiVersion,
+    scopes: [...shopify.scopes].sort(),
+    status: shopify.status,
+  });
+}
+
+function ConfigField({ label, hint, children, mono, fullRow }) {
   return (
-    <label className="cfg-field">
+    <label className={`cfg-field${fullRow ? " cfg-field-full" : ""}`}>
       <span className="cfg-label">{label}</span>
       {children}
       {hint && <span className={`cfg-hint ${mono ? "mono" : ""}`}>{hint}</span>}
     </label>
+  );
+}
+
+function CopyTextButton({ text, label = "Copy" }) {
+  const [copied, setCopied] = useStateBC(false);
+
+  const handleCopy = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "absolute";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <button type="button" className="btn cfg-copy-btn" onClick={handleCopy}>
+      {copied ? "Copied" : label}
+    </button>
   );
 }
 
@@ -158,103 +191,89 @@ function StatusPill({ status }) {
   return <span className={`cfg-pill ${s.cls}`}><span className="d" />{s.label}</span>;
 }
 
-function AuthModeCard({ mode, active, onSelect, disabled }) {
-  return (
-    <button
-      type="button"
-      className={`cfg-mode-card ${active ? "active" : ""} ${disabled ? "disabled" : ""}`}
-      onClick={() => !disabled && onSelect(mode.id)}
-      disabled={disabled}
-    >
-      <div className="cfg-mode-head">
-        <span className={`cfg-pill ${mode.badgeTone || "neutral"}`}>{mode.badge}</span>
-        {active && <span className="cfg-pill accent">当前</span>}
-      </div>
-      <div className="cfg-mode-title">{mode.label}</div>
-      <div className="cfg-mode-desc">{mode.desc}</div>
-      {mode.items && (
-        <ul className="cfg-mode-list">
-          {mode.items.map((item) => <li key={item}>{item}</li>)}
-        </ul>
-      )}
-      {mode.note && <div className="cfg-mode-note mono">{mode.note}</div>}
-    </button>
-  );
+function todayStartDateTimeInput() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00`;
 }
 
-function CouponModeCard({ mode, config, onToggle, onSetDefault }) {
-  const isDisabled = mode.phase === "disabled";
-  const isEnabled = config.enabled;
-  const isDefault = config.default;
-
-  return (
-    <div className={`cfg-mode-card static ${isEnabled ? "active" : ""} ${isDisabled ? "disabled" : ""}`}>
-      <div className="cfg-mode-head">
-        <span className={`cfg-pill ${mode.badgeTone}`}>{mode.badge}</span>
-        {isDefault && <span className="cfg-pill accent">默认</span>}
-        {mode.recommended && !isDefault && <span className="cfg-pill pos">推荐</span>}
-      </div>
-      <div className="cfg-mode-title">{mode.label}</div>
-      <div className="cfg-mode-desc">{mode.desc}</div>
-      {mode.useCases.length > 0 && (
-        <ul className="cfg-mode-list">
-          {mode.useCases.map((u) => <li key={u}>{u}</li>)}
-        </ul>
-      )}
-      {mode.warning && (
-        <div className="cfg-alert warn">
-          <I.info /> {mode.warning}
-        </div>
-      )}
-      <div className="cfg-mode-actions">
-        <label className="cfg-toggle">
-          <input
-            type="checkbox"
-            checked={isEnabled}
-            disabled={isDisabled}
-            onChange={(e) => onToggle(mode.id, e.target.checked)}
-          />
-          <span className="cfg-toggle-ui" />
-          <span>{isEnabled ? "已启用" : "未启用"}</span>
-        </label>
-        {isEnabled && !isDisabled && (
-          <button
-            type="button"
-            className={`btn ${isDefault ? "accent" : ""}`}
-            onClick={() => onSetDefault(mode.id)}
-            disabled={isDefault}
-          >
-            {isDefault ? "默认方式" : "设为默认"}
-          </button>
-        )}
-      </div>
-    </div>
-  );
+function dateTimeInputToIso(dateTimeStr) {
+  if (!dateTimeStr) return undefined;
+  const d = new Date(dateTimeStr);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return d.toISOString();
 }
 
-const DEFAULT_CAMPAIGN_FORM = {
-  campaignKey: "",
-  name: "",
-  discountType: "percentage",
-  value: "15",
-  minPurchaseAmount: "",
-  oncePerCustomer: true,
-};
+function isoToDateTimeInput(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function campaignToEditForm(campaign) {
+  return {
+    id: campaign.id,
+    name: campaign.name,
+    discountType: campaign.discountType,
+    value: campaign.value != null && campaign.value !== "" ? String(campaign.value) : "",
+    minPurchaseAmount:
+      campaign.minPurchaseAmount != null && campaign.minPurchaseAmount !== ""
+        ? String(campaign.minPurchaseAmount)
+        : "",
+    startsAt: isoToDateTimeInput(campaign.startsAt) || todayStartDateTimeInput(),
+    endsAt: isoToDateTimeInput(campaign.endsAt),
+    status: campaign.status,
+  };
+}
+
+function createDefaultCampaignForm() {
+  return {
+    name: "",
+    campaignKind: "order_amount",
+    amountKind: "percentage",
+    value: "15",
+    buyQuantity: "2",
+    getQuantity: "1",
+    getDiscountPercent: "100",
+    minPurchaseAmount: "",
+    startsAt: todayStartDateTimeInput(),
+    endsAt: "",
+  };
+}
+
+const CAMPAIGN_KIND_OPTIONS = [
+  { value: "order_amount", label: "Order discount", enabled: true },
+  { value: "buy_x_get_y", label: "Buy X Get Y", enabled: false },
+  { value: "free_shipping", label: "Free shipping", enabled: false },
+];
+
+function formatCampaignType(campaign) {
+  if (campaign.discountType === "percentage") {
+    return `Order discount · ${campaign.value ?? "—"}%`;
+  }
+  if (campaign.discountType === "fixed_amount") {
+    return `Order discount · ${campaign.value ?? "—"}`;
+  }
+  if (campaign.discountType === "buy_x_get_y") {
+    return "Buy X Get Y";
+  }
+  if (campaign.discountType === "free_shipping") {
+    return "Free shipping";
+  }
+  return campaign.discountType;
+}
 
 function CampaignCreateForm({ shopifyReady, creating, error, form, onChange, onSubmit }) {
-  const showValue = form.discountType === "percentage" || form.discountType === "fixed_amount";
+  const isOrderAmount = form.campaignKind === "order_amount";
+  const isBxgy = form.campaignKind === "buy_x_get_y";
+  const isFreeShipping = form.campaignKind === "free_shipping";
+  const showOrderValue = isOrderAmount;
 
   return (
     <div className="cfg-form grid grid-2">
-      <ConfigField label="业务键 campaign_key" hint="同品牌内唯一，如 winback_15" mono>
-        <input
-          className="cfg-input mono"
-          value={form.campaignKey}
-          onChange={(e) => onChange("campaignKey", e.target.value)}
-          placeholder="winback_15"
-        />
-      </ConfigField>
-      <ConfigField label="活动名称" hint="展示给运营与 Shopify 折扣标题">
+      <ConfigField label="Campaign name" fullRow>
         <input
           className="cfg-input"
           value={form.name}
@@ -262,57 +281,119 @@ function CampaignCreateForm({ shopifyReady, creating, error, form, onChange, onS
           placeholder="FC Winback 15% Off"
         />
       </ConfigField>
-      <ConfigField label="折扣类型">
+      <ConfigField label="Campaign type">
         <select
           className="cfg-input"
-          value={form.discountType}
-          onChange={(e) => onChange("discountType", e.target.value)}
+          value={form.campaignKind}
+          onChange={(e) => onChange("campaignKind", e.target.value)}
         >
-          <option value="percentage">百分比</option>
-          <option value="fixed_amount">固定金额</option>
+          {CAMPAIGN_KIND_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value} disabled={!opt.enabled}>
+              {opt.label}{!opt.enabled ? " (coming soon)" : ""}
+            </option>
+          ))}
         </select>
       </ConfigField>
-      {showValue && (
+      {isOrderAmount && (
+        <ConfigField label="Discount type">
+          <select
+            className="cfg-input"
+            value={form.amountKind}
+            onChange={(e) => onChange("amountKind", e.target.value)}
+          >
+            <option value="percentage">Percentage</option>
+            <option value="fixed_amount">Fixed amount</option>
+          </select>
+        </ConfigField>
+      )}
+      {showOrderValue && (
         <ConfigField
-          label={form.discountType === "percentage" ? "折扣比例 (%)" : "折扣金额"}
-          hint={form.discountType === "percentage" ? "1–100" : "Shopify 店铺默认币种"}
+          label={form.amountKind === "percentage" ? "Discount (%)" : "Discount amount"}
         >
           <input
             className="cfg-input mono"
             type="number"
-            min={form.discountType === "percentage" ? "1" : "0"}
-            max={form.discountType === "percentage" ? "100" : undefined}
-            step={form.discountType === "percentage" ? "1" : "0.01"}
+            min={form.amountKind === "percentage" ? "1" : "0"}
+            max={form.amountKind === "percentage" ? "100" : undefined}
+            step={form.amountKind === "percentage" ? "1" : "0.01"}
             value={form.value}
             onChange={(e) => onChange("value", e.target.value)}
           />
         </ConfigField>
       )}
-      <ConfigField label="最低消费门槛" hint="选填 · 留空表示无门槛">
+      {isBxgy && (
+        <>
+          <ConfigField label="Buy quantity (X)">
+            <input
+              className="cfg-input mono"
+              type="number"
+              min="1"
+              step="1"
+              value={form.buyQuantity}
+              onChange={(e) => onChange("buyQuantity", e.target.value)}
+            />
+          </ConfigField>
+          <ConfigField label="Get quantity (Y)">
+            <input
+              className="cfg-input mono"
+              type="number"
+              min="1"
+              step="1"
+              value={form.getQuantity}
+              onChange={(e) => onChange("getQuantity", e.target.value)}
+            />
+          </ConfigField>
+          <ConfigField label="Get item discount (%)">
+            <input
+              className="cfg-input mono"
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              value={form.getDiscountPercent}
+              onChange={(e) => onChange("getDiscountPercent", e.target.value)}
+            />
+          </ConfigField>
+        </>
+      )}
+      {(isOrderAmount || isFreeShipping) && (
+        <ConfigField label="Minimum purchase">
+          <input
+            className="cfg-input mono"
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.minPurchaseAmount}
+            onChange={(e) => onChange("minPurchaseAmount", e.target.value)}
+            placeholder="Optional"
+          />
+        </ConfigField>
+      )}
+      <ConfigField label="Starts at">
         <input
-          className="cfg-input mono"
-          type="number"
-          min="0"
-          step="0.01"
-          value={form.minPurchaseAmount}
-          onChange={(e) => onChange("minPurchaseAmount", e.target.value)}
-          placeholder="0"
+          className="cfg-input"
+          type="datetime-local"
+          step="60"
+          value={form.startsAt}
+          onChange={(e) => onChange("startsAt", e.target.value)}
         />
       </ConfigField>
-      <ConfigField label="每人限用一次">
-        <label className="cfg-toggle">
-          <input
-            type="checkbox"
-            checked={form.oncePerCustomer}
-            onChange={(e) => onChange("oncePerCustomer", e.target.checked)}
-          />
-          <span className="cfg-toggle-ui" />
-          <span>{form.oncePerCustomer ? "是" : "否"}</span>
-        </label>
+      <ConfigField label="Ends at">
+        <input
+          className="cfg-input"
+          type="datetime-local"
+          step="60"
+          value={form.endsAt}
+          min={form.startsAt || undefined}
+          onChange={(e) => onChange("endsAt", e.target.value)}
+        />
+      </ConfigField>
+      <ConfigField label="Once per customer">
+        <div className="cfg-static-value">Yes</div>
       </ConfigField>
       {!shopifyReady && (
         <div className="cfg-alert warn" style={{ gridColumn: "1 / -1" }}>
-          <I.info /> 请先完成 Shopify 授权并保存配置，再创建券活动。
+          <I.info /> Complete Shopify authorization before creating campaigns.
         </div>
       )}
       {error && (
@@ -327,41 +408,151 @@ function CampaignCreateForm({ shopifyReady, creating, error, form, onChange, onS
           disabled={creating || !shopifyReady}
           onClick={onSubmit}
         >
-          {creating ? "创建中…" : "创建活动"}
+          {creating ? "Creating…" : "Create campaign"}
         </button>
       </div>
     </div>
   );
 }
 
-function CampaignTable({ campaigns }) {
+const CAMPAIGN_STATUS_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "draft", label: "Draft" },
+  { value: "paused", label: "Paused" },
+];
+
+function CampaignEditForm({ form, saving, error, onChange, onSubmit }) {
+  const isOrderAmount =
+    form.discountType === "percentage" || form.discountType === "fixed_amount";
+  const showMinPurchase =
+    isOrderAmount || form.discountType === "free_shipping";
+
+  return (
+    <div className="cfg-form grid grid-2">
+      <ConfigField label="Campaign name" fullRow>
+        <input
+          className="cfg-input"
+          value={form.name}
+          onChange={(e) => onChange("name", e.target.value)}
+        />
+      </ConfigField>
+      <ConfigField label="Campaign type">
+        <div className="cfg-static-value">{formatCampaignType({ discountType: form.discountType, value: form.value })}</div>
+      </ConfigField>
+      <ConfigField label="Status">
+        <select
+          className="cfg-input"
+          value={form.status}
+          onChange={(e) => onChange("status", e.target.value)}
+        >
+          {CAMPAIGN_STATUS_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </ConfigField>
+      {isOrderAmount && (
+        <ConfigField
+          label={form.discountType === "percentage" ? "Discount (%)" : "Discount amount"}
+        >
+          <input
+            className="cfg-input mono"
+            type="number"
+            min={form.discountType === "percentage" ? "1" : "0"}
+            max={form.discountType === "percentage" ? "100" : undefined}
+            step={form.discountType === "percentage" ? "1" : "0.01"}
+            value={form.value}
+            onChange={(e) => onChange("value", e.target.value)}
+          />
+        </ConfigField>
+      )}
+      {showMinPurchase && (
+        <ConfigField label="Minimum purchase">
+          <input
+            className="cfg-input mono"
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.minPurchaseAmount}
+            onChange={(e) => onChange("minPurchaseAmount", e.target.value)}
+            placeholder="Optional"
+          />
+        </ConfigField>
+      )}
+      <ConfigField label="Starts at">
+        <input
+          className="cfg-input"
+          type="datetime-local"
+          step="60"
+          value={form.startsAt}
+          onChange={(e) => onChange("startsAt", e.target.value)}
+        />
+      </ConfigField>
+      <ConfigField label="Ends at">
+        <input
+          className="cfg-input"
+          type="datetime-local"
+          step="60"
+          value={form.endsAt}
+          min={form.startsAt || undefined}
+          onChange={(e) => onChange("endsAt", e.target.value)}
+        />
+      </ConfigField>
+      <ConfigField label="Once per customer">
+        <div className="cfg-static-value">Yes</div>
+      </ConfigField>
+      {error && (
+        <div className="cfg-alert warn" style={{ gridColumn: "1 / -1" }}>
+          <I.info /> {error}
+        </div>
+      )}
+      <div className="row" style={{ gridColumn: "1 / -1", justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={saving}
+          onClick={onSubmit}
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CampaignTable({ campaigns, onEdit }) {
   if (!campaigns.length) {
-    return <EmptyState title="暂无券活动" note="在下方填写信息并创建第一个 campaign。" compact />;
+    return (
+      <EmptyState
+        title="No campaigns yet"
+        note="Click Create campaign in the top right to add your first campaign."
+        compact
+      />
+    );
   }
-  const typeLabel = { percentage: "百分比", fixed_amount: "固定金额", free_shipping: "免邮" };
-  const modeLabel = { realtime_single: "实时单券", bulk_unique: "批量唯一码", automatic: "自动折扣" };
   return (
     <div className="table-wrap">
       <table className="data">
         <thead>
           <tr>
-            <th>活动名</th>
-            <th>业务键</th>
-            <th>折扣类型</th>
-            <th>发券方式</th>
-            <th>Shopify Node</th>
-            <th>状态</th>
+            <th>Campaign</th>
+            <th>Campaign type</th>
+            <th>Codes</th>
+            <th>Shopify</th>
+            <th>Status</th>
+            <th />
           </tr>
         </thead>
         <tbody>
           {campaigns.map((c) => (
-            <tr key={c.key}>
+            <tr key={c.id || c.key}>
               <td><strong>{c.name}</strong></td>
-              <td className="mono">{c.key}</td>
-              <td>{typeLabel[c.discountType] || c.discountType}{c.value != null ? ` · ${c.value}${c.discountType === "percentage" ? "%" : ""}` : ""}</td>
-              <td>{modeLabel[c.mode] || c.mode}</td>
+              <td>{formatCampaignType(c)}</td>
+              <td className="mono">{c.codeCount ?? 0}</td>
               <td className="mono muted">{c.shopifyDiscountNodeId ? "✓" : "—"}</td>
               <td><StatusPill status={c.status} /></td>
+              <td className="row-actions">
+                <button type="button" className="btn" onClick={() => onEdit(c)}>Edit</button>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -370,78 +561,31 @@ function CampaignTable({ campaigns }) {
   );
 }
 
-function ConnectionBanner({ connection, testing }) {
-  if (testing) {
-    return (
-      <div className="cfg-alert neutral">
-        <span className="mono">正在连接 Shopify Admin API…</span>
-      </div>
-    );
-  }
-  if (!connection) return null;
-
-  if (connection.ok) {
-    return (
-      <div className="cfg-alert pos">
-        <span className="cfg-pill pos"><span className="d" />已连接</span>
-        <span>
-          <strong>{connection.shop.name}</strong>
-          <span className="mono muted"> · {connection.shop.myshopifyDomain} · {connection.shop.planDisplayName}</span>
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="cfg-alert warn">
-      <I.info /> {connection.error}
-    </div>
-  );
-}
-
-function BrandConfigPage({ onBack }) {
+function BrandConfigPage({ section = "shopify" }) {
   const [config, setConfig] = useStateBC(null);
   const [loading, setLoading] = useStateBC(true);
   const [saving, setSaving] = useStateBC(false);
-  const [testing, setTesting] = useStateBC(false);
-  const [dirty, setDirty] = useStateBC(false);
-  const [saved, setSaved] = useStateBC(false);
+  const [connecting, setConnecting] = useStateBC(false);
+  const [shopifySavedBaseline, setShopifySavedBaseline] = useStateBC(null);
   const [error, setError] = useStateBC(null);
-  const [connection, setConnection] = useStateBC(null);
   const [oauthNotice, setOauthNotice] = useStateBC(null);
-  const [campaignForm, setCampaignForm] = useStateBC({ ...DEFAULT_CAMPAIGN_FORM });
+  const [campaignForm, setCampaignForm] = useStateBC(createDefaultCampaignForm);
   const [campaignCreating, setCampaignCreating] = useStateBC(false);
+  const [campaignSaving, setCampaignSaving] = useStateBC(false);
   const [campaignError, setCampaignError] = useStateBC(null);
-
-  const AUTH_MODES = [
-    {
-      id: "custom_app",
-      label: "Custom App",
-      badge: "备用",
-      badgeTone: "neutral",
-      desc: "每品牌一个 Custom App，品牌侧在 Shopify 后台创建后把 token 给 FC",
-      items: ["Admin API access token", "shop_domain"],
-      note: "适合内部测试或 OAuth 不可用时手动接入",
-    },
-    {
-      id: "oauth",
-      label: "Shopify OAuth App",
-      badge: "默认",
-      badgeTone: "accent",
-      desc: "品牌点击 Connect Shopify 授权，FC 拿到 shop / access_token / scopes",
-      items: ["标准 SaaS 接入", "多品牌", "可上 App Store"],
-      note: "推荐方式 · 默认接入路径",
-    },
-  ];
+  const [showCampaignCreate, setShowCampaignCreate] = useStateBC(false);
+  const [editForm, setEditForm] = useStateBC(null);
+  const [campaignSyncing, setCampaignSyncing] = useStateBC(false);
+  const [syncNotice, setSyncNotice] = useStateBC(null);
 
   const loadConfig = useCallbackBC(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await API.getConfig();
-      setConfig(apiToLocal(data));
-      setDirty(false);
-      setSaved(false);
+      const local = apiToLocal(data);
+      setConfig(local);
+      setShopifySavedBaseline(serializeShopifyForCompare(local.shopify));
     } catch (err) {
       setError(err.message);
       setConfig(apiToLocal({ ...window.BRAND_CONFIG_DEFAULTS, customerId: 1 }));
@@ -453,20 +597,26 @@ function BrandConfigPage({ onBack }) {
   useEffectBC(() => { loadConfig(); }, [loadConfig]);
 
   useEffectBC(() => {
+    setShowCampaignCreate(false);
+    setEditForm(null);
+    setCampaignError(null);
+  }, [section]);
+
+  useEffectBC(() => {
     const params = new URLSearchParams(window.location.search);
     const status = params.get("shopify_oauth");
     if (!status) return;
 
     const messages = {
-      success: { tone: "pos", text: "Shopify 授权成功，access token 已写入密钥系统。" },
-      failed: { tone: "warn", text: "Shopify 授权失败，请检查 Client ID / Secret 与回调地址后重试。" },
-      missing_app_config: { tone: "warn", text: "OAuth 配置不完整：请填写 Shop Domain、Client ID 和 Client Secret 后再连接。" },
-      invalid_shop: { tone: "warn", text: "店铺域名无效，请使用 xxx.myshopify.com 格式。" },
-      invalid_callback: { tone: "warn", text: "授权回调参数无效，请重新发起 Connect Shopify。" },
-      invalid_state: { tone: "warn", text: "授权状态校验失败，请重新发起 Connect Shopify。" },
-      invalid_hmac: { tone: "warn", text: "HMAC 校验失败，请确认 Client Secret 正确。" },
+      success: { tone: "pos", text: "Shopify authorized. Access token saved to the secret store." },
+      failed: { tone: "warn", text: "Shopify authorization failed. Check Client ID, Secret, and callback URL." },
+      missing_app_config: { tone: "warn", text: "OAuth setup incomplete. Fill in Shop Domain, Client ID, and Client Secret before connecting." },
+      invalid_shop: { tone: "warn", text: "Invalid shop domain. Use the format your-store.myshopify.com." },
+      invalid_callback: { tone: "warn", text: "Invalid OAuth callback. Start Connect Shopify again." },
+      invalid_state: { tone: "warn", text: "OAuth state validation failed. Start Connect Shopify again." },
+      invalid_hmac: { tone: "warn", text: "HMAC validation failed. Confirm the Client Secret is correct." },
     };
-    setOauthNotice(messages[status] || { tone: "warn", text: `OAuth 异常：${status}` });
+    setOauthNotice(messages[status] || { tone: "warn", text: `OAuth error: ${status}` });
 
     params.delete("shopify_oauth");
     const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
@@ -475,72 +625,51 @@ function BrandConfigPage({ onBack }) {
 
   const patch = (fn) => {
     setConfig(fn);
-    setDirty(true);
-    setSaved(false);
-    setConnection(null);
   };
 
   const updateShopify = (key, value) => {
     patch((prev) => ({ ...prev, shopify: { ...prev.shopify, [key]: value } }));
   };
 
-  const toggleScope = (scopeId) => {
-    patch((prev) => {
-      const scopes = prev.shopify.scopes.includes(scopeId)
-        ? prev.shopify.scopes.filter((s) => s !== scopeId)
-        : [...prev.shopify.scopes, scopeId];
-      return { ...prev, shopify: { ...prev.shopify, scopes } };
-    });
-  };
-
-  const toggleCouponMode = (modeId, enabled) => {
-    patch((prev) => ({
-      ...prev,
-      couponModes: {
-        ...prev.couponModes,
-        [modeId]: { ...prev.couponModes[modeId], enabled },
-      },
-    }));
-  };
-
-  const setDefaultCouponMode = (modeId) => {
-    patch((prev) => {
-      const next = { ...prev.couponModes };
-      Object.keys(next).forEach((k) => { next[k] = { ...next[k], default: k === modeId }; });
-      return { ...prev, couponModes: next };
-    });
+  const hasUnsavedShopifyFormChanges = () => {
+    if (!config?.shopify || shopifySavedBaseline === null) return false;
+    if (config.shopifyAppClientSecret.trim() || config.shopifyWebhookSigningSecret.trim()) {
+      return true;
+    }
+    return serializeShopifyForCompare(config.shopify) !== shopifySavedBaseline;
   };
 
   const getOAuthValidationError = () => {
+    if (!config?.shopify) return "Configuration not loaded";
+    const shopify = config.shopify;
     const missing = [];
     const shopDomain = shopify.shopDomain.trim();
     if (!shopDomain) missing.push("Shop Domain");
     if (!shopify.shopifyAppClientId.trim()) missing.push("Client ID");
-    if (!shopify.hasShopifyAppClientSecret && !config.shopifyAppClientSecret.trim()) {
-      missing.push("Client Secret");
-    }
+    if (!shopify.hasShopifyAppClientSecret) missing.push("Client Secret");
     if (missing.length > 0) {
-      return `请先填写 ${missing.join("、")}，再发起 Shopify OAuth 授权。`;
+      return `Save ${missing.join(", ")} before connecting Shopify.`;
     }
     if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(shopDomain)) {
-      return "Shop Domain 格式不正确，请使用 brand-name.myshopify.com。";
+      return "Invalid Shop Domain format. Use brand-name.myshopify.com.";
     }
     return null;
   };
 
-  const handleSave = async () => {
-    setSaving(true);
+  const handleSaveShopifyConfig = async () => {
     setError(null);
+    setOauthNotice(null);
+    setSaving(true);
     try {
       const data = await API.saveConfig(localToSavePayload(config));
-      setConfig({
+      const local = {
         ...apiToLocal(data),
         shopifyAppClientSecret: "",
-        accessToken: "",
-        webhookSecret: "",
-      });
-      setSaved(true);
-      setDirty(false);
+        shopifyWebhookSigningSecret: "",
+      };
+      setConfig(local);
+      setShopifySavedBaseline(serializeShopifyForCompare(local.shopify));
+      setOauthNotice({ tone: "pos", text: "Configuration saved." });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -552,30 +681,26 @@ function BrandConfigPage({ onBack }) {
     setError(null);
     setOauthNotice(null);
 
+    if (hasUnsavedShopifyFormChanges()) {
+      setOauthNotice({ tone: "warn", text: "Save your configuration before connecting Shopify." });
+      return;
+    }
+
     const validationError = getOAuthValidationError();
     if (validationError) {
       setOauthNotice({ tone: "warn", text: validationError });
       return;
     }
 
-    setSaving(true);
+    setConnecting(true);
     try {
-      const data = await API.saveConfig(localToSavePayload(config));
-      setConfig({
-        ...apiToLocal(data),
-        shopifyAppClientSecret: "",
-        accessToken: "",
-        webhookSecret: "",
-      });
-      setDirty(false);
       const result = await API.startShopifyOAuth({
         shop: config.shopify.shopDomain,
       });
       window.location.href = result.authorizeUrl;
     } catch (err) {
       setError(err.message);
-      setOauthNotice({ tone: "warn", text: err.message || "保存配置失败，未能发起 Shopify OAuth 授权。" });
-      setSaving(false);
+      setConnecting(false);
     }
   };
 
@@ -584,21 +709,115 @@ function BrandConfigPage({ onBack }) {
     setCampaignError(null);
   };
 
+  const updateEditForm = (key, value) => {
+    setEditForm((prev) => (prev ? { ...prev, [key]: value } : prev));
+    setCampaignError(null);
+  };
+
+  const handleEditCampaign = (campaign) => {
+    setShowCampaignCreate(false);
+    setEditForm(campaignToEditForm(campaign));
+    setCampaignError(null);
+  };
+
+  const handleUpdateCampaign = async () => {
+    if (!editForm) return;
+    setCampaignSaving(true);
+    setCampaignError(null);
+    try {
+      const startsAt = dateTimeInputToIso(editForm.startsAt);
+      const endsAt = dateTimeInputToIso(editForm.endsAt);
+      if (startsAt && endsAt && Date.parse(endsAt) < Date.parse(startsAt)) {
+        throw new Error("End time cannot be earlier than start time");
+      }
+
+      const payload = {
+        name: editForm.name.trim(),
+        status: editForm.status,
+        starts_at: startsAt ?? null,
+        ends_at: endsAt ?? null,
+      };
+
+      const isOrderAmount =
+        editForm.discountType === "percentage" || editForm.discountType === "fixed_amount";
+      if (isOrderAmount) {
+        payload.value = Number(editForm.value);
+        payload.min_purchase_amount =
+          editForm.minPurchaseAmount !== "" ? Number(editForm.minPurchaseAmount) : null;
+      } else if (editForm.discountType === "free_shipping") {
+        payload.min_purchase_amount =
+          editForm.minPurchaseAmount !== "" ? Number(editForm.minPurchaseAmount) : null;
+      }
+
+      const { campaign } = await API.updateCampaign(editForm.id, payload);
+      setConfig((prev) => ({
+        ...prev,
+        campaigns: prev.campaigns.map((c) => (c.id === campaign.id ? campaign : c)),
+      }));
+      setEditForm(null);
+    } catch (err) {
+      setCampaignError(err.message);
+    } finally {
+      setCampaignSaving(false);
+    }
+  };
+
+  const handleSyncCampaigns = async () => {
+    setCampaignSyncing(true);
+    setSyncNotice(null);
+    setCampaignError(null);
+    try {
+      const { campaigns, summary } = await API.syncCampaigns();
+      setConfig((prev) => ({ ...prev, campaigns }));
+      const parts = [];
+      if (summary.updated) parts.push(`Updated ${summary.updated}`);
+      if (summary.unchanged) parts.push(`${summary.unchanged} unchanged`);
+      if (summary.notFoundInShopify) {
+        parts.push(`${summary.notFoundInShopify} not found in Shopify`);
+      }
+      setSyncNotice(parts.length ? `Sync complete: ${parts.join("，")}` : "Sync complete. No changes.");
+    } catch (err) {
+      setCampaignError(err.message);
+    } finally {
+      setCampaignSyncing(false);
+    }
+  };
+
   const handleCreateCampaign = async () => {
     setCampaignCreating(true);
     setCampaignError(null);
     try {
-      const payload = {
-        campaign_key: campaignForm.campaignKey.trim(),
-        name: campaignForm.name.trim(),
-        discount_type: campaignForm.discountType,
-        once_per_customer: campaignForm.oncePerCustomer,
-      };
-      if (campaignForm.value !== "") {
-        payload.value = Number(campaignForm.value);
+      const startsAt = dateTimeInputToIso(campaignForm.startsAt);
+      const endsAt = dateTimeInputToIso(campaignForm.endsAt);
+      if (startsAt && endsAt && Date.parse(endsAt) < Date.parse(startsAt)) {
+        throw new Error("End time cannot be earlier than start time");
       }
-      if (campaignForm.minPurchaseAmount !== "") {
-        payload.min_purchase_amount = Number(campaignForm.minPurchaseAmount);
+
+      const payload = {
+        name: campaignForm.name.trim(),
+        once_per_customer: true,
+      };
+      if (startsAt) payload.starts_at = startsAt;
+      if (endsAt) payload.ends_at = endsAt;
+
+      if (campaignForm.campaignKind === "order_amount") {
+        payload.discount_type = campaignForm.amountKind;
+        if (campaignForm.value !== "") {
+          payload.value = Number(campaignForm.value);
+        }
+        if (campaignForm.minPurchaseAmount !== "") {
+          payload.min_purchase_amount = Number(campaignForm.minPurchaseAmount);
+        }
+      } else if (campaignForm.campaignKind === "buy_x_get_y") {
+        payload.discount_type = "buy_x_get_y";
+        payload.buy_quantity = Number(campaignForm.buyQuantity);
+        payload.get_quantity = Number(campaignForm.getQuantity);
+        payload.value = Number(campaignForm.getDiscountPercent);
+      } else {
+        payload.discount_type = "free_shipping";
+        if (campaignForm.minPurchaseAmount !== "") {
+          payload.min_purchase_amount = Number(campaignForm.minPurchaseAmount);
+        }
       }
 
       const { campaign } = await API.createCampaign(payload);
@@ -606,7 +825,8 @@ function BrandConfigPage({ onBack }) {
         ...prev,
         campaigns: [campaign, ...prev.campaigns.filter((c) => c.key !== campaign.key)],
       }));
-      setCampaignForm({ ...DEFAULT_CAMPAIGN_FORM });
+      setCampaignForm(createDefaultCampaignForm());
+      setShowCampaignCreate(false);
     } catch (err) {
       setCampaignError(err.message);
     } finally {
@@ -614,61 +834,23 @@ function BrandConfigPage({ onBack }) {
     }
   };
 
-  const handleTestConnection = async () => {
-    setTesting(true);
-    setError(null);
-    setConnection(null);
-    try {
-      const result = await API.testShopify({
-        customerId: config.customerId,
-        shopDomain: config.shopify.shopDomain,
-        accessToken: config.accessToken || undefined,
-        accessTokenRef: config.shopify.accessTokenRef,
-        apiVersion: config.shopify.apiVersion,
-      });
-      setConnection({ ok: true, shop: result.shop, checkedAt: result.checkedAt });
-    } catch (err) {
-      setConnection({ ok: false, error: err.message });
-    } finally {
-      setTesting(false);
-    }
-  };
-
   if (loading || !config) {
     return (
       <div className="brand-config">
-        <EmptyState title="加载配置中…" note="正在从 Supabase 读取品牌发券配置。" />
+        <PageLoading />
       </div>
     );
   }
 
   const shopify = config.shopify;
-  const isOAuth = shopify.authType === "oauth";
   const shopifyReady = Boolean(shopify?.hasAccessToken && shopify?.shopDomain);
+  const webhookPaymentUrl = config.shopify?.webhookTenantKey
+    ? `${config.webhookPublicBaseUrl}/webhooks/shopify/${config.shopify.webhookTenantKey}/orders-payment`
+    : "";
+  const shopifyScopesText = shopify.scopes.join(",");
 
   return (
     <div className="brand-config">
-      <section className="summary-wrap" style={{ marginTop: 0 }}>
-        <div className="intro">
-          <div>
-            <span className="module-num">BRAND CONFIG</span>
-            <h1>{config.brandName} · 发券配置</h1>
-          </div>
-          <p>管理 Shopify 接入方式与发券模式。Token 只存密钥引用，运行时通过 Shopify Admin GraphQL API 调用。</p>
-        </div>
-        <div className="cfg-toolbar">
-          <button type="button" className="btn" onClick={onBack}>← 返回 Dashboard</button>
-          <div className="cfg-toolbar-right">
-            {dirty && <span className="cfg-dirty mono">未保存</span>}
-            {saved && !dirty && <span className="cfg-saved mono"><span className="dot" /> 已保存</span>}
-            <button type="button" className="btn" onClick={loadConfig} disabled={saving}>刷新</button>
-            <button type="button" className="btn accent" onClick={handleSave} disabled={saving}>
-              {saving ? "保存中…" : "保存配置"}
-            </button>
-          </div>
-        </div>
-      </section>
-
       {error && (
         <div className="cfg-alert warn" style={{ marginTop: 16 }}>
           <I.info /> {error}
@@ -681,300 +863,244 @@ function BrandConfigPage({ onBack }) {
         </div>
       )}
 
-      {/* Shopify 集成 */}
-      <section className="module" style={{ marginTop: 32 }}>
-        <ModuleHead
-          num="01"
-          title="Shopify 集成"
-          sub="默认使用 Shopify OAuth App；Custom App 仅作为测试或手动接入备用。"
-          tierState="full"
-        />
-        <div className="grid grid-2" style={{ marginBottom: 18 }}>
-          {AUTH_MODES.map((m) => (
-            <AuthModeCard
-              key={m.id}
-              mode={m}
-              active={shopify.authType === m.id}
-              disabled={false}
-              onSelect={(id) => updateShopify("authType", id)}
-            />
-          ))}
-        </div>
+      {section === "shopify" && (
+      <section className="module" style={{ marginTop: 0 }}>
+        <ModuleHead title="Shopify Config" />
 
-        <Panel title="接入凭证" sub="OAuth 模式只需 Dev Dashboard 的 Client ID 与 Client Secret；授权后 token 由后端自动写入。">
-          <ConnectionBanner connection={connection} testing={testing} />
-
-          {isOAuth ? (
-            <>
-              <div className="cfg-form grid grid-2">
-                <ConfigField label="Shop Domain" hint="品牌 Shopify 店铺域名">
-                  <input
-                    className="cfg-input"
-                    value={shopify.shopDomain}
-                    onChange={(e) => updateShopify("shopDomain", e.target.value)}
-                    placeholder="brand-name.myshopify.com"
-                  />
-                </ConfigField>
-                <ConfigField label="Client ID" hint="Shopify Dev Dashboard → App → Client ID">
-                  <input
-                    className="cfg-input mono"
-                    value={shopify.shopifyAppClientId}
-                    onChange={(e) => updateShopify("shopifyAppClientId", e.target.value)}
-                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  />
-                </ConfigField>
-                <ConfigField
-                  label="Client Secret"
-                  hint={shopify.hasShopifyAppClientSecret ? "已配置 · 留空则不更新" : "Dev Dashboard → App → Client Secret · 不会回显"}
-                  mono
-                >
-                  <input
-                    className="cfg-input mono"
-                    type="password"
-                    value={config.shopifyAppClientSecret}
-                    onChange={(e) => patch((prev) => ({ ...prev, shopifyAppClientSecret: e.target.value }))}
-                    placeholder={shopify.hasShopifyAppClientSecret ? "••••••••（已配置）" : "shpss_xxxxxxxx"}
-                    autoComplete="off"
-                  />
-                </ConfigField>
-                <ConfigField label="API Version">
-                  <input
-                    className="cfg-input mono"
-                    value={shopify.apiVersion}
-                    onChange={(e) => updateShopify("apiVersion", e.target.value)}
-                  />
-                </ConfigField>
-              </div>
-              <div className="dotted" />
-              <div className="cfg-scopes">
-                <div className="cfg-scopes-title">权限 Scope</div>
-                <div className="cfg-scope-grid">
-                  {window.SHOPIFY_SCOPES.map((s) => {
-                    const checked = shopify.scopes.includes(s.id);
-                    return (
-                      <label key={s.id} className={`cfg-scope-chip ${checked ? "on" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={s.required}
-                          onChange={() => toggleScope(s.id)}
-                        />
-                        <span className="mono">{s.label}</span>
-                        <span className="cfg-scope-desc">{s.desc}</span>
-                        {s.required && <span className="cfg-pill accent">必须</span>}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="dotted" />
-              <div className="cfg-alert neutral">
-                <I.info /> 点击 Connect 会先保存配置，再跳转到 Shopify 授权页；授权成功后后端自动换取 Admin API access token。
-              </div>
-              {oauthNotice && (
-                <div className={`cfg-alert ${oauthNotice.tone}`} style={{ marginTop: 14 }}>
-                  <I.info /> {oauthNotice.text}
-                </div>
-              )}
-              <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={saving}
-                  onClick={handleConnectShopify}
-                >
-                  {saving ? "保存并跳转…" : "Connect Shopify"}
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="cfg-form grid grid-2">
-              <ConfigField label="Shop Domain" hint="xxx.myshopify.com">
-                <input
-                  className="cfg-input"
-                  value={shopify.shopDomain}
-                  onChange={(e) => updateShopify("shopDomain", e.target.value)}
-                  placeholder="brand-name.myshopify.com"
-                />
-              </ConfigField>
-              <ConfigField label="Shopify Shop ID" hint="连接测试成功后自动回写">
-                <input
-                  className="cfg-input mono"
-                  value={shopify.shopifyShopId}
-                  onChange={(e) => updateShopify("shopifyShopId", e.target.value)}
-                  placeholder="gid://shopify/Shop/..."
-                  readOnly={Boolean(shopify.shopifyShopId)}
-                />
-              </ConfigField>
-              <ConfigField label="Access Token Ref" hint="密钥引用键，数据库存此字段" mono>
-                <input
-                  className="cfg-input mono"
-                  value={shopify.accessTokenRef}
-                  onChange={(e) => updateShopify("accessTokenRef", e.target.value)}
-                  placeholder="SHOPIFY_TOKEN_REF_1"
-                />
-              </ConfigField>
-              <ConfigField
-                label="Admin API Access Token"
-                hint={shopify.hasAccessToken ? "已配置 · 留空则不更新" : "首次保存必填 · 不会回显"}
-                mono
-              >
-                <input
-                  className="cfg-input mono"
-                  type="password"
-                  value={config.accessToken}
-                  onChange={(e) => patch((prev) => ({ ...prev, accessToken: e.target.value }))}
-                  placeholder={shopify.hasAccessToken ? "••••••••（已配置）" : "shpat_xxxxxxxx"}
-                  autoComplete="off"
-                />
-              </ConfigField>
-              <ConfigField label="Webhook Secret Ref" hint="orders/create 验签密钥引用" mono>
-                <input
-                  className="cfg-input mono"
-                  value={shopify.webhookSecretRef}
-                  onChange={(e) => updateShopify("webhookSecretRef", e.target.value)}
-                  placeholder="SHOPIFY_WEBHOOK_SECRET_REF_1"
-                />
-              </ConfigField>
-              <ConfigField
-                label="Webhook Secret"
-                hint={shopify.hasWebhookSecret ? "已配置 · 留空则不更新" : "选填"}
-                mono
-              >
-                <input
-                  className="cfg-input mono"
-                  type="password"
-                  value={config.webhookSecret}
-                  onChange={(e) => patch((prev) => ({ ...prev, webhookSecret: e.target.value }))}
-                  placeholder={shopify.hasWebhookSecret ? "••••••••（已配置）" : "whsec_xxxxxxxx"}
-                  autoComplete="off"
-                />
-              </ConfigField>
-              <ConfigField label="API Version">
-                <input
-                  className="cfg-input mono"
-                  value={shopify.apiVersion}
-                  onChange={(e) => updateShopify("apiVersion", e.target.value)}
-                />
-              </ConfigField>
-              <ConfigField label="状态">
-                <select
-                  className="cfg-input"
-                  value={shopify.status}
-                  onChange={(e) => updateShopify("status", e.target.value)}
-                >
-                  <option value="active">active</option>
-                  <option value="paused">paused</option>
-                  <option value="revoked">revoked</option>
-                </select>
-              </ConfigField>
+        <Panel title="Shopify OAuth">
+          {shopify.hasAccessToken && (
+            <div className="cfg-alert pos" style={{ marginBottom: 16 }}>
+              <span className="cfg-pill pos"><span className="d" />Authorized</span>
+              <span className="mono muted">{shopify.shopDomain || "—"}</span>
             </div>
           )}
 
-          {!isOAuth && (
-            <>
-              <div className="dotted" />
-              <div className="cfg-scopes">
-                <div className="cfg-scopes-title">权限 Scope</div>
-                <div className="cfg-scope-grid">
-                  {window.SHOPIFY_SCOPES.map((s) => {
-                    const checked = shopify.scopes.includes(s.id);
-                    return (
-                      <label key={s.id} className={`cfg-scope-chip ${checked ? "on" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={s.required}
-                          onChange={() => toggleScope(s.id)}
-                        />
-                        <span className="mono">{s.label}</span>
-                        <span className="cfg-scope-desc">{s.desc}</span>
-                        {s.required && <span className="cfg-pill accent">必须</span>}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="dotted" />
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={handleTestConnection}
-                  disabled={testing || !shopify.shopDomain}
-                >
-                  {testing ? "测试中…" : "测试 Shopify 连接"}
-                </button>
-              </div>
-            </>
-          )}
+          <div className="cfg-form grid grid-2">
+            <ConfigField label="Shop Domain">
+              <input
+                className="cfg-input"
+                value={shopify.shopDomain}
+                onChange={(e) => updateShopify("shopDomain", e.target.value)}
+                placeholder="brand-name.myshopify.com"
+              />
+            </ConfigField>
+            <ConfigField label="Client ID">
+              <input
+                className="cfg-input mono"
+                value={shopify.shopifyAppClientId}
+                onChange={(e) => updateShopify("shopifyAppClientId", e.target.value)}
+                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              />
+            </ConfigField>
+            <ConfigField
+              label="Client Secret"
+              hint={shopify.hasShopifyAppClientSecret ? "Configured · leave blank to keep current value" : undefined}
+              mono
+              fullRow
+            >
+              <input
+                className="cfg-input mono"
+                type="password"
+                value={config.shopifyAppClientSecret}
+                onChange={(e) => patch((prev) => ({ ...prev, shopifyAppClientSecret: e.target.value }))}
+                placeholder={shopify.hasShopifyAppClientSecret ? "•••••••• (configured)" : "shpss_xxxxxxxx"}
+                autoComplete="off"
+              />
+            </ConfigField>
+          </div>
+
+          <div className="row cfg-shopify-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={saving || connecting}
+              onClick={handleConnectShopify}
+            >
+              {connecting ? "Redirecting…" : "Connect Shopify"}
+            </button>
+          </div>
         </Panel>
-      </section>
 
-      {/* 发券方式 */}
-      <section className="module">
-        <ModuleHead
-          num="02"
-          title="发券方式"
-          sub="管理券码创建策略。MVP 主力为实时单券，支持 magnet 扫码一人一券归因。"
-          tierState="full"
-        />
-        <div className="grid grid-3">
-          {window.COUPON_MODES.map((m) => (
-            <CouponModeCard
-              key={m.id}
-              mode={m}
-              config={config.couponModes[m.id]}
-              onToggle={toggleCouponMode}
-              onSetDefault={setDefaultCouponMode}
-            />
-          ))}
-        </div>
+        <Panel title="Shopify Config">
+          <div className="cfg-form grid grid-2">
+            <ConfigField
+              label="Webhook signing secret"
+              hint={shopify.hasWebhookSecret ? "Configured · leave blank to keep current value" : "Signing secret shown on the Shopify webhook page"}
+              mono
+              fullRow
+            >
+              <input
+                className="cfg-input mono"
+                type="password"
+                value={config.shopifyWebhookSigningSecret}
+                onChange={(e) => patch((prev) => ({ ...prev, shopifyWebhookSigningSecret: e.target.value }))}
+                placeholder={shopify.hasWebhookSecret ? "•••••••• (configured)" : "Paste the signing secret from Shopify"}
+                autoComplete="off"
+              />
+            </ConfigField>
+          </div>
 
-        <div style={{ marginTop: 14 }} />
-        <Panel title="发券流程" sub="用户扫码 magnet → 判断状态 → 生成唯一 code → Shopify 创建 → 写库 → 展示给用户。">
-          <div className="cfg-flow">
-            {["扫码 magnet", "判断用户状态", "生成唯一 code", "Shopify 创建/追加", "写 fc_coupon_code", "展示给用户"].map((step, i, arr) => (
-              <React.Fragment key={step}>
-                <div className="cfg-flow-step">
-                  <span className="cfg-flow-num mono">{String(i + 1).padStart(2, "0")}</span>
-                  <span>{step}</span>
+          <div className="dotted" />
+          <div className="cfg-webhook-urls">
+            <div className="cfg-scopes-title">Webhook URL</div>
+            {config.shopify?.webhookTenantKey ? (
+              <ConfigField label="Order payment" mono fullRow>
+                <div className="cfg-copy-row">
+                  <input
+                    className="cfg-input mono cfg-copy-text"
+                    type="text"
+                    readOnly
+                    value={webhookPaymentUrl}
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <CopyTextButton text={webhookPaymentUrl} />
                 </div>
-                {i < arr.length - 1 && <span className="cfg-flow-arrow">→</span>}
-              </React.Fragment>
-            ))}
+              </ConfigField>
+            ) : (
+              <p className="cfg-hint">Save Shopify configuration to generate the webhook URL.</p>
+            )}
+          </div>
+
+          <div className="dotted" />
+          <div className="cfg-scopes">
+            <div className="cfg-scopes-title">Scopes</div>
+            <div className="cfg-copy-row cfg-scopes-copy">
+              <input
+                className="cfg-input mono cfg-copy-text"
+                type="text"
+                readOnly
+                value={shopifyScopesText}
+                onFocus={(e) => e.target.select()}
+              />
+              <CopyTextButton text={shopifyScopesText} />
+            </div>
+          </div>
+
+          <div className="row cfg-shopify-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={saving || connecting}
+              onClick={handleSaveShopifyConfig}
+            >
+              {saving ? "Saving…" : "Save configuration"}
+            </button>
           </div>
         </Panel>
       </section>
+      )}
 
-      {/* 券活动 */}
-      <section className="module">
-        <ModuleHead
-          num="03"
-          title="券活动"
-          sub="campaign 绑定 Shopify Discount Code Node，数据来自 fc_coupon_campaign。"
-          tierState="full"
-        />
-        <Panel title="创建活动" sub="在 Shopify 创建 Discount Code Node，并写入 fc_coupon_campaign。">
-          <CampaignCreateForm
-            shopifyReady={shopifyReady}
-            creating={campaignCreating}
-            error={campaignError}
-            form={campaignForm}
-            onChange={updateCampaignForm}
-            onSubmit={handleCreateCampaign}
-          />
-        </Panel>
-        <div style={{ marginTop: 14 }} />
-        <Panel title="已配置活动" sub="业务键（campaign_key）在同品牌内唯一。">
-          <CampaignTable campaigns={config.campaigns} />
-        </Panel>
+      {section === "campaigns" && (
+      <section className="module" style={{ marginTop: 0 }}>
+        {editForm ? (
+          <>
+            <ModuleHead
+              title="Edit campaign"
+              action={(
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setEditForm(null);
+                    setCampaignError(null);
+                  }}
+                >
+                  Back to list
+                </button>
+              )}
+            />
+            <Panel>
+              <CampaignEditForm
+                form={editForm}
+                saving={campaignSaving}
+                error={campaignError}
+                onChange={updateEditForm}
+                onSubmit={handleUpdateCampaign}
+              />
+            </Panel>
+          </>
+        ) : showCampaignCreate ? (
+          <>
+            <ModuleHead
+              title="Create campaign"
+              action={(
+                <>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={!shopifyReady || campaignSyncing}
+                    onClick={handleSyncCampaigns}
+                  >
+                    {campaignSyncing ? "Syncing…" : "Sync"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setShowCampaignCreate(false);
+                      setCampaignError(null);
+                      setCampaignForm(createDefaultCampaignForm());
+                    }}
+                  >
+                    Back to list
+                  </button>
+                </>
+              )}
+            />
+            <Panel>
+              <CampaignCreateForm
+                shopifyReady={shopifyReady}
+                creating={campaignCreating}
+                error={campaignError}
+                form={campaignForm}
+                onChange={updateCampaignForm}
+                onSubmit={handleCreateCampaign}
+              />
+            </Panel>
+          </>
+        ) : (
+          <>
+            <ModuleHead
+              title="Campaigns"
+              action={(
+                <>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={!shopifyReady || campaignSyncing}
+                    onClick={handleSyncCampaigns}
+                  >
+                    {campaignSyncing ? "Syncing…" : "Sync"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => {
+                      setEditForm(null);
+                      setShowCampaignCreate(true);
+                    }}
+                  >
+                    Create campaign
+                  </button>
+                </>
+              )}
+            />
+            <Panel>
+              {syncNotice && (
+                <p className="cfg-hint" style={{ marginBottom: 12 }}>{syncNotice}</p>
+              )}
+              {campaignError && !showCampaignCreate && !editForm && (
+                <p className="cfg-error" style={{ marginBottom: 12 }}>{campaignError}</p>
+              )}
+              <CampaignTable
+                campaigns={config.campaigns}
+                onEdit={handleEditCampaign}
+              />
+            </Panel>
+          </>
+        )}
       </section>
-
-      <div className="cfg-security-note">
-        <I.lock size={13} />
-        <span>安全：Admin token / webhook secret 只存密钥系统引用，API 绝不回显明文。多品牌按 customer_id 严格隔离。</span>
-      </div>
+      )}
     </div>
   );
 }

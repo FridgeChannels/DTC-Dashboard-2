@@ -1,7 +1,7 @@
 // ============================================================
 // FC Brand Dashboard — app shell
 // ============================================================
-const { useState: useStateApp } = React;
+const { useState: useStateApp, useEffect: useEffectApp } = React;
 
 function formatSummaryValue(item) {
   if (item.unit === "$") return window.FCFmt.fmtMoney(item.value);
@@ -69,30 +69,8 @@ function FilterBar({ tier, dateRange, onDateRangeChange }) {
   );
 }
 
-function PageNav({ page, onPageChange }) {
-  return (
-    <div className="page-nav" aria-label="Page navigation">
-      <button
-        type="button"
-        className={page === "dashboard" ? "active" : ""}
-        onClick={() => onPageChange("dashboard")}
-      >
-        Dashboard
-      </button>
-      <button
-        type="button"
-        className={page === "config" ? "active" : ""}
-        onClick={() => onPageChange("config")}
-      >
-        Brand Config
-      </button>
-    </div>
-  );
-}
-
-function Header({ page, onPageChange, tier, onTierChange, dateRange, onDateRangeChange }) {
+function Header({ tier, onTierChange, dateRange, onDateRangeChange }) {
   const activeTier = window.TIERS[tier];
-  const isDashboard = page === "dashboard";
   return (
     <>
       <header className="topbar">
@@ -104,19 +82,19 @@ function Header({ page, onPageChange, tier, onTierChange, dateRange, onDateRange
             <div className="brand-name">FridgeChannel <span className="muted">Dashboard</span></div>
           </div>
           <div className="breadcrumb">
-            GlowHaus Skincare / <b>{isDashboard ? activeTier.label + " Package" : "Brand Config"}</b>
+            <b>{activeTier.label} Package</b>
           </div>
           <div className="topbar-spacer" />
-          <PageNav page={page} onPageChange={onPageChange} />
-          {isDashboard && (
-            <>
-              <div className="last-updated"><span className="dot" /> Updated 2026-05-22 10:00 Asia/Shanghai</div>
-              <TierSwitcher tier={tier} onTierChange={onTierChange} />
-            </>
-          )}
+          <div className="last-updated"><span className="dot" /> Updated 2026-05-22 10:00 Asia/Shanghai</div>
+          <div className="topbar-actions">
+            <TierSwitcher tier={tier} onTierChange={onTierChange} />
+            <a href="/brand-config" className="btn topbar-settings" aria-label="Settings">
+              <I.settings /> Settings
+            </a>
+          </div>
         </div>
       </header>
-      {isDashboard && <FilterBar tier={tier} dateRange={dateRange} onDateRangeChange={onDateRangeChange} />}
+      <FilterBar tier={tier} dateRange={dateRange} onDateRangeChange={onDateRangeChange} />
     </>
   );
 }
@@ -191,42 +169,75 @@ function getVisibleModules(tier) {
 }
 
 function App() {
-  const [page, setPage] = useStateApp(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.has("shopify_oauth") ? "config" : "dashboard";
-  });
   const [tier, setTier] = useStateApp("retention_moat");
   const [dateRange, setDateRange] = useStateApp("30day");
+  const [auth, setAuth] = useStateApp({ loading: true, user: null });
   const visibleModules = getVisibleModules(tier);
+
+  useEffectApp(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("shopify_oauth")) {
+      window.location.href = `/brand-config?${params.toString()}`;
+      return;
+    }
+    if (params.has("code")) {
+      window.location.href = `/api/auth/callback?${params.toString()}`;
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) {
+          params.delete("code");
+          params.delete("state");
+          const qs = params.toString();
+          const redirectTo = `${window.location.pathname}${qs ? `?${qs}` : ""}`;
+          window.location.href = `/login?redirectedFrom=${encodeURIComponent(redirectTo)}`;
+          return;
+        }
+        const user = await res.json();
+        if (!cancelled) setAuth({ loading: false, user });
+      } catch {
+        if (!cancelled) {
+          window.location.href = "/login";
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (auth.loading) {
+    return (
+      <div className="app">
+        <main style={{ padding: 48 }}>
+          <PageLoading />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
       <Header
-        page={page}
-        onPageChange={setPage}
         tier={tier}
         onTierChange={setTier}
         dateRange={dateRange}
         onDateRangeChange={setDateRange}
       />
       <main>
-        {page === "dashboard" ? (
-          visibleModules.map(({ id, Component }, index) => (
-            <Component
-              key={id}
-              tier={tier}
-              dateRange={dateRange}
-              num={String(index + 1).padStart(2, "0")}
-            />
-          ))
-        ) : (
-          <BrandConfigPage onBack={() => setPage("dashboard")} />
-        )}
+        {visibleModules.map(({ id, Component }, index) => (
+          <Component
+            key={id}
+            tier={tier}
+            dateRange={dateRange}
+            num={String(index + 1).padStart(2, "0")}
+          />
+        ))}
       </main>
       <footer className="foot">
-        {page === "dashboard"
-          ? "FC Brand Dashboard · mock data for package-gated product experience"
-          : "FC Brand Config · Shopify integration & coupon issuance settings"}
+        FC Brand Dashboard · mock data for package-gated product experience
       </footer>
     </div>
   );

@@ -1,5 +1,9 @@
 /** 折扣类型 */
-export type DiscountType = "percentage" | "fixed_amount" | "free_shipping";
+export type DiscountType =
+  | "percentage"
+  | "fixed_amount"
+  | "free_shipping"
+  | "buy_x_get_y";
 
 /** 券活动状态 */
 export type CampaignStatus = "draft" | "active" | "paused" | "expired";
@@ -35,7 +39,7 @@ export type RedemptionSource =
   | "manual_sync";
 
 /** Shopify 接入方式 */
-export type ShopifyAuthType = "custom_app" | "oauth";
+export type ShopifyAuthType = "oauth";
 
 export interface CustomerShopifyConfig {
   customer_id: number;
@@ -48,6 +52,7 @@ export interface CustomerShopifyConfig {
   scopes: string[];
   api_version: string;
   webhook_secret_ref: string | null;
+  webhook_tenant_key: string | null;
   status: string;
   installed_at: string | null;
   created_at: string;
@@ -135,6 +140,10 @@ export interface CreateCouponCampaignInput {
   endsAt?: string;
   oncePerCustomer?: boolean;
   usageLimit?: number;
+  /** 买 X 送 Y：购买数量（存 usage_limit） */
+  buyQuantity?: number;
+  /** 买 X 送 Y：赠送数量（存 min_purchase_amount，仅 buy_x_get_y 语义） */
+  getQuantity?: number;
 }
 
 export interface AssignCouponToUserInput {
@@ -142,6 +151,8 @@ export interface AssignCouponToUserInput {
   campaignKey: string;
   fcUserId?: string;
   magnetId?: number;
+  klaviyoProfileId?: string;
+  shopifyCustomerId?: string;
   reason?: AssignmentReason;
   channel?: AssignmentChannel;
   email?: string;
@@ -149,18 +160,23 @@ export interface AssignCouponToUserInput {
 
 export interface IssueRealtimeSingleCouponInput {
   magnetId: number;
-  fcUserId?: string;
+  campaignId: string;
 }
 
 export interface IssueRealtimeSingleCouponResult {
-  customerId: number;
-  magnetId: number;
-  fcUserId: string | null;
+  fcUserId: string;
   campaignKey: string;
   campaignName: string;
   code: string;
   couponCodeId: string;
   alreadyAssigned: boolean;
+}
+
+export interface ShopifyOrderDiscountApplication {
+  type?: string;
+  code?: string;
+  value?: string;
+  value_type?: string;
 }
 
 export interface ShopifyOrderPayload {
@@ -171,6 +187,32 @@ export interface ShopifyOrderPayload {
   total_price?: string;
   total_discounts?: string;
   currency?: string;
+  financial_status?: string;
+  fulfillment_status?: string | null;
   discount_codes?: Array<{ code: string }>;
+  discount_applications?: ShopifyOrderDiscountApplication[];
   [key: string]: unknown;
+}
+
+export type CouponRedemptionSyncItem =
+  | {
+      code: string;
+      matched: false;
+      reason: "not_fc_coupon";
+    }
+  | {
+      code: string;
+      matched: true;
+      couponCodeId: string;
+      previousStatus: CouponCodeStatus;
+      status: "redeemed";
+      redemptionId: string;
+      alreadyRedeemed: boolean;
+    };
+
+export interface CouponRedemptionSyncResult {
+  shopifyOrderId: string;
+  discountCodes: string[];
+  items: CouponRedemptionSyncItem[];
+  redeemedCount: number;
 }

@@ -26,6 +26,17 @@ const I = {
       <path d="M6 1 L7 5 L11 6 L7 7 L6 11 L5 7 L1 6 L5 5 Z" fill="currentColor"/>
     </svg>
   ),
+  settings: () => (
+    <svg viewBox="0 0 14 14" width="13" height="13">
+      <circle cx="7" cy="7" r="2.2" stroke="currentColor" fill="none" strokeWidth="1.3" />
+      <path
+        d="M7 1.2v1.6M7 11.2v1.6M1.2 7h1.6M11.2 7h1.6M2.8 2.8l1.1 1.1M10.1 10.1l1.1 1.1M2.8 11.2l1.1-1.1M10.1 3.9l1.1-1.1"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
 };
 window.I = I;
 
@@ -91,6 +102,19 @@ function EmptyState({
   );
 }
 window.EmptyState = EmptyState;
+
+function PageLoading({ compact = false }) {
+  return (
+    <div
+      className={`page-loading ${compact ? "compact" : ""}`}
+      role="status"
+      aria-label="Loading"
+    >
+      <div className="page-loading-spinner" />
+    </div>
+  );
+}
+window.PageLoading = PageLoading;
 
 // ---------- Delta pill ----------
 function Delta({ value, invertGood = false, suffix = " vs prev" }) {
@@ -268,13 +292,12 @@ window.ModuleFilters = ModuleFilters;
 
 // ---------- Section / Module heading ----------
 function ModuleHead({ num, title, sub, tierState, action }) {
-  // tierState: "full" | "basic" | "locked"
   return (
     <div className="module-head">
       <div className="titles">
-        <span className="module-num">MODULE {num}</span>
-        <h2 className="module-title">{title}</h2>
-        <span className="module-sub">{sub}</span>
+        {num != null && num !== "" && <span className="module-num">MODULE {num}</span>}
+        {title && <h2 className="module-title">{title}</h2>}
+        {sub && <span className="module-sub">{sub}</span>}
       </div>
       <div className="module-head-right">
         {action}
@@ -290,16 +313,19 @@ window.ModuleHead = ModuleHead;
 // ---------- Panel (chart container) ----------
 function Panel({ title, sub, action, children, locked, requiredTier, lockedNote }) {
   if (locked) return null;
+  const hasHead = Boolean(title || sub || action);
 
   return (
     <div className="card" style={{ position: "relative" }}>
-      <div className="panel-head">
-        <div>
-          <div className="panel-title">{title}</div>
-          {sub && <div className="panel-sub">{sub}</div>}
+      {hasHead && (
+        <div className="panel-head">
+          <div>
+            {title && <div className="panel-title">{title}</div>}
+            {sub && <div className="panel-sub">{sub}</div>}
+          </div>
+          {action}
         </div>
-        {action}
-      </div>
+      )}
       <div style={{ filter: locked ? "blur(6px)" : "none", opacity: locked ? 0.5 : 1, pointerEvents: locked ? "none" : "auto" }}>
         {children}
       </div>

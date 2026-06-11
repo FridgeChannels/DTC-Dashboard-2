@@ -10,12 +10,15 @@ import { fetchShopInfo } from "../shopify/shop.api.js";
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
 import * as couponSettingsRepo from "../repositories/customer-coupon-settings.repo.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
+import * as codeRepo from "../repositories/coupon-code.repo.js";
 import { getSupabase } from "../clients/supabase.client.js";
+import { env } from "../config/env.js";
 import type { CouponModeId } from "../repositories/customer-coupon-settings.repo.js";
 
 export interface BrandConfigResponse {
   customerId: number;
   brandName: string;
+  webhookPublicBaseUrl: string;
   shopify: {
     authType: string;
     shopDomain: string;
@@ -23,6 +26,7 @@ export interface BrandConfigResponse {
     shopifyAppClientId: string | null;
     accessTokenRef: string;
     webhookSecretRef: string | null;
+    webhookTenantKey: string | null;
     apiVersion: string;
     scopes: string[];
     status: string;
@@ -35,13 +39,18 @@ export interface BrandConfigResponse {
     modes: Record<CouponModeId, { enabled: boolean; default: boolean }>;
   };
   campaigns: Array<{
+    id: string;
     key: string;
     name: string;
     discountType: string;
     value: number | null;
+    minPurchaseAmount: number | null;
+    startsAt: string | null;
+    endsAt: string | null;
     status: string;
     mode: string;
     shopifyDiscountNodeId: string | null;
+    codeCount: number;
   }>;
   shopifyConnection: {
     connected: boolean;
@@ -53,15 +62,10 @@ export interface BrandConfigResponse {
 export interface SaveBrandConfigInput {
   customerId: number;
   shopify?: {
-    authType: string;
     shopDomain: string;
-    shopifyShopId?: string | null;
     shopifyAppClientId?: string | null;
     shopifyAppClientSecret?: string;
-    accessTokenRef?: string;
-    accessToken?: string;
-    webhookSecretRef?: string | null;
-    webhookSecret?: string;
+    shopifyWebhookSigningSecret?: string;
     apiVersion: string;
     scopes: string[];
     status: string;
@@ -109,6 +113,14 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
     ]),
   ) as Record<CouponModeId, { enabled: boolean; default: boolean }>;
 
+  const campaignIds = campaigns.map((c) => c.campaign_id);
+  const codeCounts = await codeRepo.countCouponCodesByCampaignIds(customerId, campaignIds);
+
+  const webhookTenantKey = shopifyConfig
+    ? shopifyConfig.webhook_tenant_key ??
+      (await shopifyConfigRepo.ensureWebhookTenantKey(customerId))
+    : null;
+
   const shopify = shopifyConfig
     ? {
         authType: shopifyConfig.auth_type,
@@ -117,6 +129,7 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
         shopifyAppClientId: shopifyConfig.shopify_app_client_id,
         accessTokenRef: shopifyConfig.access_token_ref,
         webhookSecretRef: shopifyConfig.webhook_secret_ref,
+        webhookTenantKey,
         apiVersion: shopifyConfig.api_version,
         scopes: shopifyConfig.scopes,
         status: shopifyConfig.status,
@@ -134,16 +147,22 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
   return {
     customerId,
     brandName,
+    webhookPublicBaseUrl: env.shopifyAppHost.replace(/\/$/, ""),
     shopify,
     couponModes: { defaultMode, modes },
     campaigns: campaigns.map((c) => ({
+      id: c.campaign_id,
       key: c.campaign_key,
       name: c.name,
       discountType: c.discount_type,
       value: c.value,
+      minPurchaseAmount: c.min_purchase_amount,
+      startsAt: c.starts_at,
+      endsAt: c.ends_at,
       status: c.status,
       mode: defaultMode,
       shopifyDiscountNodeId: c.shopify_discount_node_id,
+      codeCount: codeCounts.get(c.campaign_id) ?? 0,
     })),
     shopifyConnection: null,
   };
@@ -154,25 +173,35 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
     const s = input.shopify;
     const shopDomain = normalizeShopDomain(s.shopDomain);
 
-    const accessTokenRef = s.accessTokenRef ?? shopifyAccessTokenRef(input.customerId);
-    if (s.accessToken) {
-      await storeSecret(accessTokenRef, s.accessToken);
-    }
-    const webhookSecretRef = s.webhookSecretRef ?? shopifyWebhookSecretRef(input.customerId);
+    const accessTokenRef = shopifyAccessTokenRef(input.customerId);
     const clientSecretRef = shopifyAppClientSecretRef(input.customerId);
+    const existing = await shopifyConfigRepo.getShopifyConfigByCustomerId(input.customerId);
+    const webhookSecretRef = shopifyWebhookSecretRef(input.customerId);
+    const legacyWebhookRef = existing?.webhook_secret_ref;
 
-    if (s.webhookSecret) {
-      await storeSecret(webhookSecretRef, s.webhookSecret);
-    }
     if (s.shopifyAppClientSecret) {
       await storeSecret(clientSecretRef, s.shopifyAppClientSecret);
     }
+    if (s.shopifyWebhookSigningSecret?.trim()) {
+      await storeSecret(webhookSecretRef, s.shopifyWebhookSigningSecret.trim());
+    } else if (s.shopifyAppClientSecret) {
+      await storeSecret(webhookSecretRef, s.shopifyAppClientSecret);
+    }
 
-    let shopifyShopId = s.shopifyShopId ?? null;
+    if (
+      legacyWebhookRef &&
+      legacyWebhookRef !== webhookSecretRef &&
+      (await hasSecret(legacyWebhookRef)) &&
+      !(await hasSecret(webhookSecretRef))
+    ) {
+      const legacyValue = await resolveSecret(legacyWebhookRef);
+      await storeSecret(webhookSecretRef, legacyValue);
+    }
 
-    if (s.accessToken || (await hasSecret(accessTokenRef))) {
+    let shopifyShopId: string | null = null;
+    if (await hasSecret(accessTokenRef)) {
       try {
-        const token = s.accessToken ?? (await resolveSecret(accessTokenRef));
+        const token = await resolveSecret(accessTokenRef);
         const shop = await fetchShopInfo(shopDomain, token, s.apiVersion);
         shopifyShopId = shop.id;
       } catch {
@@ -181,19 +210,26 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
     }
 
     const shouldPersistClientSecretRef =
-      s.authType === "oauth" &&
       Boolean(s.shopifyAppClientId) &&
       (Boolean(s.shopifyAppClientSecret) || (await hasSecret(clientSecretRef)));
+    const shouldPersistWebhookSecretRef =
+      Boolean(s.shopifyWebhookSigningSecret?.trim()) ||
+      Boolean(s.shopifyAppClientSecret) ||
+      (await hasSecret(webhookSecretRef));
 
     await shopifyConfigRepo.upsertShopifyConfig({
       customerId: input.customerId,
       shopDomain,
       shopifyShopId,
-      authType: s.authType,
+      authType: "oauth",
       shopifyAppClientId: s.shopifyAppClientId ?? null,
       shopifyAppClientSecretRef: shouldPersistClientSecretRef ? clientSecretRef : null,
       accessTokenRef,
-      webhookSecretRef: s.webhookSecret ? webhookSecretRef : null,
+      webhookSecretRef: shouldPersistWebhookSecretRef
+        ? webhookSecretRef
+        : existing?.webhook_secret_ref === webhookSecretRef
+          ? webhookSecretRef
+          : null,
       scopes: s.scopes,
       apiVersion: s.apiVersion,
       status: s.status,
@@ -211,42 +247,3 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
   return getBrandConfig(input.customerId);
 }
 
-export interface TestConnectionInput {
-  customerId?: number;
-  shopDomain: string;
-  accessToken?: string;
-  accessTokenRef?: string;
-  apiVersion?: string;
-}
-
-export async function testShopifyConnection(input: TestConnectionInput) {
-  const shopDomain = normalizeShopDomain(input.shopDomain);
-  let accessToken = input.accessToken;
-
-  if (!accessToken && input.accessTokenRef) {
-    accessToken = await resolveSecret(input.accessTokenRef);
-  }
-
-  if (!accessToken && input.customerId) {
-    const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(input.customerId);
-    if (config) {
-      accessToken = await resolveSecret(config.access_token_ref);
-    }
-  }
-
-  if (!accessToken) {
-    throw new Error("Access token is required to test connection");
-  }
-
-  const shop = await fetchShopInfo(
-    shopDomain,
-    accessToken,
-    input.apiVersion,
-  );
-
-  return {
-    ok: true,
-    shop,
-    checkedAt: new Date().toISOString(),
-  };
-}

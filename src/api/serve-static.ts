@@ -28,7 +28,10 @@ export async function serveStatic(
   pathname: string,
   res: ServerResponse,
 ): Promise<boolean> {
-  const relativePath = pathname === "/" ? "/index.html" : pathname;
+  let relativePath = pathname;
+  if (pathname === "/") relativePath = "/index.html";
+  else if (pathname === "/login") relativePath = "/login.html";
+  else if (pathname === "/brand-config" || pathname === "/segment-config") relativePath = "/admin.html";
   const safePath = normalize(relativePath).replace(/^(\.\.[/\\])+/, "");
   const filePath = join(DASHBOARD_ROOT, safePath);
 

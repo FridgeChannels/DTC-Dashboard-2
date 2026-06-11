@@ -25,14 +25,16 @@ function requireEnv(key: string): string {
 }
 
 export const env = {
-  port: Number(process.env.PORT ?? 3000),
+  port: Number(process.env.PORT ?? 8080),
   nodeEnv: process.env.NODE_ENV ?? "development",
   defaultCustomerId: Number(process.env.DEFAULT_CUSTOMER_ID ?? 1),
   supabaseUrl: () => requireEnv("SUPABASE_URL"),
+  supabaseAnonKey: () => requireEnv("SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: () => requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  publicSiteUrl: process.env.PUBLIC_SITE_URL ?? process.env.SITE_URL ?? "",
   shopifyApiVersion: process.env.SHOPIFY_API_VERSION ?? "2025-04",
   shopifyAppHost:
     process.env.SHOPIFY_APP_HOST ??
-    `http://localhost:${process.env.PORT ?? 3000}`,
+    `http://localhost:${process.env.PORT ?? 8080}`,
   secretsProvider: process.env.SECRETS_PROVIDER ?? "supabase_vault",
 } as const;

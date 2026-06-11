@@ -1,5 +1,5 @@
 import { resolveSecret } from "../clients/secrets.client.js";
-import { discountCodeBasicCreate } from "../shopify/discount.api.js";
+import { createDiscountCodeNode } from "../shopify/discount.api.js";
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
 import { generateCouponCode } from "./generate-code.js";
@@ -27,15 +27,17 @@ export async function createCouponCampaign(
   const seedCode = generateCouponCode(input.campaignKey);
   const startsAt = input.startsAt ?? new Date().toISOString();
 
-  const shopifyResult = await discountCodeBasicCreate(config.shop_domain, accessToken, {
+  const shopifyResult = await createDiscountCodeNode(config.shop_domain, accessToken, {
     title: input.name,
     code: seedCode,
     discountType: input.discountType,
     value: input.value,
+    buyQuantity: input.buyQuantity ?? input.usageLimit,
+    getQuantity: input.getQuantity ?? (input.discountType === "buy_x_get_y" ? input.minPurchaseAmount ?? undefined : undefined),
     startsAt,
     endsAt: input.endsAt,
     oncePerCustomer: input.oncePerCustomer,
-    minPurchaseAmount: input.minPurchaseAmount,
+    minPurchaseAmount: input.discountType === "buy_x_get_y" ? undefined : input.minPurchaseAmount,
   });
 
   return campaignRepo.insertCampaign({

@@ -3,7 +3,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { env } from "../config/env.js";
 import { readJsonBody, json, errorJson } from "./http.js";
 import { getRequestCustomerId } from "./tenant-context.js";
+import { AuthError } from "../lib/auth/errors.js";
 import {
+  hasSecret,
   resolveSecret,
   storeSecret,
   shopifyAppClientSecretRef,
@@ -105,12 +107,13 @@ export async function handleShopifyOAuthStart(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
+  try {
   const body = await readJsonBody<{ shop?: string }>(req);
   const shop = normalizeShopDomain(body.shop ?? "");
-  const customerId = getRequestCustomerId(req);
+  const customerId = await getRequestCustomerId(req, res);
 
   if (!isValidShopDomain(shop)) {
-    errorJson(res, 400, "店铺域名无效，请使用 xxx.myshopify.com 格式。");
+    errorJson(res, 400, "Invalid shop domain. Use the format your-store.myshopify.com.");
     return;
   }
 
@@ -118,12 +121,12 @@ export async function handleShopifyOAuthStart(
   try {
     oauthConfig = await getOAuthAppConfig(customerId);
   } catch {
-    errorJson(res, 400, "OAuth 配置不完整，请先保存该品牌的 Client ID 和 Client Secret。");
+    errorJson(res, 400, "OAuth setup incomplete. Save Client ID and Client Secret first.");
     return;
   }
 
   if (oauthConfig.config.shop_domain !== shop) {
-    errorJson(res, 400, "当前店铺域名与该品牌保存的 Shopify 配置不一致，请先保存配置。");
+    errorJson(res, 400, "Shop domain does not match saved Shopify configuration. Save configuration first.");
     return;
   }
 
@@ -141,6 +144,10 @@ export async function handleShopifyOAuthStart(
   json(res, 200, {
     authorizeUrl: `https://${shop}/admin/oauth/authorize?${params.toString()}`,
   });
+  } catch (err) {
+    const status = err instanceof AuthError ? 401 : 500;
+    errorJson(res, status, err instanceof Error ? err.message : "Failed to start OAuth");
+  }
 }
 
 export async function handleShopifyOAuthCallback(
@@ -153,7 +160,7 @@ export async function handleShopifyOAuthCallback(
     const state = url.searchParams.get("state");
 
     if (!isValidShopDomain(shop) || !code || !state) {
-      redirect(res, "/?shopify_oauth=invalid_callback");
+      redirect(res, "/brand-config?shopify_oauth=invalid_callback");
       return;
     }
 
@@ -161,12 +168,12 @@ export async function handleShopifyOAuthCallback(
     oauthStates.delete(state);
 
     if (!savedState || Date.now() - savedState.createdAt > 10 * 60 * 1000) {
-      redirect(res, "/?shopify_oauth=invalid_state");
+      redirect(res, "/brand-config?shopify_oauth=invalid_state");
       return;
     }
 
     if (savedState.shop !== shop) {
-      redirect(res, "/?shopify_oauth=invalid_shop");
+      redirect(res, "/brand-config?shopify_oauth=invalid_shop");
       return;
     }
 
@@ -174,13 +181,13 @@ export async function handleShopifyOAuthCallback(
     const oauthConfig = await getOAuthAppConfig(customerId);
 
     if (!verifyShopifyOAuthHmac(url, oauthConfig.clientSecret)) {
-      redirect(res, "/?shopify_oauth=invalid_hmac");
+      redirect(res, "/brand-config?shopify_oauth=invalid_hmac");
       return;
     }
 
     const existing = oauthConfig.config;
     const accessTokenRef = existing?.access_token_ref ?? shopifyAccessTokenRef(customerId);
-    const webhookSecretRef = existing?.webhook_secret_ref ?? shopifyWebhookSecretRef(customerId);
+    const webhookSecretRef = shopifyWebhookSecretRef(customerId);
     const clientSecretRef =
       existing.shopify_app_client_secret_ref ?? shopifyAppClientSecretRef(customerId);
     const apiVersion = existing?.api_version ?? env.shopifyApiVersion;
@@ -193,6 +200,19 @@ export async function handleShopifyOAuthCallback(
       oauthConfig.clientSecret,
     );
     await storeSecret(accessTokenRef, accessToken);
+    const legacyWebhookRef = existing?.webhook_secret_ref;
+    if (
+      legacyWebhookRef &&
+      legacyWebhookRef !== webhookSecretRef &&
+      (await hasSecret(legacyWebhookRef)) &&
+      !(await hasSecret(webhookSecretRef))
+    ) {
+      const legacyValue = await resolveSecret(legacyWebhookRef);
+      await storeSecret(webhookSecretRef, legacyValue);
+    }
+    if (!(await hasSecret(webhookSecretRef))) {
+      await storeSecret(webhookSecretRef, oauthConfig.clientSecret);
+    }
 
     const shopInfo = await fetchShopInfo(shop, accessToken, apiVersion);
 
@@ -210,9 +230,9 @@ export async function handleShopifyOAuthCallback(
       status: "active",
     });
 
-    redirect(res, "/?shopify_oauth=success");
+    redirect(res, "/brand-config?shopify_oauth=success&section=shopify");
   } catch (err) {
     console.error(err);
-    redirect(res, "/?shopify_oauth=failed");
+    redirect(res, "/brand-config?shopify_oauth=failed&section=shopify");
   }
 }

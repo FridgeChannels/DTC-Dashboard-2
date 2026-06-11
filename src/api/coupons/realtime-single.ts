@@ -13,12 +13,12 @@ export async function handleIssueRealtimeSingleCoupon(
   try {
     const body = await readJsonBody<{
       magnet_id?: number;
-      fc_user_id?: string;
+      campaign_id?: string;
     }>(req);
 
     const input: IssueRealtimeSingleCouponInput = {
       magnetId: Number(body.magnet_id),
-      fcUserId: body.fc_user_id?.trim() || undefined,
+      campaignId: body.campaign_id?.trim() ?? "",
     };
 
     const result = await issueRealtimeSingleCoupon(input);
@@ -31,7 +31,7 @@ export async function handleIssueRealtimeSingleCoupon(
     errorJson(
       res,
       500,
-      err instanceof Error ? err.message : "创建实时单券失败",
+      err instanceof Error ? err.message : "Failed to issue realtime coupon",
     );
   }
 }

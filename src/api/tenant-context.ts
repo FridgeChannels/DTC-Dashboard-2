@@ -1,11 +1,29 @@
-import type { IncomingMessage } from "node:http";
-import { env } from "../config/env.js";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { getCurrentCustomer } from "../lib/auth/getCurrentCustomer.js";
+import { AuthError } from "../lib/auth/errors.js";
 
 /**
- * 当前项目还没有登录/session 中间件。
- * 多租户上线时，只需要在这里从已认证的 session/JWT 解析 customer_id，
- * 业务 API 不应信任前端传入的 customerId。
+ * 从已登录 Session 解析当前品牌 customer_id。
+ * 禁止信任前端传入的 customerId。
  */
-export function getRequestCustomerId(_req: IncomingMessage): number {
-  return env.defaultCustomerId;
+export async function getRequestCustomerId(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<number> {
+  const current = await getCurrentCustomer(req, res);
+  if (!current) {
+    throw new AuthError("Unauthorized");
+  }
+  return Number(current.customer.id);
+}
+
+export async function requireCurrentCustomer(
+  req: IncomingMessage,
+  res: ServerResponse,
+) {
+  const current = await getCurrentCustomer(req, res);
+  if (!current) {
+    throw new AuthError("Unauthorized");
+  }
+  return current;
 }

@@ -1,4 +1,5 @@
 import { getSupabase } from "../clients/supabase.client.js";
+import { generateWebhookTenantKey } from "../lib/webhook-tenant-key.js";
 import type { CustomerShopifyConfig } from "../coupons/coupon.types.js";
 
 export async function getShopifyConfigByCustomerId(
@@ -18,6 +19,60 @@ export async function getShopifyConfigByCustomerId(
   return data as CustomerShopifyConfig | null;
 }
 
+export async function getShopifyConfigByWebhookTenantKey(
+  tenantKey: string,
+): Promise<CustomerShopifyConfig | null> {
+  const { data, error } = await getSupabase()
+    .from("customer_shopify_config")
+    .select("*")
+    .eq("webhook_tenant_key", tenantKey)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as CustomerShopifyConfig | null;
+}
+
+export async function ensureWebhookTenantKey(
+  customerId: number,
+): Promise<string> {
+  const existing = await getShopifyConfigByCustomerId(customerId);
+  if (!existing) {
+    throw new Error(`Shopify not configured for customer: ${customerId}`);
+  }
+  if (existing.webhook_tenant_key) {
+    return existing.webhook_tenant_key;
+  }
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const webhookTenantKey = generateWebhookTenantKey();
+    const { data, error } = await getSupabase()
+      .from("customer_shopify_config")
+      .update({
+        webhook_tenant_key: webhookTenantKey,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("customer_id", customerId)
+      .is("webhook_tenant_key", null)
+      .select("webhook_tenant_key")
+      .maybeSingle();
+
+    if (error) {
+      if (error.code === "23505") continue;
+      throw error;
+    }
+    if (data?.webhook_tenant_key) {
+      return data.webhook_tenant_key;
+    }
+
+    const refreshed = await getShopifyConfigByCustomerId(customerId);
+    if (refreshed?.webhook_tenant_key) {
+      return refreshed.webhook_tenant_key;
+    }
+  }
+
+  throw new Error("Could not generate webhook tenant key. Try again.");
+}
+
 export async function upsertShopifyConfig(input: {
   customerId: number;
   shopDomain: string;
@@ -27,10 +82,17 @@ export async function upsertShopifyConfig(input: {
   shopifyAppClientSecretRef?: string | null;
   accessTokenRef: string;
   webhookSecretRef?: string | null;
+  webhookTenantKey?: string | null;
   scopes: string[];
   apiVersion: string;
   status: string;
 }): Promise<CustomerShopifyConfig> {
+  const existing = await getShopifyConfigByCustomerId(input.customerId);
+  const webhookTenantKey =
+    input.webhookTenantKey ??
+    existing?.webhook_tenant_key ??
+    generateWebhookTenantKey();
+
   const now = new Date().toISOString();
   const { data, error } = await getSupabase()
     .from("customer_shopify_config")
@@ -44,6 +106,7 @@ export async function upsertShopifyConfig(input: {
         shopify_app_client_secret_ref: input.shopifyAppClientSecretRef ?? null,
         access_token_ref: input.accessTokenRef,
         webhook_secret_ref: input.webhookSecretRef ?? null,
+        webhook_tenant_key: webhookTenantKey,
         scopes: input.scopes,
         api_version: input.apiVersion,
         status: input.status,

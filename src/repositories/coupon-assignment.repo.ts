@@ -50,9 +50,11 @@ export async function insertAssignment(
       customer_id: input.customerId,
       campaign_id: input.campaignId,
       coupon_code_id: input.couponCodeId,
-      fc_user_id: input.fcUserId,
+      fc_user_id: input.fcUserId ?? null,
       magnet_id: input.magnetId ?? null,
       email: input.email ?? null,
+      klaviyo_profile_id: input.klaviyoProfileId ?? null,
+      shopify_customer_id: input.shopifyCustomerId ?? null,
       channel: input.channel ?? null,
       assignment_reason: input.reason ?? null,
     })

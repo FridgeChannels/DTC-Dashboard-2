@@ -1,11 +1,4 @@
-import type { FcCouponCampaign } from "../coupons/coupon.types.js";
-import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
-import * as identityRepo from "../repositories/fc-user-identity.repo.js";
-import * as klaviyoProfileSegmentRepo from "../repositories/klaviyo-profile-segment.repo.js";
-import * as klaviyoSegmentRepo from "../repositories/klaviyo-segment.repo.js";
-import * as magnetRepo from "../repositories/magnet.repo.js";
-import * as segmentConfigRepo from "../repositories/segment-coupon-config.repo.js";
-import type { SegmentCouponConfigRow } from "../repositories/segment-coupon-config.repo.js";
+import { getSupabase } from "../clients/supabase.client.js";
 
 export class AvailableCampaignsError extends Error {
   constructor(
@@ -42,111 +35,14 @@ export interface AvailableCouponCampaignsResponse {
   campaigns: AvailableCouponCampaign[];
 }
 
-function toNumber(value: number | string | null): number | null {
-  if (value == null) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+interface AvailableCouponCampaignsRpcError {
+  message?: string;
+  statusCode?: number;
 }
 
-function normalizeRange(config: SegmentCouponConfigRow): {
-  minDiscountRatio: number;
-  maxDiscountRatio: number;
-} {
-  return {
-    minDiscountRatio: toNumber(config.min_discount_ratio) ?? 0,
-    maxDiscountRatio: toNumber(config.max_discount_ratio) ?? 1,
-  };
-}
-
-function toCampaignResponse(
-  campaign: FcCouponCampaign,
-  matchedSegments: AvailableCouponCampaign["matchedSegments"],
-): AvailableCouponCampaign {
-  return {
-    campaignId: campaign.campaign_id,
-    campaignKey: campaign.campaign_key,
-    name: campaign.name,
-    discountType: campaign.discount_type,
-    value: toNumber(campaign.value),
-    currencyCode: campaign.currency_code,
-    minPurchaseAmount: toNumber(campaign.min_purchase_amount),
-    startsAt: campaign.starts_at,
-    endsAt: campaign.ends_at,
-    status: campaign.status,
-    matchedSegments,
-  };
-}
-
-function campaignMatchesRange(
-  campaign: FcCouponCampaign,
-  minDiscountRatio: number,
-  maxDiscountRatio: number,
-): boolean {
-  const value = toNumber(campaign.value);
-  if (value == null) return false;
-  return value >= minDiscountRatio * 100 && value <= maxDiscountRatio * 100;
-}
-
-async function buildDefaultFallbackResponse(
-  customerId: number,
-  fcUserId: string | null,
-): Promise<AvailableCouponCampaignsResponse> {
-  const defaultSegmentConfig = await segmentConfigRepo.findDefaultSegmentConfig(customerId);
-  if (!defaultSegmentConfig) {
-    return { fcUserId, campaigns: [] };
-  }
-
-  const [segments, activeCampaigns] = await Promise.all([
-    klaviyoSegmentRepo.listKlaviyoSegmentsByIds(customerId, [defaultSegmentConfig.segment_id]),
-    campaignRepo.listActivePercentageCampaigns(customerId),
-  ]);
-
-  const campaigns = matchCampaignsBySegments(
-    [defaultSegmentConfig],
-    segments,
-    activeCampaigns,
-  );
-
-  return { fcUserId, campaigns };
-}
-
-function matchCampaignsBySegments(
-  segmentConfigs: SegmentCouponConfigRow[],
-  segments: Array<{ segment_id: string; name: string | null }>,
-  activeCampaigns: FcCouponCampaign[],
-): AvailableCouponCampaign[] {
-  const segmentNameById = new Map(segments.map((s) => [s.segment_id, s.name]));
-  const campaignById = new Map<string, AvailableCouponCampaign>();
-
-  for (const config of segmentConfigs) {
-    const { minDiscountRatio, maxDiscountRatio } = normalizeRange(config);
-    const matchedCampaigns = activeCampaigns.filter((campaign) =>
-      campaignMatchesRange(campaign, minDiscountRatio, maxDiscountRatio),
-    );
-
-    for (const campaign of matchedCampaigns) {
-      const match = {
-        segmentId: config.segment_id,
-        name: segmentNameById.get(config.segment_id) ?? null,
-        minDiscountRatio,
-        maxDiscountRatio,
-        priority: config.priority ?? 0,
-      };
-      const existing = campaignById.get(campaign.campaign_id);
-      if (existing) {
-        existing.matchedSegments.push(match);
-      } else {
-        campaignById.set(
-          campaign.campaign_id,
-          toCampaignResponse(campaign, [match]),
-        );
-      }
-    }
-  }
-
-  return [...campaignById.values()].sort(
-    (a, b) => (b.value ?? 0) - (a.value ?? 0),
-  );
+interface AvailableCouponCampaignsRpcResponse
+  extends AvailableCouponCampaignsResponse {
+  error?: AvailableCouponCampaignsRpcError;
 }
 
 export async function listAvailableCouponCampaignsByMagnetId(
@@ -156,45 +52,23 @@ export async function listAvailableCouponCampaignsByMagnetId(
     throw new AvailableCampaignsError("Invalid magnet_id", 400);
   }
 
-  const magnet = await magnetRepo.getMagnetById(magnetId);
-  if (!magnet) {
-    throw new AvailableCampaignsError(`magnet_id ${magnetId} not found`, 404);
-  }
+  const { data, error } = await getSupabase().rpc("fc_list_available_coupon_campaigns", {
+    p_magnet_id: magnetId,
+  });
 
-  const identity = await identityRepo.findLatestIdentityByMagnetId(magnetId);
-  if (!identity) {
-    return buildDefaultFallbackResponse(magnet.customer_id, null);
-  }
-  if (!identity.customer_id) {
-    throw new AvailableCampaignsError("fc_user_identity is missing customer_id", 400);
-  }
-  if (identity.customer_id !== magnet.customer_id) {
-    throw new AvailableCampaignsError("magnet and fc_user_identity belong to different customers", 400);
-  }
+  if (error) throw error;
 
-  const userSegments = await klaviyoProfileSegmentRepo.listSegmentsForUser(
-    identity.customer_id,
-    identity.fc_user_id,
-  );
-  const segmentIds = [...new Set(userSegments.map((s) => s.segment_id))];
-  if (!segmentIds.length) {
-    return buildDefaultFallbackResponse(identity.customer_id, identity.fc_user_id);
-  }
-
-  const [segmentConfigs, segments, activeCampaigns] = await Promise.all([
-    segmentConfigRepo.listActiveConfigsBySegmentIds(identity.customer_id, segmentIds),
-    klaviyoSegmentRepo.listKlaviyoSegmentsByIds(identity.customer_id, segmentIds),
-    campaignRepo.listActivePercentageCampaigns(identity.customer_id),
-  ]);
-
-  const campaigns = matchCampaignsBySegments(segmentConfigs, segments, activeCampaigns);
-  if (!campaigns.length) {
-    return buildDefaultFallbackResponse(identity.customer_id, identity.fc_user_id);
+  const result = data as AvailableCouponCampaignsRpcResponse | null;
+  if (result?.error) {
+    throw new AvailableCampaignsError(
+      result.error.message ?? "Failed to load available campaigns",
+      result.error.statusCode ?? 500,
+    );
   }
 
   return {
-    fcUserId: identity.fc_user_id,
-    campaigns,
+    fcUserId: result?.fcUserId ?? null,
+    campaigns: result?.campaigns ?? [],
   };
 }
 

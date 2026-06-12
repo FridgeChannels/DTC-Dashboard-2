@@ -21,15 +21,18 @@ const MAX_CODE_RETRIES = 5;
 export async function assignCouponToUser(
   input: AssignCouponToUserInput,
 ): Promise<{ code: string; couponCode: FcCouponCode }> {
-  const campaign = await campaignRepo.findCampaignByKey(
-    input.customerId,
-    input.campaignKey,
-  );
+  const campaign =
+    input.campaign ??
+    (await campaignRepo.findCampaignByKey(input.customerId, input.campaignKey));
   if (!campaign) {
     throw new Error(`Campaign not found: ${input.campaignKey}`);
   }
 
-  const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(input.customerId, { activeOnly: true });
+  const config =
+    input.shopifyConfig ??
+    (await shopifyConfigRepo.getShopifyConfigByCustomerId(input.customerId, {
+      activeOnly: true,
+    }));
   if (!config) {
     throw new Error(`Shopify not configured for customer: ${input.customerId}`);
   }

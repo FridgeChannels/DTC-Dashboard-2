@@ -151,6 +151,8 @@ export interface CreateCouponCampaignInput {
 export interface AssignCouponToUserInput {
   customerId: number;
   campaignKey: string;
+  campaign?: FcCouponCampaign;
+  shopifyConfig?: CustomerShopifyConfig;
   fcUserId?: string;
   magnetId?: number;
   klaviyoProfileId?: string;

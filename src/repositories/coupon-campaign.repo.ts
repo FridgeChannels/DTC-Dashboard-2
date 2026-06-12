@@ -101,6 +101,25 @@ export async function listActivePercentageCampaigns(
   return (data ?? []) as FcCouponCampaign[];
 }
 
+export async function findDefaultActiveCampaign(
+  customerId: number,
+): Promise<FcCouponCampaign | null> {
+  const now = new Date().toISOString();
+
+  const { data, error } = await getSupabase()
+    .from("fc_coupon_campaign")
+    .select("*")
+    .eq("customer_id", customerId)
+    .eq("is_default", true)
+    .eq("status", "active")
+    .or(`starts_at.is.null,starts_at.lte.${now}`)
+    .or(`ends_at.is.null,ends_at.gte.${now}`)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as FcCouponCampaign | null;
+}
+
 export async function findCampaignById(
   customerId: number,
   campaignId: string,
@@ -185,6 +204,37 @@ export async function updateCampaignById(
   const { data, error } = await getSupabase()
     .from("fc_coupon_campaign")
     .update(row)
+    .eq("customer_id", customerId)
+    .eq("campaign_id", campaignId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as FcCouponCampaign;
+}
+
+export async function setDefaultCampaign(
+  customerId: number,
+  campaignId: string,
+): Promise<FcCouponCampaign> {
+  const existing = await findCampaignById(customerId, campaignId);
+  if (!existing) {
+    throw new Error("Campaign not found");
+  }
+
+  const now = new Date().toISOString();
+
+  const { error: clearError } = await getSupabase()
+    .from("fc_coupon_campaign")
+    .update({ is_default: false, updated_at: now })
+    .eq("customer_id", customerId)
+    .eq("is_default", true);
+
+  if (clearError) throw clearError;
+
+  const { data, error } = await getSupabase()
+    .from("fc_coupon_campaign")
+    .update({ is_default: true, updated_at: now })
     .eq("customer_id", customerId)
     .eq("campaign_id", campaignId)
     .select("*")

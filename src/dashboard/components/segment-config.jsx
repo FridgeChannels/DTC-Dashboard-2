@@ -42,7 +42,6 @@ function apiToLocalRows(items) {
     configId: item.config.configId,
     minPercent: ratioToPercent(item.config.minDiscountRatio),
     maxPercent: ratioToPercent(item.config.maxDiscountRatio),
-    defaultPercent: ratioToPercent(item.config.defaultDiscountRatio ?? 0),
     isActive: item.config.isActive,
     notes: item.config.notes ?? "",
     dirty: false,
@@ -56,15 +55,8 @@ function getSavableRows(rows) {
 function validateRow(row) {
   const min = percentToRatio(row.minPercent);
   const max = percentToRatio(row.maxPercent);
-  const def = percentToRatio(row.defaultPercent) ?? 0;
   if (min != null && max != null && min > max) {
     return `${row.name || "This segment"}: min discount must be ≤ max discount (% off; higher means a larger discount)`;
-  }
-  if (def < (min ?? 0)) {
-    return `${row.name || "This segment"}: default discount cannot be below the minimum`;
-  }
-  if (max != null && def > max) {
-    return `${row.name || "This segment"}: default discount cannot be above the maximum`;
   }
   return null;
 }
@@ -100,7 +92,6 @@ function SegmentConfigTable({ rows, onChange, disabled }) {
             <th>Status</th>
             <th>Min % off</th>
             <th>Max % off</th>
-            <th>Default % off</th>
           </tr>
         </thead>
         <tbody>
@@ -132,19 +123,6 @@ function SegmentConfigTable({ rows, onChange, disabled }) {
                   value={row.maxPercent}
                   disabled={disabled}
                   onChange={(e) => updateRow(row.segmentId, { maxPercent: e.target.value })}
-                />
-              </td>
-              <td>
-                <input
-                  className="cfg-input cfg-input-sm mono"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  placeholder="0"
-                  value={row.defaultPercent}
-                  disabled={disabled}
-                  onChange={(e) => updateRow(row.segmentId, { defaultPercent: e.target.value })}
                 />
               </td>
             </tr>
@@ -206,7 +184,6 @@ function SegmentConfigPage() {
           segmentId: row.segmentId,
           minDiscountRatio: percentToRatio(row.minPercent),
           maxDiscountRatio: percentToRatio(row.maxPercent),
-          defaultDiscountRatio: percentToRatio(row.defaultPercent) ?? 0,
         })),
       };
       const data = await SegmentAPI.save(payload);

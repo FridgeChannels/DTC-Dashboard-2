@@ -18,6 +18,7 @@ import {
   handleCreateCouponCampaign,
   handleUpdateCouponCampaign,
   handleSyncCouponCampaigns,
+  handlePostCouponCampaignDefault,
 } from "./api/coupon-campaigns.js";
 import {
   handleGetSegmentCouponConfig,
@@ -40,6 +41,7 @@ import {
   handleShopifyCustomerOAuthStart,
 } from "./api/shopify-customer-oauth.js";
 import { handleGetTapContext } from "./api/tap-context.js";
+import { requireApiKey } from "./lib/auth/api-key.js";
 
 function redirect(res: ServerResponse, location: string): void {
   res.writeHead(302, { Location: location });
@@ -137,11 +139,13 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/api/coupons/realtime-single") {
+    if (!requireApiKey(req, res)) return;
     await handleIssueRealtimeSingleCoupon(req, res);
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/coupons/lookup") {
+    if (!requireApiKey(req, res)) return;
     await handleLookupCoupon(res, url);
     return;
   }
@@ -161,7 +165,13 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/coupon-campaigns/default") {
+    await handlePostCouponCampaignDefault(req, res);
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/coupon-campaigns/available") {
+    if (!requireApiKey(req, res)) return;
     await handleGetAvailableCouponCampaigns(res, url);
     return;
   }
@@ -218,6 +228,9 @@ const server = createServer(async (req, res) => {
 
 server.listen(env.port, () => {
   console.log(`FC service listening on http://localhost:${env.port}`);
+  if (env.nodeEnv === "production" && !env.apiKey) {
+    console.warn("WARNING: API_KEY is not set; M2M coupon endpoints will reject all requests.");
+  }
   console.log(`  • Dashboard:  http://localhost:${env.port}/`);
   console.log(`  • FC Tap:     http://localhost:${env.port}/tap/YOUR_MAGNET_SN`);
   console.log(`  • Health:     http://localhost:${env.port}/health`);

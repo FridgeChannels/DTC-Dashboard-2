@@ -6,6 +6,7 @@ import {
   createCampaignForCustomer,
   updateCampaignForCustomer,
   syncCampaignsForCustomer,
+  setDefaultCampaignForCustomer,
   type CreateCampaignRequest,
   type UpdateCampaignRequest,
 } from "../services/coupon-campaign.service.js";
@@ -98,5 +99,23 @@ export async function handleSyncCouponCampaigns(
   } catch (err) {
     const status = err instanceof AuthError ? 401 : 400;
     errorJson(res, status, err instanceof Error ? err.message : "Failed to sync campaigns");
+  }
+}
+
+export async function handlePostCouponCampaignDefault(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const body = await readJsonBody<{ campaign_id?: string }>(req);
+    const customerId = await getRequestCustomerId(req, res);
+    const campaign = await setDefaultCampaignForCustomer(
+      customerId,
+      body.campaign_id ?? "",
+    );
+    json(res, 200, { campaign });
+  } catch (err) {
+    const status = err instanceof AuthError ? 401 : 400;
+    errorJson(res, status, err instanceof Error ? err.message : "Failed to set default campaign");
   }
 }

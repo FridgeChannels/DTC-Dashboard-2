@@ -66,17 +66,19 @@ export async function listActiveConfigsBySegmentIds(
 export async function upsertSegmentCouponConfig(
   input: UpsertSegmentCouponConfigInput,
 ): Promise<SegmentCouponConfigRow> {
-  const row = {
+  const row: Record<string, unknown> = {
     customer_id: input.customerId,
     segment_id: input.segmentId,
     discount_type: input.discountType,
     min_discount_ratio: input.minDiscountRatio ?? null,
     max_discount_ratio: input.maxDiscountRatio ?? null,
-    default_discount_ratio: input.defaultDiscountRatio ?? 0,
     is_active: input.isActive ?? true,
     notes: input.notes ?? null,
     updated_at: new Date().toISOString(),
   };
+  if (input.defaultDiscountRatio !== undefined) {
+    row.default_discount_ratio = input.defaultDiscountRatio ?? 0;
+  }
 
   const { data, error } = await getSupabase()
     .from("fc_segment_coupon_config")

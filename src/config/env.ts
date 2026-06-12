@@ -37,4 +37,6 @@ export const env = {
     process.env.SHOPIFY_APP_HOST ??
     `http://localhost:${process.env.PORT ?? 8080}`,
   secretsProvider: process.env.SECRETS_PROVIDER ?? "supabase_vault",
+  /** 内部 M2M 接口密钥；生产环境必填 */
+  apiKey: process.env.API_KEY ?? "",
 } as const;

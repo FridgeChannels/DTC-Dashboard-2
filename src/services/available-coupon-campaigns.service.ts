@@ -38,7 +38,7 @@ export interface AvailableCouponCampaign {
 }
 
 export interface AvailableCouponCampaignsResponse {
-  fcUserId: string;
+  fcUserId: string | null;
   campaigns: AvailableCouponCampaign[];
 }
 
@@ -87,47 +87,22 @@ function campaignMatchesRange(
   return value >= minDiscountRatio * 100 && value <= maxDiscountRatio * 100;
 }
 
-export async function listAvailableCouponCampaignsByMagnetId(
-  magnetId: number,
+async function buildDefaultFallbackResponse(
+  customerId: number,
+  fcUserId: string | null,
 ): Promise<AvailableCouponCampaignsResponse> {
-  if (!Number.isFinite(magnetId) || magnetId <= 0) {
-    throw new AvailableCampaignsError("Invalid magnet_id", 400);
-  }
+  const defaultCampaign = await campaignRepo.findDefaultActiveCampaign(customerId);
+  return {
+    fcUserId,
+    campaigns: defaultCampaign ? [toCampaignResponse(defaultCampaign, [])] : [],
+  };
+}
 
-  const magnet = await magnetRepo.getMagnetById(magnetId);
-  if (!magnet) {
-    throw new AvailableCampaignsError(`magnet_id ${magnetId} not found`, 404);
-  }
-
-  const identity = await identityRepo.findLatestIdentityByMagnetId(magnetId);
-  if (!identity) {
-    throw new AvailableCampaignsError(`magnet_id ${magnetId} has no fc_user_identity`, 404);
-  }
-  if (!identity.customer_id) {
-    throw new AvailableCampaignsError("fc_user_identity is missing customer_id", 400);
-  }
-  if (identity.customer_id !== magnet.customer_id) {
-    throw new AvailableCampaignsError("magnet and fc_user_identity belong to different customers", 400);
-  }
-
-  const userSegments = await klaviyoProfileSegmentRepo.listSegmentsForUser(
-    identity.customer_id,
-    identity.fc_user_id,
-  );
-  const segmentIds = [...new Set(userSegments.map((s) => s.segment_id))];
-  if (!segmentIds.length) {
-    return {
-      fcUserId: identity.fc_user_id,
-      campaigns: [],
-    };
-  }
-
-  const [segmentConfigs, segments, activeCampaigns] = await Promise.all([
-    segmentConfigRepo.listActiveConfigsBySegmentIds(identity.customer_id, segmentIds),
-    klaviyoSegmentRepo.listKlaviyoSegmentsByIds(identity.customer_id, segmentIds),
-    campaignRepo.listActivePercentageCampaigns(identity.customer_id),
-  ]);
-
+function matchCampaignsBySegments(
+  segmentConfigs: SegmentCouponConfigRow[],
+  segments: Array<{ segment_id: string; name: string | null }>,
+  activeCampaigns: FcCouponCampaign[],
+): AvailableCouponCampaign[] {
   const segmentNameById = new Map(segments.map((s) => [s.segment_id, s.name]));
   const campaignById = new Map<string, AvailableCouponCampaign>();
 
@@ -157,9 +132,53 @@ export async function listAvailableCouponCampaignsByMagnetId(
     }
   }
 
-  const campaigns = [...campaignById.values()].sort(
+  return [...campaignById.values()].sort(
     (a, b) => (b.value ?? 0) - (a.value ?? 0),
   );
+}
+
+export async function listAvailableCouponCampaignsByMagnetId(
+  magnetId: number,
+): Promise<AvailableCouponCampaignsResponse> {
+  if (!Number.isFinite(magnetId) || magnetId <= 0) {
+    throw new AvailableCampaignsError("Invalid magnet_id", 400);
+  }
+
+  const magnet = await magnetRepo.getMagnetById(magnetId);
+  if (!magnet) {
+    throw new AvailableCampaignsError(`magnet_id ${magnetId} not found`, 404);
+  }
+
+  const identity = await identityRepo.findLatestIdentityByMagnetId(magnetId);
+  if (!identity) {
+    return buildDefaultFallbackResponse(magnet.customer_id, null);
+  }
+  if (!identity.customer_id) {
+    throw new AvailableCampaignsError("fc_user_identity is missing customer_id", 400);
+  }
+  if (identity.customer_id !== magnet.customer_id) {
+    throw new AvailableCampaignsError("magnet and fc_user_identity belong to different customers", 400);
+  }
+
+  const userSegments = await klaviyoProfileSegmentRepo.listSegmentsForUser(
+    identity.customer_id,
+    identity.fc_user_id,
+  );
+  const segmentIds = [...new Set(userSegments.map((s) => s.segment_id))];
+  if (!segmentIds.length) {
+    return buildDefaultFallbackResponse(identity.customer_id, identity.fc_user_id);
+  }
+
+  const [segmentConfigs, segments, activeCampaigns] = await Promise.all([
+    segmentConfigRepo.listActiveConfigsBySegmentIds(identity.customer_id, segmentIds),
+    klaviyoSegmentRepo.listKlaviyoSegmentsByIds(identity.customer_id, segmentIds),
+    campaignRepo.listActivePercentageCampaigns(identity.customer_id),
+  ]);
+
+  const campaigns = matchCampaignsBySegments(segmentConfigs, segments, activeCampaigns);
+  if (!campaigns.length) {
+    return buildDefaultFallbackResponse(identity.customer_id, identity.fc_user_id);
+  }
 
   return {
     fcUserId: identity.fc_user_id,

@@ -50,6 +50,7 @@ export interface CampaignSummary {
   endsAt: string | null;
   status: string;
   mode: string;
+  isDefault: boolean;
   shopifyDiscountNodeId: string | null;
   codeCount: number;
 }
@@ -101,6 +102,7 @@ async function toCampaignSummary(
     endsAt: campaign.ends_at,
     status: campaign.status,
     mode: defaultMode,
+    isDefault: campaign.is_default ?? false,
     shopifyDiscountNodeId: campaign.shopify_discount_node_id,
     codeCount: counts.get(campaign.campaign_id) ?? 0,
   };
@@ -244,6 +246,7 @@ async function listCampaignSummariesForCustomer(
     endsAt: c.ends_at,
     status: c.status,
     mode: defaultMode,
+    isDefault: c.is_default ?? false,
     shopifyDiscountNodeId: c.shopify_discount_node_id,
     codeCount: codeCounts.get(c.campaign_id) ?? 0,
   }));
@@ -255,4 +258,16 @@ export async function syncCampaignsForCustomer(
   const summary = await syncCampaignsFromShopify(customerId);
   const campaigns = await listCampaignSummariesForCustomer(customerId);
   return { campaigns, summary };
+}
+
+export async function setDefaultCampaignForCustomer(
+  customerId: number,
+  campaignId: string,
+): Promise<CampaignSummary> {
+  const trimmed = campaignId.trim();
+  if (!trimmed) throw new Error("campaign_id is required");
+
+  const settings = await couponSettingsRepo.getCouponSettings(customerId);
+  const campaign = await campaignRepo.setDefaultCampaign(customerId, trimmed);
+  return toCampaignSummary(customerId, campaign, settings.default_mode);
 }

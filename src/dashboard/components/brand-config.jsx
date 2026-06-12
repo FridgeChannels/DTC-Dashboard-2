@@ -55,6 +55,16 @@ const API = {
     if (!res.ok) throw new Error(data.error || "Failed to sync campaigns");
     return data;
   },
+  async setDefaultCampaign(campaignId) {
+    const res = await fetch("/api/coupon-campaigns/default", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ campaign_id: campaignId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to set default campaign");
+    return data;
+  },
 };
 
 function apiToLocal(data) {
@@ -530,7 +540,7 @@ function CampaignEditForm({ form, saving, error, onChange, onSubmit }) {
   );
 }
 
-function CampaignTable({ campaigns, onEdit }) {
+function CampaignTable({ campaigns, onEdit, onSetDefault, settingDefaultId, disabled }) {
   if (!campaigns.length) {
     return (
       <EmptyState
@@ -540,11 +550,18 @@ function CampaignTable({ campaigns, onEdit }) {
       />
     );
   }
+
+  const handleDefaultSelect = (campaign) => {
+    if (campaign.isDefault || disabled || settingDefaultId) return;
+    onSetDefault(campaign.id);
+  };
+
   return (
     <div className="table-wrap">
-      <table className="data">
+      <table className="data campaign-table">
         <thead>
           <tr>
+            <th className="table-default-col">Default</th>
             <th>Campaign</th>
             <th>Campaign type</th>
             <th>Codes</th>
@@ -556,13 +573,25 @@ function CampaignTable({ campaigns, onEdit }) {
         <tbody>
           {campaigns.map((c) => (
             <tr key={c.id || c.key}>
+              <td className="table-default-col">
+                <label className="table-default-radio">
+                  <input
+                    type="radio"
+                    name="default-campaign"
+                    checked={Boolean(c.isDefault)}
+                    disabled={disabled || settingDefaultId != null}
+                    onChange={() => handleDefaultSelect(c)}
+                  />
+                  {c.isDefault && <span className="table-default-label">Default</span>}
+                </label>
+              </td>
               <td><strong>{c.name}</strong></td>
               <td>{formatCampaignType(c)}</td>
               <td className="mono">{c.codeCount ?? 0}</td>
               <td className="mono muted">{c.shopifyDiscountNodeId ? "✓" : "—"}</td>
               <td><StatusPill status={c.status} /></td>
               <td className="row-actions">
-                <button type="button" className="btn" onClick={() => onEdit(c)}>Edit</button>
+                <button type="button" className="btn" disabled={disabled} onClick={() => onEdit(c)}>Edit</button>
               </td>
             </tr>
           ))}
@@ -587,6 +616,7 @@ function BrandConfigPage({ section = "shopify" }) {
   const [showCampaignCreate, setShowCampaignCreate] = useStateBC(false);
   const [editForm, setEditForm] = useStateBC(null);
   const [campaignSyncing, setCampaignSyncing] = useStateBC(false);
+  const [settingDefaultCampaignId, setSettingDefaultCampaignId] = useStateBC(null);
   const [syncNotice, setSyncNotice] = useStateBC(null);
 
   const loadConfig = useCallbackBC(async () => {
@@ -796,6 +826,25 @@ function BrandConfigPage({ section = "shopify" }) {
       setCampaignError(err.message);
     } finally {
       setCampaignSyncing(false);
+    }
+  };
+
+  const handleSetDefaultCampaign = async (campaignId) => {
+    setSettingDefaultCampaignId(campaignId);
+    setCampaignError(null);
+    try {
+      const { campaign } = await API.setDefaultCampaign(campaignId);
+      setConfig((prev) => ({
+        ...prev,
+        campaigns: prev.campaigns.map((c) => ({
+          ...c,
+          isDefault: c.id === campaign.id,
+        })),
+      }));
+    } catch (err) {
+      setCampaignError(err.message);
+    } finally {
+      setSettingDefaultCampaignId(null);
     }
   };
 
@@ -1168,6 +1217,9 @@ function BrandConfigPage({ section = "shopify" }) {
               <CampaignTable
                 campaigns={config.campaigns}
                 onEdit={handleEditCampaign}
+                onSetDefault={handleSetDefaultCampaign}
+                settingDefaultId={settingDefaultCampaignId}
+                disabled={campaignSyncing || settingDefaultCampaignId != null}
               />
             </Panel>
           </>

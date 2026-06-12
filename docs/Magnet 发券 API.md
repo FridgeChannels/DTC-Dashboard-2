@@ -14,6 +14,19 @@
 
 下文路径均相对于 Base URL，例如开发环境查可用活动：`https://perversive-latia-coevally.ngrok-free.dev/api/coupon-campaigns/available?magnet_id=2202`。
 
+## 鉴权
+
+以下 **M2M 接口** 需在请求头携带 API 密钥（服务端环境变量 `API_KEY`）：
+
+| Header | 示例 |
+|--------|------|
+| `X-API-Key` | `X-API-Key: your-secret-key` |
+| `Authorization` | `Authorization: Bearer your-secret-key` |
+
+生产环境必须配置 `API_KEY`，未携带或密钥错误返回 `401`。
+
+> Dashboard 管理接口与消费者页面接口使用 Session Cookie 鉴权，**不需要** API Key。
+
 ## 推荐流程
 
 ```
@@ -66,15 +79,22 @@ GET /api/coupon-campaigns/available?magnet_id={magnet_id}
 
 ### 匹配规则
 
-1. `magnet_id` → `fc_user_identity`
-2. `fc_user_id` → `klaviyo_profile_segment`（用户所属分群）
-3. 分群 → `fc_segment_coupon_config`（`discount_type=percentage` 且 `is_active=true`）
-4. campaign 须同时满足：
+1. `magnet_id` → `magnet`（获取 `customer_id`）
+2. `magnet_id` → `fc_user_identity`（获取 `fc_user_id`）
+3. `fc_user_id` → `klaviyo_profile_segment`（用户所属分群）
+4. 分群 → `fc_segment_coupon_config`（`discount_type=percentage` 且 `is_active=true`）
+5. campaign 须同时满足：
    - 同 `customer_id`
    - `status = active`
    - `discount_type = percentage`
    - `value / 100` 落在分群的 `min_discount_ratio ~ max_discount_ratio` 内
    - 在有效期内（`starts_at` / `ends_at`）
+
+**默认 campaign 回退**：以下任一情况时，不再返回空列表，改为返回后台 Campaigns 中标记为 **Default** 的 `fc_coupon_campaign`（须 `status = active` 且在有效期内）：
+
+- 尚无 `fc_user_identity`（响应中 `fcUserId` 为 `null`）
+- 用户未命中任何 Klaviyo 分群
+- 分群匹配后没有可用 campaign
 
 > **减免比例口径**：存的是 **% off**（减免百分比）。例如 `value=80` 表示减 80%，不是「8 折」。
 
@@ -83,12 +103,12 @@ GET /api/coupon-campaigns/available?magnet_id={magnet_id}
 | HTTP | 说明 |
 |------|------|
 | 400 | `magnet_id` 无效，或 magnet 与 identity 不属于同一品牌 |
-| 404 | magnet 不存在，或尚无 `fc_user_identity` |
+| 404 | magnet 不存在 |
 | 500 | 服务内部错误 |
 
 ### `campaigns` 为空时
 
-通常表示用户命中的分群 **没有配置** `fc_segment_coupon_config`，或没有 campaign 落在配置的减免区间内。请在后台 Segment Config 为对应分群配置最小/最大减免比例。
+表示未命中分群且品牌 **未配置默认 campaign**，或默认 campaign 非 active / 已过期。请在后台 **Campaigns** 列表将某个活动设为 Default。
 
 ---
 
@@ -228,15 +248,19 @@ GET /api/coupons/lookup?code={code}
 
 ```bash
 BASE="https://perversive-latia-coevally.ngrok-free.dev"
+API_KEY="your-secret-key"
 
 # 1. 查可用活动
-curl "$BASE/api/coupon-campaigns/available?magnet_id=2202"
+curl "$BASE/api/coupon-campaigns/available?magnet_id=2202" \
+  -H "X-API-Key: $API_KEY"
 
 # 2. 发券
 curl -X POST "$BASE/api/coupons/realtime-single" \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
   -d '{"magnet_id":2202,"campaign_id":"cdcf8af5-bb03-4fdc-aefd-11e8dbdc3b3f"}'
 
 # 3. 查券码
-curl "$BASE/api/coupons/lookup?code=FC-876-VTXHQM"
+curl "$BASE/api/coupons/lookup?code=FC-876-VTXHQM" \
+  -H "X-API-Key: $API_KEY"
 ```

@@ -68,10 +68,38 @@ function validateRatios(item: SaveSegmentCouponConfigItem): void {
   }
 }
 
+/** 有已保存配置时保证恰好有一个默认 segment（按 created_at 最早者优先） */
+async function ensureDefaultSegmentConfig(
+  customerId: number,
+  discountType: SegmentDiscountType = "percentage",
+): Promise<boolean> {
+  const configs = await segmentConfigRepo.listConfigsByCustomerId(customerId, discountType);
+  if (!configs.length || configs.some((c) => c.is_default)) {
+    return false;
+  }
+
+  const pool = configs.filter((c) => c.is_active !== false);
+  const candidates = pool.length ? pool : configs;
+  const pick = [...candidates].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  )[0];
+
+  await segmentConfigRepo.setDefaultSegmentCouponConfig(
+    customerId,
+    pick.segment_id,
+    discountType,
+  );
+  return true;
+}
+
 export async function listSegmentCouponConfig(
   customerId: number,
   discountType: SegmentDiscountType = "percentage",
 ): Promise<SegmentCouponConfigListResponse> {
+  if (await ensureDefaultSegmentConfig(customerId, discountType)) {
+    return listSegmentCouponConfig(customerId, discountType);
+  }
+
   const [segments, configs] = await Promise.all([
     klaviyoSegmentRepo.listKlaviyoSegmentsByCustomerId(customerId),
     segmentConfigRepo.listConfigsByCustomerId(customerId, discountType),

@@ -281,7 +281,7 @@ function SegmentConfigPage() {
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <span className="muted" style={{ fontSize: 12.5 }}>
               {savableRows.length > 0
-                ? `${savableRows.length} segment(s) ready to save`
+                ? `${savableRows.length} segment(s) ready to save · one default required when configured`
                 : "Enter min or max discount before saving"}
             </span>
             <div className="row" style={{ gap: 8 }}>

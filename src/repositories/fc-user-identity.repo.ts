@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getSupabase } from "../clients/supabase.client.js";
 
 export interface FcUserIdentityRow {
@@ -50,6 +51,39 @@ export async function bindMagnetToIdentity(
 
   if (error) throw error;
   return data as FcUserIdentityRow;
+}
+
+export async function findOrCreateIdentityByMagnetId(
+  magnetId: number,
+  customerId: number,
+): Promise<FcUserIdentityRow> {
+  const existing = await findLatestIdentityByMagnetId(magnetId);
+  if (existing) return existing;
+
+  const now = new Date().toISOString();
+  const row = {
+    fc_user_id: randomUUID(),
+    magnet_id: magnetId,
+    customer_id: customerId,
+    updated_at: now,
+  };
+
+  const { data, error } = await getSupabase()
+    .from("fc_user_identity")
+    .insert(row)
+    .select(
+      "fc_user_id, shopify_customer_id, klaviyo_profile_id, email, customer_id, magnet_id, shop_domain, customer_access_token, refresh_token, token_expires_at",
+    )
+    .single();
+
+  if (!error) return data as FcUserIdentityRow;
+
+  if (error.code === "23505") {
+    const raced = await findLatestIdentityByMagnetId(magnetId);
+    if (raced) return raced;
+  }
+
+  throw error;
 }
 
 export async function findIdentityByFcUserId(

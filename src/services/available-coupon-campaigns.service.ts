@@ -91,11 +91,23 @@ async function buildDefaultFallbackResponse(
   customerId: number,
   fcUserId: string | null,
 ): Promise<AvailableCouponCampaignsResponse> {
-  const defaultCampaign = await campaignRepo.findDefaultActiveCampaign(customerId);
-  return {
-    fcUserId,
-    campaigns: defaultCampaign ? [toCampaignResponse(defaultCampaign, [])] : [],
-  };
+  const defaultSegmentConfig = await segmentConfigRepo.findDefaultSegmentConfig(customerId);
+  if (!defaultSegmentConfig) {
+    return { fcUserId, campaigns: [] };
+  }
+
+  const [segments, activeCampaigns] = await Promise.all([
+    klaviyoSegmentRepo.listKlaviyoSegmentsByIds(customerId, [defaultSegmentConfig.segment_id]),
+    campaignRepo.listActivePercentageCampaigns(customerId),
+  ]);
+
+  const campaigns = matchCampaignsBySegments(
+    [defaultSegmentConfig],
+    segments,
+    activeCampaigns,
+  );
+
+  return { fcUserId, campaigns };
 }
 
 function matchCampaignsBySegments(

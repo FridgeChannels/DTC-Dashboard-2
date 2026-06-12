@@ -90,7 +90,7 @@ GET /api/coupon-campaigns/available?magnet_id={magnet_id}
    - `value / 100` 落在分群的 `min_discount_ratio ~ max_discount_ratio` 内
    - 在有效期内（`starts_at` / `ends_at`）
 
-**默认 campaign 回退**：以下任一情况时，不再返回空列表，改为返回后台 Campaigns 中标记为 **Default** 的 `fc_coupon_campaign`（须 `status = active` 且在有效期内）：
+**默认 segment 回退**：以下任一情况时，使用后台 **Segment Config** 中标记为 **Default** 的分群配置（`fc_segment_coupon_config.is_default = true` 且 `is_active = true`），按其 min/max 减免区间筛选可用 campaign：
 
 - 尚无 `fc_user_identity`（响应中 `fcUserId` 为 `null`）
 - 用户未命中任何 Klaviyo 分群
@@ -108,7 +108,7 @@ GET /api/coupon-campaigns/available?magnet_id={magnet_id}
 
 ### `campaigns` 为空时
 
-表示未命中分群且品牌 **未配置默认 campaign**，或默认 campaign 非 active / 已过期。请在后台 **Campaigns** 列表将某个活动设为 Default。
+表示未命中分群且品牌 **未配置默认 segment**，或默认 segment 的减免区间内没有可用 campaign。请在后台 **Segment Config** 将某个分群设为 Default，并配置 min/max 减免比例。
 
 ---
 

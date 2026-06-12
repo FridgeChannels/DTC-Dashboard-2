@@ -77,7 +77,6 @@ export interface FcCouponCampaign {
   shopify_discount_node_id: string | null;
   shopify_discount_title: string | null;
   status: CampaignStatus;
-  is_default: boolean;
   created_at: string;
   updated_at: string;
 }

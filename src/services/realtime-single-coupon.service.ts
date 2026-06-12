@@ -57,10 +57,10 @@ export async function issueRealtimeSingleCoupon(
     throw new RealtimeCouponError(`magnet_id ${input.magnetId} not found`, 404);
   }
 
-  const identity = await identityRepo.findLatestIdentityByMagnetId(input.magnetId);
-  if (!identity) {
-    throw new RealtimeCouponError(`magnet_id ${input.magnetId} has no fc_user_identity`, 404);
-  }
+  const identity = await identityRepo.findOrCreateIdentityByMagnetId(
+    input.magnetId,
+    magnet.customer_id,
+  );
   if (!identity.customer_id) {
     throw new RealtimeCouponError("fc_user_identity is missing customer_id", 400);
   }

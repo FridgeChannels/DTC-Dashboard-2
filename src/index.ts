@@ -18,7 +18,6 @@ import {
   handleCreateCouponCampaign,
   handleUpdateCouponCampaign,
   handleSyncCouponCampaigns,
-  handlePostCouponCampaignDefault,
 } from "./api/coupon-campaigns.js";
 import {
   handleGetSegmentCouponConfig,
@@ -163,11 +162,6 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/coupon-campaigns/sync") {
     await handleSyncCouponCampaigns(req, res);
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/coupon-campaigns/default") {
-    await handlePostCouponCampaignDefault(req, res);
     return;
   }
 

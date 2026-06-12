@@ -54,7 +54,6 @@ export interface BrandConfigResponse {
     mode: string;
     shopifyDiscountNodeId: string | null;
     codeCount: number;
-    isDefault: boolean;
   }>;
   shopifyConnection: {
     connected: boolean;
@@ -174,7 +173,6 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
       mode: defaultMode,
       shopifyDiscountNodeId: c.shopify_discount_node_id,
       codeCount: codeCounts.get(c.campaign_id) ?? 0,
-      isDefault: c.is_default ?? false,
     })),
     shopifyConnection: null,
   };

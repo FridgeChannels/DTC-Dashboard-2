@@ -22,7 +22,7 @@ export async function handleIssueRealtimeSingleCoupon(
     };
 
     const result = await issueRealtimeSingleCoupon(input);
-    json(res, result.alreadyAssigned ? 200 : 201, result);
+    json(res, 201, result);
   } catch (err) {
     if (err instanceof RealtimeCouponError) {
       errorJson(res, err.statusCode, err.message);

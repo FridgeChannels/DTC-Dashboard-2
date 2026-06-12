@@ -5,8 +5,6 @@ import type {
 } from "../coupons/coupon.types.js";
 import * as magnetRepo from "../repositories/magnet.repo.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
-import * as assignmentRepo from "../repositories/coupon-assignment.repo.js";
-import * as codeRepo from "../repositories/coupon-code.repo.js";
 import * as couponSettingsRepo from "../repositories/customer-coupon-settings.repo.js";
 import * as identityRepo from "../repositories/fc-user-identity.repo.js";
 import {
@@ -22,24 +20,6 @@ export class RealtimeCouponError extends Error {
     super(message);
     this.name = "RealtimeCouponError";
   }
-}
-
-function buildResult(input: {
-  fcUserId: string;
-  campaignKey: string;
-  campaignName: string;
-  code: string;
-  couponCodeId: string;
-  alreadyAssigned: boolean;
-}): IssueRealtimeSingleCouponResult {
-  return {
-    fcUserId: input.fcUserId,
-    campaignKey: input.campaignKey,
-    campaignName: input.campaignName,
-    code: input.code,
-    couponCodeId: input.couponCodeId,
-    alreadyAssigned: input.alreadyAssigned,
-  };
 }
 
 export async function issueRealtimeSingleCoupon(
@@ -95,40 +75,6 @@ export async function issueRealtimeSingleCoupon(
     throw new RealtimeCouponError("Campaign is not active", 400);
   }
 
-  const existingAssignment =
-    (await assignmentRepo.findAssignmentByUserAndCampaign(
-      magnet.customer_id,
-      campaign.campaign_id,
-      fcUserId,
-    )) ??
-    (await assignmentRepo.findAssignmentByMagnetAndCampaign(
-      magnet.customer_id,
-      campaign.campaign_id,
-      input.magnetId,
-    ));
-
-  if (existingAssignment) {
-    const couponCode = await codeRepo.findCouponCodeById(existingAssignment.coupon_code_id);
-    if (!couponCode) {
-      throw new RealtimeCouponError("Assignment exists but coupon code data is missing", 500);
-    }
-
-    await identityRepo.bindMagnetToIdentity(
-      fcUserId,
-      input.magnetId,
-      magnet.customer_id,
-    );
-
-    return buildResult({
-      fcUserId: existingAssignment.fc_user_id ?? fcUserId,
-      campaignKey: campaign.campaign_key,
-      campaignName: campaign.name,
-      code: couponCode.code,
-      couponCodeId: couponCode.coupon_code_id,
-      alreadyAssigned: true,
-    });
-  }
-
   const { code, couponCode } = await assignCouponToUser({
     customerId: magnet.customer_id,
     campaignKey: campaign.campaign_key,
@@ -141,12 +87,12 @@ export async function issueRealtimeSingleCoupon(
     reason: "winback",
   });
 
-  return buildResult({
+  return {
     fcUserId,
     campaignKey: campaign.campaign_key,
     campaignName: campaign.name,
     code,
     couponCodeId: couponCode.coupon_code_id,
     alreadyAssigned: false,
-  });
+  };
 }

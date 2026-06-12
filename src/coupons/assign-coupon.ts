@@ -6,7 +6,6 @@ import {
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
 import * as codeRepo from "../repositories/coupon-code.repo.js";
-import * as assignmentRepo from "../repositories/coupon-assignment.repo.js";
 import * as assignmentTxnRepo from "../repositories/coupon-assignment-transaction.repo.js";
 import { generateCouponCode } from "./generate-code.js";
 import type { AssignCouponToUserInput, FcCouponCode } from "./coupon.types.js";
@@ -28,25 +27,6 @@ export async function assignCouponToUser(
   );
   if (!campaign) {
     throw new Error(`Campaign not found: ${input.campaignKey}`);
-  }
-
-  const existingAssignment = input.fcUserId
-    ? await assignmentRepo.findAssignmentByUserAndCampaign(
-        input.customerId,
-        campaign.campaign_id,
-        input.fcUserId,
-      )
-    : input.magnetId
-      ? await assignmentRepo.findAssignmentByMagnetAndCampaign(
-          input.customerId,
-          campaign.campaign_id,
-          input.magnetId,
-        )
-      : null;
-
-  if (existingAssignment) {
-    const who = input.fcUserId ?? `magnet ${input.magnetId}`;
-    throw new Error(`${who} already has a coupon for campaign ${input.campaignKey}`);
   }
 
   const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(input.customerId, { activeOnly: true });

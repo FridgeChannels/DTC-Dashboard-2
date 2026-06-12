@@ -135,9 +135,7 @@ Content-Type: application/json
 | `magnet_id` | number | 是 | magnet 主键 |
 | `campaign_id` | string | 是 | 活动 ID，来自「查询可用券活动」返回的 `campaignId` |
 
-### 成功响应
-
-**新建** `201`：
+### 成功响应 `201`
 
 ```json
 {
@@ -150,7 +148,7 @@ Content-Type: application/json
 }
 ```
 
-**已发过** `200`：结构相同，`alreadyAssigned: true`，返回已有 `code`。
+每次请求都会生成一张新的唯一券码。`alreadyAssigned` 字段保留为 `false`（兼容旧客户端）。
 
 ### 前置条件
 
@@ -162,7 +160,7 @@ Content-Type: application/json
 
 1. 根据 `magnet_id` 自动解析 `fc_user_identity` 与 `fc_user_id`
 2. 校验 `campaign_id` 在该用户可用活动列表中
-3. 同一用户 / 同一 magnet 对同一 campaign 重复请求，返回已有 `code`
+3. 每次请求创建新券码并写入 Shopify（同一 magnet / 用户可重复申请同一 campaign）
 
 ### 常见错误
 

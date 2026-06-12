@@ -1840,7 +1840,7 @@ table.data td.tag {
 }
 
 .segment-config-table td { vertical-align: middle; }
-.segment-config-table tr.row-dirty td:first-child strong::after {
+.segment-config-table tr.row-dirty td:nth-child(2) strong::after {
   content: " *";
   color: var(--accent);
   font-weight: 500;
@@ -1861,6 +1861,13 @@ table.data td.tag {
 .table-default-radio input[type="radio"] {
   margin: 0;
   cursor: pointer;
+}
+.table-default-radio.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.table-default-radio.disabled input[type="radio"] {
+  cursor: not-allowed;
 }
 .table-default-label {
   font-size: 11px;

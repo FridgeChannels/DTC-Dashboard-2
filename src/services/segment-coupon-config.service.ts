@@ -14,6 +14,7 @@ export interface SegmentCouponConfigItem {
     maxDiscountRatio: number | null;
     defaultDiscountRatio: number | null;
     isActive: boolean;
+    isDefault: boolean;
     notes: string | null;
   };
 }
@@ -92,6 +93,7 @@ export async function listSegmentCouponConfig(
         maxDiscountRatio: cfg?.max_discount_ratio ?? null,
         defaultDiscountRatio: cfg?.default_discount_ratio ?? 0,
         isActive: cfg?.is_active ?? true,
+        isDefault: cfg?.is_default ?? false,
         notes: cfg?.notes ?? null,
       },
     };
@@ -125,4 +127,18 @@ export async function saveSegmentCouponConfig(
   }
 
   return listSegmentCouponConfig(input.customerId, discountType);
+}
+
+export async function setDefaultSegmentCouponConfig(
+  customerId: number,
+  segmentId: string,
+  discountType: SegmentDiscountType = "percentage",
+): Promise<SegmentCouponConfigListResponse> {
+  const segments = await klaviyoSegmentRepo.listKlaviyoSegmentsByCustomerId(customerId);
+  if (!segments.some((s) => s.segment_id === segmentId)) {
+    throw new Error(`Segment ${segmentId} does not belong to this brand. Refresh and try again.`);
+  }
+
+  await segmentConfigRepo.setDefaultSegmentCouponConfig(customerId, segmentId, discountType);
+  return listSegmentCouponConfig(customerId, discountType);
 }

@@ -23,6 +23,7 @@ import {
 import {
   handleGetSegmentCouponConfig,
   handlePutSegmentCouponConfig,
+  handlePostSegmentCouponConfigDefault,
 } from "./api/segment-coupon-config.js";
 import { handleGetAvailableCouponCampaigns } from "./api/available-coupon-campaigns.js";
 import {
@@ -183,6 +184,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "PUT" && url.pathname === "/api/segment-coupon-config") {
     await handlePutSegmentCouponConfig(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/segment-coupon-config/default") {
+    await handlePostSegmentCouponConfigDefault(req, res);
     return;
   }
 

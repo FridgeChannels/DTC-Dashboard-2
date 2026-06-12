@@ -5,6 +5,7 @@ import { AuthError } from "../lib/auth/errors.js";
 import {
   listSegmentCouponConfig,
   saveSegmentCouponConfig,
+  setDefaultSegmentCouponConfig,
   type SaveSegmentCouponConfigInput,
 } from "../services/segment-coupon-config.service.js";
 import type { SegmentDiscountType } from "../repositories/segment-coupon-config.repo.js";
@@ -63,5 +64,37 @@ export async function handlePutSegmentCouponConfig(
   } catch (err) {
     const status = err instanceof AuthError ? 401 : 400;
     errorJson(res, status, toErrorMessage(err, "Failed to save segment config"));
+  }
+}
+
+interface SetDefaultSegmentCouponConfigBody {
+  segmentId: string;
+  discountType?: SegmentDiscountType;
+}
+
+export async function handlePostSegmentCouponConfigDefault(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const body = await readJsonBody<SetDefaultSegmentCouponConfigBody>(req);
+    const customerId = await getRequestCustomerId(req, res);
+    const discountType = body.discountType ?? "percentage";
+    if (!VALID_DISCOUNT_TYPES.has(discountType)) {
+      throw new Error(`Invalid discountType: ${discountType}`);
+    }
+    if (!body.segmentId?.trim()) {
+      throw new Error("segmentId is required");
+    }
+
+    const data = await setDefaultSegmentCouponConfig(
+      customerId,
+      body.segmentId.trim(),
+      discountType,
+    );
+    json(res, 200, data);
+  } catch (err) {
+    const status = err instanceof AuthError ? 401 : 400;
+    errorJson(res, status, toErrorMessage(err, "Failed to set default segment"));
   }
 }

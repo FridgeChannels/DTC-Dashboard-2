@@ -18,6 +18,15 @@ const SegmentAPI = {
     if (!res.ok) throw new Error((await res.json()).error || "Failed to save");
     return res.json();
   },
+  async setDefault(segmentId, discountType = "percentage") {
+    const res = await fetch("/api/segment-coupon-config/default", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ segmentId, discountType }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || "Failed to set default");
+    return res.json();
+  },
 };
 
 function ratioToPercent(ratio) {
@@ -43,6 +52,7 @@ function apiToLocalRows(items) {
     minPercent: ratioToPercent(item.config.minDiscountRatio),
     maxPercent: ratioToPercent(item.config.maxDiscountRatio),
     isActive: item.config.isActive,
+    isDefault: item.config.isDefault,
     notes: item.config.notes ?? "",
     dirty: false,
   }));
@@ -70,7 +80,7 @@ function SegmentStatusBadge({ active, processing }) {
     : <span className="cfg-pill neutral"><span className="d" />Inactive</span>;
 }
 
-function SegmentConfigTable({ rows, onChange, disabled }) {
+function SegmentConfigTable({ rows, onChange, onSetDefault, settingDefaultId, disabled }) {
   if (!rows.length) {
     return <EmptyState title="No segments yet" note="Wait for segment data to sync before configuring." compact />;
   }
@@ -83,11 +93,20 @@ function SegmentConfigTable({ rows, onChange, disabled }) {
     );
   };
 
+  const hasSavedConfig = (row) => Boolean(row.configId);
+
+  const handleDefaultSelect = (row) => {
+    if (row.isDefault || disabled || settingDefaultId) return;
+    if (!hasSavedConfig(row)) return;
+    onSetDefault(row.segmentId);
+  };
+
   return (
     <div className="table-wrap">
       <table className="data segment-config-table">
         <thead>
           <tr>
+            <th className="table-default-col">Default</th>
             <th>Segment</th>
             <th>Status</th>
             <th>Min % off</th>
@@ -97,6 +116,21 @@ function SegmentConfigTable({ rows, onChange, disabled }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.segmentId} className={row.dirty ? "row-dirty" : ""}>
+              <td className="table-default-col">
+                <label
+                  className={`table-default-radio${!hasSavedConfig(row) ? " disabled" : ""}`}
+                  title={hasSavedConfig(row) ? "Set as default segment" : "Save discount config first"}
+                >
+                  <input
+                    type="radio"
+                    name="default-segment"
+                    checked={row.isDefault}
+                    disabled={disabled || settingDefaultId != null || !hasSavedConfig(row)}
+                    onChange={() => handleDefaultSelect(row)}
+                  />
+                  {row.isDefault && <span className="table-default-label">Default</span>}
+                </label>
+              </td>
               <td><strong>{row.name || "—"}</strong></td>
               <td><SegmentStatusBadge active={row.segmentActive} processing={row.isProcessing} /></td>
               <td>
@@ -137,6 +171,7 @@ function SegmentConfigPage() {
   const [rows, setRows] = useStateSC([]);
   const [loading, setLoading] = useStateSC(true);
   const [saving, setSaving] = useStateSC(false);
+  const [settingDefaultId, setSettingDefaultId] = useStateSC(null);
   const [error, setError] = useStateSC(null);
   const [saved, setSaved] = useStateSC(false);
 
@@ -196,6 +231,20 @@ function SegmentConfigPage() {
     }
   };
 
+  const handleSetDefault = async (segmentId) => {
+    setSettingDefaultId(segmentId);
+    setError(null);
+    setSaved(false);
+    try {
+      const data = await SegmentAPI.setDefault(segmentId, "percentage");
+      setRows(apiToLocalRows(data.items));
+    } catch (err) {
+      setError(err.message || "Failed to set default segment");
+    } finally {
+      setSettingDefaultId(null);
+    }
+  };
+
   if (loading) {
     return <PageLoading compact />;
   }
@@ -212,11 +261,22 @@ function SegmentConfigPage() {
           <I.info /> Configuration saved
         </div>
       )}
+      {settingDefaultId && (
+        <div className="cfg-alert" style={{ marginBottom: 16 }}>
+          <I.info /> Setting default segment…
+        </div>
+      )}
 
       <section className="module" style={{ marginTop: 0 }}>
         <ModuleHead title="Segment discount configuration" />
         <Panel>
-          <SegmentConfigTable rows={rows} onChange={setRows} disabled={saving} />
+          <SegmentConfigTable
+            rows={rows}
+            onChange={setRows}
+            onSetDefault={handleSetDefault}
+            settingDefaultId={settingDefaultId}
+            disabled={saving || settingDefaultId != null}
+          />
           <div className="dotted" />
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <span className="muted" style={{ fontSize: 12.5 }}>

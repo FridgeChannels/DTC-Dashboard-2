@@ -13,6 +13,7 @@ export interface SegmentCouponConfigRow {
   currency_code: string | null;
   priority: number | null;
   is_active: boolean | null;
+  is_default: boolean;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -83,6 +84,67 @@ export async function upsertSegmentCouponConfig(
   const { data, error } = await getSupabase()
     .from("fc_segment_coupon_config")
     .upsert(row, { onConflict: "customer_id,segment_id,discount_type" })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as SegmentCouponConfigRow;
+}
+
+export async function findDefaultSegmentConfig(
+  customerId: number,
+  discountType: SegmentDiscountType = "percentage",
+): Promise<SegmentCouponConfigRow | null> {
+  const { data, error } = await getSupabase()
+    .from("fc_segment_coupon_config")
+    .select("*")
+    .eq("customer_id", customerId)
+    .eq("discount_type", discountType)
+    .eq("is_default", true)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as SegmentCouponConfigRow | null;
+}
+
+export async function setDefaultSegmentCouponConfig(
+  customerId: number,
+  segmentId: string,
+  discountType: SegmentDiscountType = "percentage",
+): Promise<SegmentCouponConfigRow> {
+  const { data: existing, error: findError } = await getSupabase()
+    .from("fc_segment_coupon_config")
+    .select("config_id")
+    .eq("customer_id", customerId)
+    .eq("segment_id", segmentId)
+    .eq("discount_type", discountType)
+    .maybeSingle();
+
+  if (findError) throw findError;
+  if (!existing) {
+    throw new Error(
+      "Segment has no saved discount config yet. Enter min/max discount and save before setting as default.",
+    );
+  }
+
+  const now = new Date().toISOString();
+
+  const { error: clearError } = await getSupabase()
+    .from("fc_segment_coupon_config")
+    .update({ is_default: false, updated_at: now })
+    .eq("customer_id", customerId)
+    .eq("discount_type", discountType)
+    .eq("is_default", true);
+
+  if (clearError) throw clearError;
+
+  const { data, error } = await getSupabase()
+    .from("fc_segment_coupon_config")
+    .update({ is_default: true, updated_at: now })
+    .eq("customer_id", customerId)
+    .eq("segment_id", segmentId)
+    .eq("discount_type", discountType)
     .select("*")
     .single();
 

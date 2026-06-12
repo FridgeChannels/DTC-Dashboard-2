@@ -73,19 +73,12 @@ export async function upsertShopifyCustomerIdentity(input: {
   shopifyCustomerId: string;
   email?: string | null;
   customerId?: number | null;
-  magnetId?: number | null;
+  magnetId: number;
   customerAccessToken?: string | null;
   refreshToken?: string | null;
   tokenExpiresAt?: string | null;
 }): Promise<FcUserIdentityRow> {
-  const { data: existing, error: findError } = await getSupabase()
-    .from("fc_user_identity")
-    .select("fc_user_id")
-    .eq("shop_domain", input.shopDomain)
-    .eq("shopify_customer_id", input.shopifyCustomerId)
-    .maybeSingle();
-
-  if (findError) throw findError;
+  const existing = await findLatestIdentityByMagnetId(input.magnetId);
 
   const now = new Date().toISOString();
   const fcUserId = existing?.fc_user_id ?? input.fcUserId;
@@ -95,7 +88,7 @@ export async function upsertShopifyCustomerIdentity(input: {
     shopify_customer_id: input.shopifyCustomerId,
     email: input.email ?? null,
     customer_id: input.customerId ?? null,
-    magnet_id: input.magnetId ?? null,
+    magnet_id: input.magnetId,
     customer_access_token: input.customerAccessToken ?? null,
     refresh_token: input.refreshToken ?? null,
     token_expires_at: input.tokenExpiresAt ?? null,

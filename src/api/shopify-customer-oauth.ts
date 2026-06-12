@@ -367,6 +367,10 @@ export async function handleShopifyCustomerOAuthCallback(
       shopifyOrigin(),
     );
 
+    if (session.magnetId == null) {
+      throw new Error("magnet_id is required to bind fc_user_identity");
+    }
+
     const tokenExpiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
     const identity = await fcUserIdentityRepo.upsertShopifyCustomerIdentity({
       fcUserId: generateFcUserId(),

@@ -40,6 +40,14 @@ button { font-family: inherit; }
   padding: 24px 16px 40px;
 }
 
+.tap-page-minimal {
+  padding: 0;
+}
+
+.tap-page-minimal .tap-loading {
+  padding: 0;
+}
+
 .tap-card {
   width: min(420px, 100%);
   padding: 28px 24px;

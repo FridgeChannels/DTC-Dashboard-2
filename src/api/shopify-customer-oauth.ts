@@ -9,6 +9,7 @@ import {
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
 import * as fcUserIdentityRepo from "../repositories/fc-user-identity.repo.js";
 import * as magnetRepo from "../repositories/magnet.repo.js";
+import { resolveTapContextBySn } from "../services/tap-context.service.js";
 import {
   buildCustomerAuthorizationUrl,
   discoverCustomerAccountApi,
@@ -21,6 +22,10 @@ import {
   generateOAuthState,
 } from "../shopify/customer-account.api.js";
 import {
+  appendQueryToUrl,
+  safeConsumerRedirectUrl,
+} from "../lib/auth/safe-redirect.js";
+import {
   generateFcUserId,
   readConsumerSessionFcUserId,
   setConsumerSessionCookie,
@@ -31,9 +36,11 @@ const CUSTOMER_CALLBACK_PATH = "/shopify/customer/callback";
 
 interface CustomerOAuthSession {
   shopDomain: string;
+  magnetSn: string | null;
   tagId: string | null;
   magnetId: number | null;
   customerId: number | null;
+  redirectedFrom: string | null;
   nonce: string;
   codeVerifier: string;
   createdAt: number;
@@ -72,45 +79,106 @@ function shopifyOrigin(): string {
 }
 
 function buildTapRedirect(input: {
-  shop: string;
+  shop?: string;
+  magnetSn?: string | null;
   tagId?: string | null;
   magnetId?: number | null;
+  redirectedFrom?: string | null;
   login?: "success" | "error";
   error?: string;
 }): string {
-  const params = new URLSearchParams({ shop: input.shop });
+  const params = new URLSearchParams();
+  if (input.redirectedFrom) params.set("redirectedFrom", input.redirectedFrom);
   if (input.tagId) params.set("tag_id", input.tagId);
   if (input.magnetId != null) params.set("magnet_id", String(input.magnetId));
   if (input.login) params.set("login", input.login);
   if (input.error) params.set("error", input.error);
+
+  if (input.magnetSn) {
+    const base = `/tap/${encodeURIComponent(input.magnetSn)}`;
+    const query = params.toString();
+    return query ? `${base}?${query}` : base;
+  }
+
+  if (input.shop) params.set("shop", input.shop);
   return `/tap?${params.toString()}`;
 }
 
-async function resolveTenantContext(input: {
-  shop: string;
+function buildPostAuthRedirect(input: {
+  redirectedFrom?: string | null;
+  shop?: string;
+  magnetSn?: string | null;
+  tagId?: string | null;
+  magnetId?: number | null;
+  login: "success" | "error";
+  error?: string;
+}): string {
+  const safeReturn = safeConsumerRedirectUrl(input.redirectedFrom);
+  if (safeReturn) {
+    return appendQueryToUrl(safeReturn, {
+      shopify_login: input.login,
+      error: input.login === "error" ? input.error : undefined,
+    });
+  }
+
+  return buildTapRedirect(input);
+}
+
+async function resolveTapEntry(input: {
+  shop?: string;
+  magnetSn?: string | null;
   tagId?: string | null;
   magnetIdParam?: string | null;
 }): Promise<{
+  shop: string;
+  magnetSn: string | null;
   customerId: number | null;
   magnetId: number | null;
 }> {
+  if (input.magnetSn?.trim()) {
+    const context = await resolveTapContextBySn(input.magnetSn);
+    return {
+      shop: context.shopDomain,
+      magnetSn: context.sn,
+      customerId: context.customerId,
+      magnetId: context.magnetId,
+    };
+  }
+
+  const shop = normalizeShopDomain(input.shop ?? "");
+  if (!isValidShopDomain(shop)) {
+    throw new Error("sn or shop is required. Use /tap?sn=YOUR_MAGNET_SN");
+  }
+
   const magnetIdFromQuery = input.magnetIdParam ? Number(input.magnetIdParam) : NaN;
   if (Number.isFinite(magnetIdFromQuery) && magnetIdFromQuery > 0) {
     const magnet = await magnetRepo.getMagnetById(magnetIdFromQuery);
     if (magnet) {
-      return { customerId: magnet.customer_id, magnetId: magnet.id };
+      return {
+        shop,
+        magnetSn: magnet.sn,
+        customerId: magnet.customer_id,
+        magnetId: magnet.id,
+      };
     }
   }
 
   if (input.tagId && /^\d+$/.test(input.tagId)) {
     const magnet = await magnetRepo.getMagnetById(Number(input.tagId));
     if (magnet) {
-      return { customerId: magnet.customer_id, magnetId: magnet.id };
+      return {
+        shop,
+        magnetSn: magnet.sn,
+        customerId: magnet.customer_id,
+        magnetId: magnet.id,
+      };
     }
   }
 
-  const config = await shopifyConfigRepo.getShopifyConfigByShopDomain(input.shop);
+  const config = await shopifyConfigRepo.getShopifyConfigByShopDomain(shop);
   return {
+    shop,
+    magnetSn: null,
     customerId: config?.customer_id ?? null,
     magnetId: null,
   };
@@ -147,17 +215,19 @@ export async function handleShopifyCustomerOAuthStart(
   res: ServerResponse,
   url: URL,
 ): Promise<void> {
+  const magnetSn = url.searchParams.get("sn")?.trim().toUpperCase() || null;
+  const tagId = url.searchParams.get("tag_id")?.trim() || null;
+  const magnetIdParam = url.searchParams.get("magnet_id");
+  const redirectedFrom = url.searchParams.get("redirectedFrom")?.trim() || null;
+
   try {
-    const shop = normalizeShopDomain(url.searchParams.get("shop") ?? "");
-    const tagId = url.searchParams.get("tag_id")?.trim() || null;
-    const magnetIdParam = url.searchParams.get("magnet_id");
-
-    if (!isValidShopDomain(shop)) {
-      errorJson(res, 400, "Invalid shop domain. Use the format your-store.myshopify.com.");
-      return;
-    }
-
-    const tenant = await resolveTenantContext({ shop, tagId, magnetIdParam });
+    const entry = await resolveTapEntry({
+      shop: url.searchParams.get("shop") ?? "",
+      magnetSn,
+      tagId,
+      magnetIdParam,
+    });
+    const shop = entry.shop;
     const oauthApp = await getCustomerOAuthAppConfig(shop);
 
     const state = generateOAuthState();
@@ -167,9 +237,11 @@ export async function handleShopifyCustomerOAuthStart(
 
     customerOAuthSessions.set(state, {
       shopDomain: shop,
+      magnetSn: entry.magnetSn,
       tagId,
-      magnetId: tenant.magnetId,
-      customerId: tenant.customerId ?? oauthApp.customerId,
+      magnetId: entry.magnetId,
+      customerId: entry.customerId ?? oauthApp.customerId,
+      redirectedFrom,
       nonce,
       codeVerifier,
       createdAt: Date.now(),
@@ -189,13 +261,14 @@ export async function handleShopifyCustomerOAuthStart(
   } catch (err) {
     console.error("[shopify-customer-oauth] start failed", err);
     const shop = normalizeShopDomain(url.searchParams.get("shop") ?? "");
-    const tagId = url.searchParams.get("tag_id");
-    if (isValidShopDomain(shop)) {
+    if (magnetSn || isValidShopDomain(shop)) {
       redirect(
         res,
-        buildTapRedirect({
-          shop,
+        buildPostAuthRedirect({
+          shop: isValidShopDomain(shop) ? shop : undefined,
+          magnetSn,
           tagId,
+          redirectedFrom,
           login: "error",
           error: err instanceof Error ? err.message : "oauth_start_failed",
         }),
@@ -218,7 +291,7 @@ export async function handleShopifyCustomerOAuthCallback(
 
   try {
     if (!state) {
-      redirect(res, buildTapRedirect({ shop: "", login: "error", error: "missing_state" }));
+      redirect(res, buildPostAuthRedirect({ login: "error", error: "missing_state" }));
       return;
     }
 
@@ -228,10 +301,12 @@ export async function handleShopifyCustomerOAuthCallback(
     if (oauthError) {
       redirect(
         res,
-        buildTapRedirect({
-          shop: session?.shopDomain ?? "",
+        buildPostAuthRedirect({
+          shop: session?.magnetSn ? undefined : session?.shopDomain,
+          magnetSn: session?.magnetSn,
           tagId: session?.tagId,
           magnetId: session?.magnetId,
+          redirectedFrom: session?.redirectedFrom,
           login: "error",
           error: oauthError,
         }),
@@ -242,10 +317,12 @@ export async function handleShopifyCustomerOAuthCallback(
     if (!session || !code) {
       redirect(
         res,
-        buildTapRedirect({
-          shop: session?.shopDomain ?? "",
+        buildPostAuthRedirect({
+          shop: session?.magnetSn ? undefined : session?.shopDomain,
+          magnetSn: session?.magnetSn,
           tagId: session?.tagId,
           magnetId: session?.magnetId,
+          redirectedFrom: session?.redirectedFrom,
           login: "error",
           error: "invalid_callback",
         }),
@@ -256,10 +333,12 @@ export async function handleShopifyCustomerOAuthCallback(
     if (Date.now() - session.createdAt > OAUTH_SESSION_TTL_MS) {
       redirect(
         res,
-        buildTapRedirect({
-          shop: session.shopDomain,
+        buildPostAuthRedirect({
+          shop: session.magnetSn ? undefined : session.shopDomain,
+          magnetSn: session.magnetSn,
           tagId: session.tagId,
           magnetId: session.magnetId,
+          redirectedFrom: session.redirectedFrom,
           login: "error",
           error: "expired_state",
         }),
@@ -305,10 +384,12 @@ export async function handleShopifyCustomerOAuthCallback(
 
     redirect(
       res,
-      buildTapRedirect({
-        shop,
+      buildPostAuthRedirect({
+        shop: session.magnetSn ? undefined : shop,
+        magnetSn: session.magnetSn,
         tagId: session.tagId,
         magnetId: session.magnetId,
+        redirectedFrom: session.redirectedFrom,
         login: "success",
       }),
     );
@@ -316,10 +397,12 @@ export async function handleShopifyCustomerOAuthCallback(
     console.error("[shopify-customer-oauth] callback failed", err);
     redirect(
       res,
-      buildTapRedirect({
-        shop: session?.shopDomain ?? "",
+      buildPostAuthRedirect({
+        shop: session?.magnetSn ? undefined : session?.shopDomain,
+        magnetSn: session?.magnetSn,
         tagId: session?.tagId,
         magnetId: session?.magnetId,
+        redirectedFrom: session?.redirectedFrom,
         login: "error",
         error: err instanceof Error ? err.message : "oauth_callback_failed",
       }),

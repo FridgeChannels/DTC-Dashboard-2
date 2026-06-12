@@ -39,6 +39,7 @@ import {
   handleShopifyCustomerOAuthCallback,
   handleShopifyCustomerOAuthStart,
 } from "./api/shopify-customer-oauth.js";
+import { handleGetTapContext } from "./api/tap-context.js";
 
 function redirect(res: ServerResponse, location: string): void {
   res.writeHead(302, { Location: location });
@@ -107,6 +108,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/consumer/me") {
     await handleConsumerMe(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/tap/context") {
+    await handleGetTapContext(res, url.searchParams.get("sn"));
     return;
   }
 
@@ -213,7 +219,7 @@ const server = createServer(async (req, res) => {
 server.listen(env.port, () => {
   console.log(`FC service listening on http://localhost:${env.port}`);
   console.log(`  • Dashboard:  http://localhost:${env.port}/`);
-  console.log(`  • FC Tap:     http://localhost:${env.port}/tap?shop=your-store.myshopify.com&tag_id=abc123`);
+  console.log(`  • FC Tap:     http://localhost:${env.port}/tap/YOUR_MAGNET_SN`);
   console.log(`  • Health:     http://localhost:${env.port}/health`);
   console.log(
     `  • Webhook:    http://localhost:${env.port}/webhooks/shopify/{tenantKey}/orders-payment`,

@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.cursor
+.playwright-mcp
+*.log
+.DS_Store
+coverage
+tests
+docs
+supabase
+scripts
+agent-transcripts

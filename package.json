@@ -14,7 +14,7 @@
     "replay:order-payment": "tsx scripts/replay-order-payment.ts"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=25"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

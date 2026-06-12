@@ -25,12 +25,13 @@ export async function serveFcStatic(
   pathname: string,
   res: ServerResponse,
 ): Promise<boolean> {
-  if (pathname !== "/tap" && !pathname.startsWith("/fc/")) {
+  const tapSnMatch = /^\/tap\/([A-Za-z0-9]+)$/.exec(pathname);
+  if (pathname !== "/tap" && !tapSnMatch && !pathname.startsWith("/fc/")) {
     return false;
   }
 
   let relativePath = pathname;
-  if (pathname === "/tap") relativePath = "/index.html";
+  if (pathname === "/tap" || tapSnMatch) relativePath = "/index.html";
   else if (pathname.startsWith("/fc/")) relativePath = pathname.slice("/fc".length);
 
   const safePath = normalize(relativePath).replace(/^(\.\.[/\\])+/, "");

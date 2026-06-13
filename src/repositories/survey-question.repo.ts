@@ -49,6 +49,38 @@ export async function listActiveQuestionsByCampaignId(
   return (data ?? []) as QSurveyQuestionRow[];
 }
 
+export interface ActiveSurveyQuestionRef {
+  id: string;
+  display_order: number;
+}
+
+export async function listActiveQuestionRefsByCampaignId(
+  campaignId: string,
+): Promise<ActiveSurveyQuestionRef[]> {
+  const { data, error } = await getSupabase()
+    .from("q_survey_questions")
+    .select("id, display_order")
+    .eq("survey_campaign_id", campaignId)
+    .eq("status", "active")
+    .order("display_order", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as ActiveSurveyQuestionRef[];
+}
+
+export async function countActiveQuestionsByCampaignId(
+  campaignId: string,
+): Promise<number> {
+  const { count, error } = await getSupabase()
+    .from("q_survey_questions")
+    .select("id", { count: "exact", head: true })
+    .eq("survey_campaign_id", campaignId)
+    .eq("status", "active");
+
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function findQuestionById(
   questionId: string,
 ): Promise<QSurveyQuestionRow | null> {

@@ -78,11 +78,13 @@ function TapPage() {
   const [phase, setPhase] = useState("loading");
   const [error, setError] = useState(null);
   const [shopDomain, setShopDomain] = useState(shop);
+  const [shopifyAppHost, setShopifyAppHost] = useState(window.location.origin);
 
   const startOAuth = useCallback(
-    (resolvedShopDomain) => {
+    (resolvedShopDomain, appHostOverride) => {
+      const appHost = appHostOverride || shopifyAppHost;
       const postLoginRedirect = action === "unlink"
-        ? `${window.location.origin}${buildTapUnlinkUrl({ sn, magnetId, redirectedFrom })}`
+        ? `${appHost.replace(/\/$/, "")}${buildTapUnlinkUrl({ sn, magnetId, redirectedFrom })}`
         : redirectedFrom;
 
       window.location.replace(
@@ -96,11 +98,12 @@ function TapPage() {
         }),
       );
     },
-    [sn, shop, tagId, magnetId, redirectedFrom, action],
+    [sn, shop, tagId, magnetId, redirectedFrom, action, shopifyAppHost],
   );
 
   useEffect(() => {
     if (!redirectedFrom) return;
+    if (action === "unlink") return;
 
     if (loginStatus === "success") {
       const target = buildConsumerReturnUrl(redirectedFrom, "success");
@@ -116,7 +119,7 @@ function TapPage() {
       );
       if (target) window.location.replace(target);
     }
-  }, [loginStatus, loginError, redirectedFrom]);
+  }, [loginStatus, loginError, redirectedFrom, action]);
 
   useEffect(() => {
     if (!redirectedFrom) return;
@@ -138,8 +141,8 @@ function TapPage() {
   }, [unlinkStatus, unlinkError, redirectedFrom]);
 
   useEffect(() => {
-    if (loginStatus === "success" && redirectedFrom) return;
-    if (loginStatus === "error" && redirectedFrom) return;
+    if (loginStatus === "success" && redirectedFrom && action !== "unlink") return;
+    if (loginStatus === "error" && redirectedFrom && action !== "unlink") return;
     if (unlinkStatus === "success" && redirectedFrom) return;
     if (unlinkStatus === "error" && redirectedFrom) return;
 
@@ -158,6 +161,7 @@ function TapPage() {
         }
 
         let resolvedShop = shop;
+        let resolvedAppHost = shopifyAppHost;
 
         if (sn) {
           const contextRes = await fetch(`/api/tap/context?sn=${encodeURIComponent(sn)}`);
@@ -166,7 +170,11 @@ function TapPage() {
             throw new Error(contextData.error || "Magnet not found");
           }
           resolvedShop = contextData.shopDomain;
+          resolvedAppHost = contextData.shopifyAppHost || resolvedAppHost;
           if (!cancelled) setShopDomain(resolvedShop);
+          if (contextData.shopifyAppHost && !cancelled) {
+            setShopifyAppHost(contextData.shopifyAppHost);
+          }
         } else if (!shop) {
           throw new Error("Missing magnet SN");
         }
@@ -195,7 +203,7 @@ function TapPage() {
         }
 
         if (cancelled) return;
-        startOAuth(resolvedShop);
+        startOAuth(resolvedShop, resolvedAppHost);
       } catch (err) {
         if (!cancelled) {
           setError(err.message);

@@ -109,6 +109,7 @@ export async function unlinkShopifyCustomerIdentity(
     .update({
       shop_domain: null,
       shopify_customer_id: null,
+      klaviyo_profile_id: null,
       email: null,
       customer_access_token: null,
       refresh_token: null,

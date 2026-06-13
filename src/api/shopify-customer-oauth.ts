@@ -484,20 +484,44 @@ export async function handleShopifyCustomerUnlink(
     redirect(res, `${base}?${params.toString()}`);
   };
 
-  try {
-    if (!fcUserId) {
-      throw new Error("not_logged_in");
-    }
-
+  const resolveMagnetForUnlink = async () => {
     const magnetIdFromQuery = Number(magnetIdParam);
-    const magnet = magnetSnParam
+    return magnetSnParam
       ? await magnetRepo.getMagnetBySn(magnetSnParam)
       : Number.isFinite(magnetIdFromQuery) && magnetIdFromQuery > 0
         ? await magnetRepo.getMagnetById(magnetIdFromQuery)
         : null;
+  };
+
+  const buildCurrentUnlinkUrl = (magnetSn?: string | null): string => {
+    const origin = env.shopifyAppHost.replace(/\/$/, "");
+    const params = new URLSearchParams();
+    if (magnetSn) params.set("sn", magnetSn);
+    else if (magnetSnParam) params.set("sn", magnetSnParam);
+    else if (magnetIdParam) params.set("magnet_id", magnetIdParam);
+    if (redirectedFrom) params.set("redirectedFrom", redirectedFrom);
+    return `${origin}/auth/shopify/customer/unlink?${params.toString()}`;
+  };
+
+  const redirectToShopifyLoginThenUnlink = (magnetSn?: string | null): void => {
+    const params = new URLSearchParams();
+    if (magnetSn) params.set("sn", magnetSn);
+    else if (magnetSnParam) params.set("sn", magnetSnParam);
+    else if (magnetIdParam) params.set("magnet_id", magnetIdParam);
+    params.set("redirectedFrom", buildCurrentUnlinkUrl(magnetSn));
+    redirect(res, `/auth/shopify/customer/start?${params.toString()}`);
+  };
+
+  try {
+    const magnet = await resolveMagnetForUnlink();
 
     if (!magnet) {
       throw new Error(magnetSnParam ? "magnet_not_found" : "invalid_magnet_sn");
+    }
+
+    if (!fcUserId) {
+      redirectToShopifyLoginThenUnlink(magnet.sn);
+      return;
     }
 
     const identity = await fcUserIdentityRepo.findIdentityByFcUserId(fcUserId);

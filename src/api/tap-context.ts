@@ -1,4 +1,5 @@
 import type { ServerResponse } from "node:http";
+import { env } from "../config/env.js";
 import { errorJson, json } from "./http.js";
 import {
   resolveTapContextBySn,
@@ -21,6 +22,7 @@ export async function handleGetTapContext(
       magnetId: context.magnetId,
       customerId: context.customerId,
       shopDomain: context.shopDomain,
+      shopifyAppHost: env.shopifyAppHost,
     });
   } catch (err) {
     const status = err instanceof TapContextError ? err.statusCode : 500;

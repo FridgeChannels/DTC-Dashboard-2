@@ -26,6 +26,7 @@ import {
   safeConsumerRedirectUrl,
 } from "../lib/auth/safe-redirect.js";
 import {
+  clearConsumerSessionCookie,
   generateFcUserId,
   readConsumerSessionFcUserId,
   setConsumerSessionCookie,
@@ -441,5 +442,100 @@ export async function handleConsumerMe(
     });
   } catch (err) {
     errorJson(res, 500, err instanceof Error ? err.message : "Failed to load consumer session");
+  }
+}
+
+export async function handleShopifyCustomerUnlink(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+): Promise<void> {
+  const fcUserId = readConsumerSessionFcUserId(req);
+  const magnetSnParam = url.searchParams.get("sn")?.trim().toUpperCase() || null;
+  const magnetIdParam = url.searchParams.get("magnet_id");
+  const redirectedFrom = url.searchParams.get("redirectedFrom")?.trim() || null;
+
+  const redirectWithStatus = (input: {
+    magnetSn?: string | null;
+    magnetId?: number | null;
+    unlink: "success" | "error";
+    error?: string;
+  }) => {
+    const safeReturn = safeConsumerRedirectUrl(redirectedFrom);
+    if (safeReturn) {
+      redirect(
+        res,
+        appendQueryToUrl(safeReturn, {
+          shopify_unlink: input.unlink,
+          error: input.unlink === "error" ? input.error : undefined,
+        }),
+      );
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("shopify_unlink", input.unlink);
+    if (input.error) params.set("error", input.error);
+    if (input.magnetId != null) params.set("magnet_id", String(input.magnetId));
+
+    const base = input.magnetSn
+      ? `/tap/${encodeURIComponent(input.magnetSn)}`
+      : "/tap";
+    redirect(res, `${base}?${params.toString()}`);
+  };
+
+  try {
+    if (!fcUserId) {
+      throw new Error("not_logged_in");
+    }
+
+    const magnetIdFromQuery = Number(magnetIdParam);
+    const magnet = magnetSnParam
+      ? await magnetRepo.getMagnetBySn(magnetSnParam)
+      : Number.isFinite(magnetIdFromQuery) && magnetIdFromQuery > 0
+        ? await magnetRepo.getMagnetById(magnetIdFromQuery)
+        : null;
+
+    if (!magnet) {
+      throw new Error(magnetSnParam ? "magnet_not_found" : "invalid_magnet_sn");
+    }
+
+    const identity = await fcUserIdentityRepo.findIdentityByFcUserId(fcUserId);
+
+    if (!identity?.shopify_customer_id) {
+      throw new Error("shopify_binding_not_found");
+    }
+    if (identity.magnet_id !== magnet.id) {
+      throw new Error("magnet_binding_mismatch");
+    }
+
+    await fcUserIdentityRepo.unlinkShopifyCustomerIdentity(fcUserId);
+    clearConsumerSessionCookie(res);
+
+    redirectWithStatus({
+      magnetSn: magnet.sn,
+      magnetId: magnet.id,
+      unlink: "success",
+    });
+  } catch (err) {
+    clearConsumerSessionCookie(res);
+    const magnetId = Number(magnetIdParam);
+    let magnetSn: string | null = null;
+    if (magnetSnParam) {
+      magnetSn = magnetSnParam;
+    } else if (Number.isFinite(magnetId) && magnetId > 0) {
+      try {
+        magnetSn = (await magnetRepo.getMagnetById(magnetId))?.sn ?? null;
+      } catch {
+        magnetSn = null;
+      }
+    }
+
+    redirectWithStatus({
+      magnetSn,
+      magnetId: Number.isFinite(magnetId) && magnetId > 0 ? magnetId : null,
+      unlink: "error",
+      error: err instanceof Error ? err.message : "unlink_failed",
+    });
   }
 }

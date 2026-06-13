@@ -101,6 +101,30 @@ export async function findIdentityByFcUserId(
   return data as FcUserIdentityRow | null;
 }
 
+export async function unlinkShopifyCustomerIdentity(
+  fcUserId: string,
+): Promise<FcUserIdentityRow> {
+  const { data, error } = await getSupabase()
+    .from("fc_user_identity")
+    .update({
+      shop_domain: null,
+      shopify_customer_id: null,
+      email: null,
+      customer_access_token: null,
+      refresh_token: null,
+      token_expires_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("fc_user_id", fcUserId)
+    .select(
+      "fc_user_id, shopify_customer_id, klaviyo_profile_id, email, customer_id, magnet_id, shop_domain, customer_access_token, refresh_token, token_expires_at",
+    )
+    .single();
+
+  if (error) throw error;
+  return data as FcUserIdentityRow;
+}
+
 export async function upsertShopifyCustomerIdentity(input: {
   fcUserId: string;
   shopDomain: string;

@@ -58,6 +58,7 @@ import { serveStatic } from "./api/serve-static.js";
 import { serveFcStatic } from "./api/serve-fc-static.js";
 import {
   handleConsumerMe,
+  handleShopifyCustomerUnlink,
   handleShopifyCustomerOAuthCallback,
   handleShopifyCustomerOAuthStart,
 } from "./api/shopify-customer-oauth.js";
@@ -126,6 +127,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/shopify/customer/callback") {
     await handleShopifyCustomerOAuthCallback(res, url);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/auth/shopify/customer/unlink") {
+    await handleShopifyCustomerUnlink(req, res, url);
     return;
   }
 

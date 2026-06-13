@@ -23,6 +23,18 @@ function buildConsumerReturnUrl(redirectedFrom, login, error) {
   }
 }
 
+function buildConsumerUnlinkReturnUrl(redirectedFrom, unlink, error) {
+  try {
+    const target = new URL(redirectedFrom);
+    if (target.protocol !== "http:" && target.protocol !== "https:") return null;
+    target.searchParams.set("shopify_unlink", unlink);
+    if (error) target.searchParams.set("error", error);
+    return target.toString();
+  } catch {
+    return null;
+  }
+}
+
 function buildOAuthStartUrl({ sn, shop, shopDomain, tagId, magnetId, redirectedFrom }) {
   const q = new URLSearchParams();
   if (sn) q.set("sn", sn);
@@ -33,6 +45,23 @@ function buildOAuthStartUrl({ sn, shop, shopDomain, tagId, magnetId, redirectedF
   return `/auth/shopify/customer/start?${q.toString()}`;
 }
 
+function buildShopifyUnlinkUrl({ sn, magnetId, redirectedFrom }) {
+  const q = new URLSearchParams();
+  if (sn) q.set("sn", sn);
+  if (magnetId) q.set("magnet_id", magnetId);
+  if (redirectedFrom) q.set("redirectedFrom", redirectedFrom);
+  return `/auth/shopify/customer/unlink?${q.toString()}`;
+}
+
+function buildTapUnlinkUrl({ sn, magnetId, redirectedFrom }) {
+  const q = new URLSearchParams();
+  q.set("action", "unlink");
+  if (magnetId) q.set("magnet_id", magnetId);
+  if (redirectedFrom) q.set("redirectedFrom", redirectedFrom);
+  const base = sn ? `/tap/${encodeURIComponent(sn)}` : "/tap";
+  return `${base}?${q.toString()}`;
+}
+
 function TapPage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const sn = useMemo(() => parseTapSn(), []);
@@ -40,8 +69,11 @@ function TapPage() {
   const tagId = params.get("tag_id")?.trim() ?? "";
   const magnetId = params.get("magnet_id")?.trim() ?? "";
   const redirectedFrom = params.get("redirectedFrom")?.trim() ?? "";
+  const action = params.get("action")?.trim() ?? "";
   const loginStatus = params.get("login");
   const loginError = params.get("error");
+  const unlinkStatus = params.get("shopify_unlink");
+  const unlinkError = params.get("error");
 
   const [phase, setPhase] = useState("loading");
   const [error, setError] = useState(null);
@@ -49,6 +81,10 @@ function TapPage() {
 
   const startOAuth = useCallback(
     (resolvedShopDomain) => {
+      const postLoginRedirect = action === "unlink"
+        ? `${window.location.origin}${buildTapUnlinkUrl({ sn, magnetId, redirectedFrom })}`
+        : redirectedFrom;
+
       window.location.replace(
         buildOAuthStartUrl({
           sn,
@@ -56,11 +92,11 @@ function TapPage() {
           shopDomain: resolvedShopDomain,
           tagId,
           magnetId,
-          redirectedFrom,
+          redirectedFrom: postLoginRedirect,
         }),
       );
     },
-    [sn, shop, tagId, magnetId, redirectedFrom],
+    [sn, shop, tagId, magnetId, redirectedFrom, action],
   );
 
   useEffect(() => {
@@ -83,8 +119,29 @@ function TapPage() {
   }, [loginStatus, loginError, redirectedFrom]);
 
   useEffect(() => {
+    if (!redirectedFrom) return;
+
+    if (unlinkStatus === "success") {
+      const target = buildConsumerUnlinkReturnUrl(redirectedFrom, "success");
+      if (target) window.location.replace(target);
+      return;
+    }
+
+    if (unlinkStatus === "error" && unlinkError) {
+      const target = buildConsumerUnlinkReturnUrl(
+        redirectedFrom,
+        "error",
+        decodeURIComponent(unlinkError),
+      );
+      if (target) window.location.replace(target);
+    }
+  }, [unlinkStatus, unlinkError, redirectedFrom]);
+
+  useEffect(() => {
     if (loginStatus === "success" && redirectedFrom) return;
     if (loginStatus === "error" && redirectedFrom) return;
+    if (unlinkStatus === "success" && redirectedFrom) return;
+    if (unlinkStatus === "error" && redirectedFrom) return;
 
     let cancelled = false;
 
@@ -95,6 +152,9 @@ function TapPage() {
       try {
         if (loginStatus === "error") {
           throw new Error(decodeURIComponent(loginError || "Shopify sign-in failed"));
+        }
+        if (unlinkStatus === "error") {
+          throw new Error(decodeURIComponent(unlinkError || "Shopify unlink failed"));
         }
 
         let resolvedShop = shop;
@@ -113,6 +173,17 @@ function TapPage() {
 
         const meRes = await fetch("/api/consumer/me", { credentials: "include" });
         if (meRes.ok) {
+          if (action === "unlink") {
+            window.location.replace(
+              buildShopifyUnlinkUrl({
+                sn,
+                magnetId,
+                redirectedFrom,
+              }),
+            );
+            return;
+          }
+
           if (redirectedFrom) {
             const target = buildConsumerReturnUrl(redirectedFrom, "success");
             if (target) {
@@ -141,8 +212,11 @@ function TapPage() {
     sn,
     shop,
     redirectedFrom,
+    action,
     loginStatus,
     loginError,
+    unlinkStatus,
+    unlinkError,
     startOAuth,
   ]);
 

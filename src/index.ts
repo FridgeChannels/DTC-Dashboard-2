@@ -45,6 +45,8 @@ import {
   handleUpdateSurveyQuestion,
   handleCreateSurveyOption,
   handleUpdateSurveyOption,
+  handleGetSurveyCampaignDashboard,
+  handleGetSurveyCampaignOtherReview,
 } from "./api/survey-campaigns.js";
 import {
   handleAuthCallback,
@@ -270,6 +272,16 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "PUT" && url.pathname === "/api/survey-question-options") {
     await handleUpdateSurveyOption(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/survey-campaigns/dashboard") {
+    await handleGetSurveyCampaignDashboard(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/survey-campaigns/other-review") {
+    await handleGetSurveyCampaignOtherReview(req, res, url);
     return;
   }
 

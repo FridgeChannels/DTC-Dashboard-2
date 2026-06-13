@@ -20,6 +20,16 @@ import {
   type CreateSurveyOptionRequest,
   type UpdateSurveyOptionRequest,
 } from "../services/survey-campaign.service.js";
+import {
+  getSurveyCampaignDashboardForCustomer,
+  getSurveyCampaignOtherReviewForCustomer,
+} from "../services/survey-dashboard.service.js";
+
+function parseDashboardDateQuery(url: URL) {
+  const startAt = url.searchParams.get("start_at")?.trim() || null;
+  const endAt = url.searchParams.get("end_at")?.trim() || null;
+  return { startAt, endAt };
+}
 
 export async function handleListSurveyCampaigns(
   req: IncomingMessage,
@@ -322,5 +332,49 @@ export async function handleUpdateSurveyOption(
   } catch (err) {
     const status = err instanceof AuthError ? 401 : 400;
     errorJson(res, status, toErrorMessage(err, "Failed to update option"));
+  }
+}
+
+export async function handleGetSurveyCampaignDashboard(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+): Promise<void> {
+  try {
+    const campaignId = url.searchParams.get("campaign_id")?.trim();
+    if (!campaignId) throw new Error("campaign_id is required");
+
+    const customerId = await getRequestCustomerId(req, res);
+    const dashboard = await getSurveyCampaignDashboardForCustomer(
+      customerId,
+      campaignId,
+      parseDashboardDateQuery(url),
+    );
+    json(res, 200, { dashboard });
+  } catch (err) {
+    const status = err instanceof AuthError ? 401 : 400;
+    errorJson(res, status, toErrorMessage(err, "Failed to load survey dashboard"));
+  }
+}
+
+export async function handleGetSurveyCampaignOtherReview(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+): Promise<void> {
+  try {
+    const campaignId = url.searchParams.get("campaign_id")?.trim();
+    if (!campaignId) throw new Error("campaign_id is required");
+
+    const customerId = await getRequestCustomerId(req, res);
+    const review = await getSurveyCampaignOtherReviewForCustomer(
+      customerId,
+      campaignId,
+      parseDashboardDateQuery(url),
+    );
+    json(res, 200, review);
+  } catch (err) {
+    const status = err instanceof AuthError ? 401 : 400;
+    errorJson(res, status, toErrorMessage(err, "Failed to load Other review"));
   }
 }

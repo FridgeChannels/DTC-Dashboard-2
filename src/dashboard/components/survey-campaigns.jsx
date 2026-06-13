@@ -662,7 +662,7 @@ function formatAudience(campaign) {
   return `${campaign.segmentCount} segment(s)`;
 }
 
-function SurveyCampaignTable({ campaigns, onEdit }) {
+function SurveyCampaignTable({ campaigns, onEdit, onDashboard }) {
   if (!campaigns.length) {
     return (
       <EmptyState
@@ -695,6 +695,7 @@ function SurveyCampaignTable({ campaigns, onEdit }) {
               <td>{formatAudience(c)}</td>
               <td><SurveyStatusPill status={c.status} /></td>
               <td className="row-actions">
+                <button type="button" className="btn" onClick={() => onDashboard(c)}>Dashboard</button>
                 <button type="button" className="btn" onClick={() => onEdit(c)}>Manage</button>
               </td>
             </tr>
@@ -762,6 +763,13 @@ function SurveyCampaignsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openDashboard = (campaign) => {
+    setDetail(campaign);
+    setView("dashboard");
+    setError(null);
+    setNotice(null);
   };
 
   const backToList = () => {
@@ -839,21 +847,23 @@ function SurveyCampaignsPage() {
 
   return (
     <div className="brand-config survey-campaigns-page">
-      <ModuleHead
-        title="Survey Campaigns"
-        sub="Tap-to-Choice · brand-controlled preference surveys"
-        action={
-          view === "list" ? (
-            <button type="button" className="btn primary" onClick={openCreate}>
-              Create campaign
-            </button>
-          ) : (
-            <button type="button" className="btn" onClick={backToList}>
-              ← Back to list
-            </button>
-          )
-        }
-      />
+      {view !== "dashboard" && (
+        <ModuleHead
+          title="Survey Campaigns"
+          sub="Tap-to-Choice · brand-controlled preference surveys"
+          action={
+            view === "list" ? (
+              <button type="button" className="btn primary" onClick={openCreate}>
+                Create campaign
+              </button>
+            ) : (
+              <button type="button" className="btn" onClick={backToList}>
+                ← Back to list
+              </button>
+            )
+          }
+        />
+      )}
 
       {notice && (
         <div className="cfg-alert pos" style={{ marginBottom: 16 }}>
@@ -868,7 +878,11 @@ function SurveyCampaignsPage() {
 
       {view === "list" && (
         <Panel title="All campaigns" sub="Manage questionnaire activities for your brand">
-          <SurveyCampaignTable campaigns={campaigns} onEdit={openEdit} />
+          <SurveyCampaignTable
+            campaigns={campaigns}
+            onEdit={openEdit}
+            onDashboard={openDashboard}
+          />
         </Panel>
       )}
 
@@ -895,6 +909,9 @@ function SurveyCampaignsPage() {
             sub={`${formatGoal(detail.campaignGoal)} · ${detail.activeQuestionCount} question(s)`}
             action={
               <div className="row">
+                <button type="button" className="btn" disabled={busy} onClick={() => openDashboard(detail)}>
+                  Dashboard
+                </button>
                 {detail.status !== "active" && (
                   <button type="button" className="btn primary" disabled={busy} onClick={handlePublish}>
                     {busy ? "Publishing…" : "Publish"}
@@ -943,6 +960,14 @@ function SurveyCampaignsPage() {
             </Panel>
           </div>
         </>
+      )}
+
+      {view === "dashboard" && detail && (
+        <SurveyCampaignDashboardPage
+          campaign={detail}
+          onBack={backToList}
+          onManage={openEdit}
+        />
       )}
     </div>
   );

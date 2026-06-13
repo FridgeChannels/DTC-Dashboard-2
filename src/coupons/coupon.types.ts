@@ -41,6 +41,30 @@ export type RedemptionSource =
 /** Shopify 接入方式 */
 export type ShopifyAuthType = "oauth";
 
+/** Klaviyo 接入方式 */
+export type KlaviyoAuthType = "private_key" | "oauth";
+
+export interface CustomerKlaviyoConfig {
+  customer_id: number;
+  klaviyo_account_id: string | null;
+  auth_type: KlaviyoAuthType;
+  api_key_ref: string | null;
+  oauth_client_id: string | null;
+  oauth_client_secret_ref: string | null;
+  oauth_token_ref: string | null;
+  oauth_refresh_ref: string | null;
+  token_expires_at: string | null;
+  api_revision: string;
+  scopes: string | null;
+  shopify_domain: string | null;
+  webhook_secret_ref: string | null;
+  sync_enabled: boolean;
+  last_full_sync_at: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CustomerShopifyConfig {
   customer_id: number;
   shop_domain: string;

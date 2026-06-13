@@ -74,3 +74,19 @@ export function shopifyWebhookSecretRef(customerId: number): string {
 export function shopifyCustomerAccountClientSecretRef(customerId: number): string {
   return `SHOPIFY_CUSTOMER_ACCOUNT_CLIENT_SECRET_REF_${customerId}`;
 }
+
+export function klaviyoApiKeyRef(customerId: number): string {
+  return `KLAVIYO_API_KEY_REF_${customerId}`;
+}
+
+export function klaviyoOauthClientSecretRef(customerId: number): string {
+  return `KLAVIYO_OAUTH_CLIENT_SECRET_REF_${customerId}`;
+}
+
+export function klaviyoOauthTokenRef(customerId: number): string {
+  return `KLAVIYO_OAUTH_TOKEN_REF_${customerId}`;
+}
+
+export function klaviyoOauthRefreshRef(customerId: number): string {
+  return `KLAVIYO_OAUTH_REFRESH_REF_${customerId}`;
+}

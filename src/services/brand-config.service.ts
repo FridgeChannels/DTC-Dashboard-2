@@ -6,14 +6,20 @@ import {
   shopifyAccessTokenRef,
   shopifyWebhookSecretRef,
   shopifyCustomerAccountClientSecretRef,
+  klaviyoApiKeyRef,
+  klaviyoOauthClientSecretRef,
+  klaviyoOauthTokenRef,
 } from "../clients/secrets.client.js";
 import { fetchShopInfo } from "../shopify/shop.api.js";
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
+import * as klaviyoConfigRepo from "../repositories/customer-klaviyo-config.repo.js";
+import type { KlaviyoAuthType } from "../coupons/coupon.types.js";
 import * as couponSettingsRepo from "../repositories/customer-coupon-settings.repo.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
 import * as codeRepo from "../repositories/coupon-code.repo.js";
 import { getSupabase } from "../clients/supabase.client.js";
 import { env } from "../config/env.js";
+import { features } from "../config/features.js";
 import type { CouponModeId } from "../repositories/customer-coupon-settings.repo.js";
 
 export interface BrandConfigResponse {
@@ -60,6 +66,23 @@ export interface BrandConfigResponse {
     shopName?: string;
     lastCheckedAt?: string;
   } | null;
+  klaviyo: {
+    authType: KlaviyoAuthType;
+    klaviyoAccountId: string | null;
+    apiKeyRef: string;
+    apiRevision: string;
+    scopes: string;
+    syncEnabled: boolean;
+    isActive: boolean;
+    lastFullSyncAt: string | null;
+    hasApiKey: boolean;
+    oauthClientId: string | null;
+    hasOAuthClientSecret: boolean;
+    hasOAuthToken: boolean;
+    tokenExpiresAt: string | null;
+    oauthAppConfigured: boolean;
+    oauthCallbackUrl: string;
+  };
 }
 
 export interface SaveBrandConfigInput {
@@ -79,6 +102,17 @@ export interface SaveBrandConfigInput {
     defaultMode: CouponModeId;
     modes: Record<CouponModeId, { enabled: boolean }>;
   };
+  klaviyo?: {
+    klaviyoAccountId?: string | null;
+    authType?: KlaviyoAuthType;
+    apiKey?: string;
+    oauthClientId?: string | null;
+    oauthClientSecret?: string;
+    apiRevision?: string;
+    scopes?: string;
+    syncEnabled?: boolean;
+    isActive?: boolean;
+  };
 }
 
 function normalizeShopDomain(domain: string): string {
@@ -86,6 +120,77 @@ function normalizeShopDomain(domain: string): string {
     .trim()
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
+}
+
+async function resolveKlaviyoHasApiKey(
+  apiKeyRef: string | null | undefined,
+): Promise<boolean> {
+  if (!apiKeyRef) return false;
+  if (apiKeyRef.startsWith("KLAVIYO_")) {
+    return hasSecret(apiKeyRef);
+  }
+  return true;
+}
+
+async function resolveKlaviyoHasOAuthToken(
+  oauthTokenRef: string | null | undefined,
+): Promise<boolean> {
+  if (!oauthTokenRef) return false;
+  if (oauthTokenRef.startsWith("KLAVIYO_")) {
+    return hasSecret(oauthTokenRef);
+  }
+  return true;
+}
+
+function buildKlaviyoOAuthDefaults(customerId: number) {
+  const oauthCallbackUrl = `${env.shopifyAppHost.replace(/\/$/, "")}/api/klaviyo/oauth/callback`;
+  return {
+    authType: "private_key" as KlaviyoAuthType,
+    klaviyoAccountId: null,
+    apiKeyRef: klaviyoApiKeyRef(customerId),
+    apiRevision: "2026-04-15",
+    scopes: "profiles:read segments:read events:read metrics:read",
+    syncEnabled: true,
+    isActive: true,
+    lastFullSyncAt: null,
+    hasApiKey: false,
+    oauthClientId: null,
+    hasOAuthClientSecret: false,
+    hasOAuthToken: false,
+    tokenExpiresAt: null,
+    oauthAppConfigured: false,
+    oauthCallbackUrl,
+  };
+}
+
+function mapKlaviyoConfig(
+  klaviyoConfig: Awaited<ReturnType<typeof klaviyoConfigRepo.getKlaviyoConfigByCustomerId>>,
+  customerId: number,
+  hasApiKey: boolean,
+  hasOAuthClientSecret: boolean,
+  hasOAuthToken: boolean,
+) {
+  const defaults = buildKlaviyoOAuthDefaults(customerId);
+  if (!klaviyoConfig) return defaults;
+
+  const oauthClientId = klaviyoConfig.oauth_client_id;
+  return {
+    authType: klaviyoConfig.auth_type,
+    klaviyoAccountId: klaviyoConfig.klaviyo_account_id,
+    apiKeyRef: klaviyoConfig.api_key_ref ?? defaults.apiKeyRef,
+    apiRevision: klaviyoConfig.api_revision,
+    scopes: klaviyoConfig.scopes ?? defaults.scopes,
+    syncEnabled: klaviyoConfig.sync_enabled,
+    isActive: klaviyoConfig.is_active,
+    lastFullSyncAt: klaviyoConfig.last_full_sync_at,
+    hasApiKey,
+    oauthClientId,
+    hasOAuthClientSecret,
+    hasOAuthToken,
+    tokenExpiresAt: klaviyoConfig.token_expires_at,
+    oauthAppConfigured: Boolean(oauthClientId && hasOAuthClientSecret),
+    oauthCallbackUrl: defaults.oauthCallbackUrl,
+  };
 }
 
 async function getBrandName(customerId: number): Promise<string> {
@@ -100,9 +205,10 @@ async function getBrandName(customerId: number): Promise<string> {
 }
 
 export async function getBrandConfig(customerId: number): Promise<BrandConfigResponse> {
-  const [brandName, shopifyConfig, couponSettings, campaigns] = await Promise.all([
+  const [brandName, shopifyConfig, klaviyoConfig, couponSettings, campaigns] = await Promise.all([
     getBrandName(customerId),
     shopifyConfigRepo.getShopifyConfigByCustomerId(customerId),
+    klaviyoConfigRepo.getKlaviyoConfigByCustomerId(customerId),
     couponSettingsRepo.getCouponSettings(customerId),
     campaignRepo.listCampaignsByCustomerId(customerId),
   ]);
@@ -154,11 +260,27 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
       }
     : null;
 
+  const klaviyoHasApiKey = await resolveKlaviyoHasApiKey(klaviyoConfig?.api_key_ref);
+  const klaviyoHasOAuthClientSecret = await hasSecret(
+    klaviyoConfig?.oauth_client_secret_ref ?? klaviyoOauthClientSecretRef(customerId),
+  );
+  const klaviyoHasOAuthToken = await resolveKlaviyoHasOAuthToken(
+    klaviyoConfig?.oauth_token_ref ?? (klaviyoConfig ? klaviyoOauthTokenRef(customerId) : null),
+  );
+  const klaviyo = mapKlaviyoConfig(
+    klaviyoConfig,
+    customerId,
+    klaviyoHasApiKey,
+    klaviyoHasOAuthClientSecret,
+    klaviyoHasOAuthToken,
+  );
+
   return {
     customerId,
     brandName,
     webhookPublicBaseUrl: env.shopifyAppHost.replace(/\/$/, ""),
     shopify,
+    klaviyo,
     couponModes: { defaultMode, modes },
     campaigns: campaigns.map((c) => ({
       id: c.campaign_id,
@@ -260,6 +382,53 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
       scopes: s.scopes,
       apiVersion: s.apiVersion,
       status: s.status,
+    });
+  }
+
+  if (input.klaviyo) {
+    const k = input.klaviyo;
+    const apiKeyRef = klaviyoApiKeyRef(input.customerId);
+    const oauthClientSecretRef = klaviyoOauthClientSecretRef(input.customerId);
+    const existing = await klaviyoConfigRepo.getKlaviyoConfigByCustomerId(input.customerId);
+
+    if (k.apiKey?.trim()) {
+      await storeSecret(apiKeyRef, k.apiKey.trim());
+    } else if (
+      existing?.api_key_ref &&
+      !existing.api_key_ref.startsWith("KLAVIYO_") &&
+      !(await hasSecret(apiKeyRef))
+    ) {
+      await storeSecret(apiKeyRef, existing.api_key_ref);
+    }
+
+    if (k.oauthClientSecret?.trim()) {
+      await storeSecret(oauthClientSecretRef, k.oauthClientSecret.trim());
+    }
+
+    const shouldPersistApiKeyRef =
+      Boolean(k.apiKey?.trim()) ||
+      (await resolveKlaviyoHasApiKey(existing?.api_key_ref ?? apiKeyRef));
+    const shouldPersistOauthClientSecretRef =
+      Boolean(k.oauthClientSecret?.trim()) ||
+      (Boolean(k.oauthClientId) && (await hasSecret(oauthClientSecretRef))) ||
+      (await hasSecret(existing?.oauth_client_secret_ref ?? oauthClientSecretRef));
+
+    const authType =
+      features.klaviyoOAuthEnabled || k.authType !== "oauth"
+        ? (k.authType ?? existing?.auth_type ?? "private_key")
+        : (existing?.auth_type ?? "private_key");
+
+    await klaviyoConfigRepo.upsertKlaviyoConfig({
+      customerId: input.customerId,
+      ...(k.klaviyoAccountId !== undefined ? { klaviyoAccountId: k.klaviyoAccountId } : {}),
+      authType,
+      apiKeyRef: shouldPersistApiKeyRef ? apiKeyRef : null,
+      oauthClientId: k.oauthClientId ?? null,
+      oauthClientSecretRef: shouldPersistOauthClientSecretRef ? oauthClientSecretRef : null,
+      apiRevision: k.apiRevision,
+      scopes: k.scopes ?? null,
+      syncEnabled: k.syncEnabled,
+      isActive: k.isActive,
     });
   }
 

@@ -1,0 +1,123 @@
+import { getSupabase } from "../clients/supabase.client.js";
+import type {
+  QSurveyQuestionRow,
+  SurveyEntityStatus,
+  SurveyQuestionType,
+} from "../surveys/survey.types.js";
+
+export interface CreateSurveyQuestionInput {
+  surveyCampaignId: string;
+  questionText: string;
+  questionType?: SurveyQuestionType;
+  displayOrder?: number;
+  isRequired?: boolean;
+  allowSkip?: boolean;
+}
+
+export interface UpdateSurveyQuestionPatch {
+  questionText?: string;
+  displayOrder?: number;
+  isRequired?: boolean;
+  allowSkip?: boolean;
+  status?: SurveyEntityStatus;
+}
+
+export async function listQuestionsByCampaignId(
+  campaignId: string,
+): Promise<QSurveyQuestionRow[]> {
+  const { data, error } = await getSupabase()
+    .from("q_survey_questions")
+    .select("*")
+    .eq("survey_campaign_id", campaignId)
+    .order("display_order", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as QSurveyQuestionRow[];
+}
+
+export async function listActiveQuestionsByCampaignId(
+  campaignId: string,
+): Promise<QSurveyQuestionRow[]> {
+  const { data, error } = await getSupabase()
+    .from("q_survey_questions")
+    .select("*")
+    .eq("survey_campaign_id", campaignId)
+    .eq("status", "active")
+    .order("display_order", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as QSurveyQuestionRow[];
+}
+
+export async function findQuestionById(
+  questionId: string,
+): Promise<QSurveyQuestionRow | null> {
+  const { data, error } = await getSupabase()
+    .from("q_survey_questions")
+    .select("*")
+    .eq("id", questionId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as QSurveyQuestionRow | null;
+}
+
+export async function insertQuestion(
+  input: CreateSurveyQuestionInput,
+): Promise<QSurveyQuestionRow> {
+  const { data, error } = await getSupabase()
+    .from("q_survey_questions")
+    .insert({
+      survey_campaign_id: input.surveyCampaignId,
+      question_text: input.questionText,
+      question_type: input.questionType ?? "single_choice",
+      display_order: input.displayOrder ?? 0,
+      is_required: input.isRequired ?? false,
+      allow_skip: input.allowSkip ?? true,
+      status: "active",
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as QSurveyQuestionRow;
+}
+
+export async function updateQuestionById(
+  questionId: string,
+  patch: UpdateSurveyQuestionPatch,
+): Promise<QSurveyQuestionRow> {
+  const row: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (patch.questionText !== undefined) row.question_text = patch.questionText;
+  if (patch.displayOrder !== undefined) row.display_order = patch.displayOrder;
+  if (patch.isRequired !== undefined) row.is_required = patch.isRequired;
+  if (patch.allowSkip !== undefined) row.allow_skip = patch.allowSkip;
+  if (patch.status !== undefined) row.status = patch.status;
+
+  const { data, error } = await getSupabase()
+    .from("q_survey_questions")
+    .update(row)
+    .eq("id", questionId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as QSurveyQuestionRow;
+}
+
+export async function getNextQuestionDisplayOrder(
+  campaignId: string,
+): Promise<number> {
+  const { data, error } = await getSupabase()
+    .from("q_survey_questions")
+    .select("display_order")
+    .eq("survey_campaign_id", campaignId)
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? (data.display_order as number) + 1 : 1;
+}

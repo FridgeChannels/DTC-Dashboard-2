@@ -1433,6 +1433,18 @@ table.data td.tag {
   color: var(--ink-2);
   padding: 9px 0;
 }
+.cfg-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+  padding: 9px 0;
+  cursor: pointer;
+}
+.cfg-checkbox-row input {
+  margin: 0;
+}
 .cfg-copy-row {
   display: flex;
   align-items: center;
@@ -1506,6 +1518,57 @@ table.data td.tag {
   font-size: 11.5px;
   color: var(--ink-3);
   margin-top: 2px;
+}
+
+.cfg-klaviyo-scope-intro {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+.cfg-klaviyo-scope-intro strong {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.cfg-klaviyo-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.cfg-klaviyo-scope-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 14px 16px;
+}
+.cfg-klaviyo-scope-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.cfg-klaviyo-scope-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+.cfg-klaviyo-scope-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+.cfg-klaviyo-scope-desc {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
 }
 
 .cfg-toggle {
@@ -1615,7 +1678,8 @@ table.data td.tag {
   .page-nav { order: 10; width: 100%; }
   .page-nav button,
   .page-nav a { flex: 1; text-align: center; }
-  .cfg-scope-grid { grid-template-columns: 1fr; }
+  .cfg-scope-grid,
+  .cfg-klaviyo-scope-grid { grid-template-columns: 1fr; }
   .cfg-flow { flex-direction: column; align-items: stretch; }
   .cfg-flow-arrow { display: none; }
 }
@@ -1875,4 +1939,63 @@ table.data td.tag {
   color: var(--pos);
   letter-spacing: 0.02em;
   text-transform: uppercase;
+}
+
+/* Survey campaigns admin */
+.survey-campaigns-page .module { margin-top: 8px; }
+.survey-segment-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+.survey-segment-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.survey-checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.survey-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.survey-option-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+.survey-option-row.inactive {
+  opacity: 0.5;
+}
+.survey-option-order {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  min-width: 18px;
+}
+.survey-option-label { font-weight: 500; flex: 1; min-width: 120px; }
+.survey-add-option {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
 }

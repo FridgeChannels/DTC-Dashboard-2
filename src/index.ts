@@ -12,6 +12,10 @@ import {
   handleShopifyOAuthCallback,
   handleShopifyOAuthStart,
 } from "./api/shopify-oauth.js";
+import {
+  handleKlaviyoOAuthCallback,
+  handleKlaviyoOAuthStart,
+} from "./api/klaviyo-oauth.js";
 import { handleIssueRealtimeSingleCoupon } from "./api/coupons/realtime-single.js";
 import { handleLookupCoupon } from "./api/coupons/lookup.js";
 import {
@@ -25,6 +29,23 @@ import {
   handlePostSegmentCouponConfigDefault,
 } from "./api/segment-coupon-config.js";
 import { handleGetAvailableCouponCampaigns } from "./api/available-coupon-campaigns.js";
+import {
+  handleGetSurveyAvailability,
+  handleGetSurveyQuestions,
+  handlePostSurveyAnswers,
+} from "./api/tap-choice-surveys.js";
+import {
+  handleListSurveyCampaigns,
+  handleGetSurveyCampaignDetail,
+  handleListSurveyKlaviyoSegments,
+  handleCreateSurveyCampaign,
+  handleUpdateSurveyCampaign,
+  handlePublishSurveyCampaign,
+  handleCreateSurveyQuestion,
+  handleUpdateSurveyQuestion,
+  handleCreateSurveyOption,
+  handleUpdateSurveyOption,
+} from "./api/survey-campaigns.js";
 import {
   handleAuthCallback,
   handleAuthLogin,
@@ -138,6 +159,16 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/klaviyo/oauth/start") {
+    await handleKlaviyoOAuthStart(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/klaviyo/oauth/callback") {
+    await handleKlaviyoOAuthCallback(res, url);
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/coupons/realtime-single") {
     if (!requireApiKey(req, res)) return;
     await handleIssueRealtimeSingleCoupon(req, res);
@@ -183,6 +214,74 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/segment-coupon-config/default") {
     await handlePostSegmentCouponConfigDefault(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/survey-campaigns") {
+    await handleListSurveyCampaigns(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/survey-campaigns/detail") {
+    await handleGetSurveyCampaignDetail(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/survey-campaigns/klaviyo-segments") {
+    await handleListSurveyKlaviyoSegments(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/survey-campaigns") {
+    await handleCreateSurveyCampaign(req, res);
+    return;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/survey-campaigns") {
+    await handleUpdateSurveyCampaign(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/survey-campaigns/publish") {
+    await handlePublishSurveyCampaign(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/survey-questions") {
+    await handleCreateSurveyQuestion(req, res);
+    return;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/survey-questions") {
+    await handleUpdateSurveyQuestion(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/survey-question-options") {
+    await handleCreateSurveyOption(req, res);
+    return;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/survey-question-options") {
+    await handleUpdateSurveyOption(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/tap-choice/surveys/availability") {
+    if (!requireApiKey(req, res)) return;
+    await handleGetSurveyAvailability(res, url);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/tap-choice/surveys/questions") {
+    if (!requireApiKey(req, res)) return;
+    await handleGetSurveyQuestions(res, url);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/tap-choice/surveys/answers") {
+    if (!requireApiKey(req, res)) return;
+    await handlePostSurveyAnswers(req, res);
     return;
   }
 

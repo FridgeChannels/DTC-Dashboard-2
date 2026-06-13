@@ -3,6 +3,57 @@
 // ============================================================
 const { useState: useStateBC, useEffect: useEffectBC, useCallback: useCallbackBC } = React;
 
+const KLAVIYO_OAUTH_ENABLED = false;
+
+const KLAVIYO_API_SCOPES = [
+  {
+    id: "profiles:read",
+    title: "Read profiles",
+    desc: "Identify subscribers and link FridgeChannel users to Klaviyo profiles for coupon delivery and attribution.",
+  },
+  {
+    id: "segments:read",
+    title: "Read segments",
+    desc: "Load Klaviyo segments so FC can apply segment-based discount rules when selecting coupon campaigns.",
+  },
+  {
+    id: "events:read",
+    title: "Read events",
+    desc: "Access Placed Order and other events to cross-check coupon redemptions alongside Shopify orders.",
+  },
+  {
+    id: "metrics:read",
+    title: "Read metrics",
+    desc: "Sync metric metadata required for event ingestion and marketing workflow alignment.",
+  },
+];
+
+const KLAVIYO_DEFAULT_SCOPES = KLAVIYO_API_SCOPES.map((scope) => scope.id).join(" ");
+
+function KlaviyoScopeGuideCards() {
+  return (
+    <div className="cfg-field cfg-field-full">
+      <span className="cfg-label">Required API key permissions</span>
+      <p className="cfg-klaviyo-scope-intro">
+        In Klaviyo, go to <strong>Settings → API keys → Create Private API key</strong> and enable
+        the permissions below. FridgeChannel does not need write access for coupon operations.
+      </p>
+      <div className="cfg-klaviyo-scope-grid">
+        {KLAVIYO_API_SCOPES.map((scope) => (
+          <div key={scope.id} className="cfg-klaviyo-scope-card">
+            <div className="cfg-klaviyo-scope-card-head">
+              <span className="cfg-pill accent"><span className="d" />Required</span>
+              <code className="cfg-klaviyo-scope-id">{scope.id}</code>
+            </div>
+            <div className="cfg-klaviyo-scope-title">{scope.title}</div>
+            <p className="cfg-klaviyo-scope-desc">{scope.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const API = {
   async getConfig(customerId) {
     const q = customerId ? `?customerId=${customerId}` : "";
@@ -27,6 +78,12 @@ const API = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to start Shopify OAuth");
+    return data;
+  },
+  async startKlaviyoOAuth() {
+    const res = await fetch("/api/klaviyo/oauth/start", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to start Klaviyo OAuth");
     return data;
   },
   async createCampaign(payload) {
@@ -99,7 +156,49 @@ function apiToLocal(data) {
     shopifyAppClientSecret: "",
     shopifyCustomerAccountClientSecret: "",
     shopifyWebhookSigningSecret: "",
+    klaviyo: apiToLocalKlaviyo(data),
+    klaviyoApiKey: "",
+    klaviyoOauthClientSecret: "",
     campaigns: data.campaigns || [],
+  };
+}
+
+function apiToLocalKlaviyo(data) {
+  const oauthCallbackUrl = data.klaviyo?.oauthCallbackUrl
+    || `${(data.webhookPublicBaseUrl || window.location.origin).replace(/\/$/, "")}/api/klaviyo/oauth/callback`;
+  const klaviyo = data.klaviyo ?? {
+    authType: "private_key",
+    apiRevision: "2026-04-15",
+    scopes: "profiles:read segments:read events:read metrics:read",
+    syncEnabled: true,
+    isActive: true,
+    lastFullSyncAt: null,
+    hasApiKey: false,
+    oauthClientId: "",
+    hasOAuthClientSecret: false,
+    hasOAuthToken: false,
+    tokenExpiresAt: null,
+    oauthAppConfigured: false,
+    oauthCallbackUrl,
+  };
+
+  const authType =
+    !KLAVIYO_OAUTH_ENABLED && klaviyo.authType === "oauth" ? "private_key" : klaviyo.authType;
+
+  return {
+    authType,
+    oauthClientId: klaviyo.oauthClientId || "",
+    apiRevision: klaviyo.apiRevision || "2026-04-15",
+    scopes: klaviyo.scopes || "profiles:read segments:read events:read metrics:read",
+    syncEnabled: klaviyo.syncEnabled !== false,
+    isActive: klaviyo.isActive !== false,
+    lastFullSyncAt: klaviyo.lastFullSyncAt || null,
+    hasApiKey: klaviyo.hasApiKey,
+    hasOAuthClientSecret: klaviyo.hasOAuthClientSecret,
+    hasOAuthToken: klaviyo.hasOAuthToken,
+    tokenExpiresAt: klaviyo.tokenExpiresAt || null,
+    oauthAppConfigured: klaviyo.oauthAppConfigured,
+    oauthCallbackUrl: klaviyo.oauthCallbackUrl || oauthCallbackUrl,
   };
 }
 
@@ -136,6 +235,39 @@ function localToSavePayload(config) {
   }
 
   return payload;
+}
+
+function localToSaveKlaviyoPayload(config) {
+  const payload = {
+    customerId: config.customerId,
+    klaviyo: {
+      authType: config.klaviyo.authType,
+      oauthClientId: config.klaviyo.oauthClientId.trim() || null,
+      apiRevision: config.klaviyo.apiRevision,
+      scopes: KLAVIYO_DEFAULT_SCOPES,
+      syncEnabled: config.klaviyo.syncEnabled,
+      isActive: config.klaviyo.isActive,
+    },
+  };
+
+  if (config.klaviyoApiKey) {
+    payload.klaviyo.apiKey = config.klaviyoApiKey;
+  }
+  if (config.klaviyoOauthClientSecret) {
+    payload.klaviyo.oauthClientSecret = config.klaviyoOauthClientSecret;
+  }
+
+  return payload;
+}
+
+function serializeKlaviyoForCompare(klaviyo) {
+  return JSON.stringify({
+    authType: klaviyo.authType,
+    oauthClientId: klaviyo.oauthClientId,
+    apiRevision: klaviyo.apiRevision,
+    syncEnabled: klaviyo.syncEnabled,
+    isActive: klaviyo.isActive,
+  });
 }
 
 function serializeShopifyForCompare(shopify) {
@@ -578,6 +710,9 @@ function BrandConfigPage({ section = "shopify" }) {
   const [loading, setLoading] = useStateBC(true);
   const [saving, setSaving] = useStateBC(false);
   const [connecting, setConnecting] = useStateBC(false);
+  const [klaviyoConnecting, setKlaviyoConnecting] = useStateBC(false);
+  const [klaviyoConnectNotice, setKlaviyoConnectNotice] = useStateBC(null);
+  const [klaviyoSavedBaseline, setKlaviyoSavedBaseline] = useStateBC(null);
   const [shopifySavedBaseline, setShopifySavedBaseline] = useStateBC(null);
   const [error, setError] = useStateBC(null);
   const [oauthNotice, setOauthNotice] = useStateBC(null);
@@ -598,6 +733,7 @@ function BrandConfigPage({ section = "shopify" }) {
       const local = apiToLocal(data);
       setConfig(local);
       setShopifySavedBaseline(serializeShopifyForCompare(local.shopify));
+      setKlaviyoSavedBaseline(serializeKlaviyoForCompare(local.klaviyo));
     } catch (err) {
       setError(err.message);
       setConfig(apiToLocal({ ...window.BRAND_CONFIG_DEFAULTS, customerId: 1 }));
@@ -616,23 +752,40 @@ function BrandConfigPage({ section = "shopify" }) {
 
   useEffectBC(() => {
     const params = new URLSearchParams(window.location.search);
-    const status = params.get("shopify_oauth");
-    if (!status) return;
+    const shopifyStatus = params.get("shopify_oauth");
+    const klaviyoStatus = params.get("klaviyo_oauth");
 
-    const messages = {
-      success: { tone: "pos", text: "Shopify authorized. Access token saved to the secret store." },
-      failed: { tone: "warn", text: "Shopify authorization failed. Check Client ID, Secret, and callback URL." },
-      missing_app_config: { tone: "warn", text: "OAuth setup incomplete. Fill in Shop Domain, Client ID, and Client Secret before connecting." },
-      invalid_shop: { tone: "warn", text: "Invalid shop domain. Use the format your-store.myshopify.com." },
-      invalid_callback: { tone: "warn", text: "Invalid OAuth callback. Start Connect Shopify again." },
-      invalid_state: { tone: "warn", text: "OAuth state validation failed. Start Connect Shopify again." },
-      invalid_hmac: { tone: "warn", text: "HMAC validation failed. Confirm the Client Secret is correct." },
-    };
-    setOauthNotice(messages[status] || { tone: "warn", text: `OAuth error: ${status}` });
+    if (shopifyStatus) {
+      const messages = {
+        success: { tone: "pos", text: "Shopify authorized. Access token saved to the secret store." },
+        failed: { tone: "warn", text: "Shopify authorization failed. Check Client ID, Secret, and callback URL." },
+        missing_app_config: { tone: "warn", text: "OAuth setup incomplete. Fill in Shop Domain, Client ID, and Client Secret before connecting." },
+        invalid_shop: { tone: "warn", text: "Invalid shop domain. Use the format your-store.myshopify.com." },
+        invalid_callback: { tone: "warn", text: "Invalid OAuth callback. Start Connect Shopify again." },
+        invalid_state: { tone: "warn", text: "OAuth state validation failed. Start Connect Shopify again." },
+        invalid_hmac: { tone: "warn", text: "HMAC validation failed. Confirm the Client Secret is correct." },
+      };
+      setOauthNotice(messages[shopifyStatus] || { tone: "warn", text: `OAuth error: ${shopifyStatus}` });
+      params.delete("shopify_oauth");
+    }
 
-    params.delete("shopify_oauth");
-    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
-    window.history.replaceState({}, "", next);
+    if (klaviyoStatus) {
+      const messages = {
+        success: { tone: "pos", text: "Klaviyo authorized. OAuth tokens saved to the secret store." },
+        failed: { tone: "warn", text: "Klaviyo authorization failed. Check OAuth app credentials and callback URL." },
+        disabled: { tone: "warn", text: "Klaviyo OAuth is temporarily disabled." },
+        denied: { tone: "warn", text: "Klaviyo authorization was denied. Click Connect Klaviyo to try again." },
+        invalid_callback: { tone: "warn", text: "Invalid Klaviyo OAuth callback. Start Connect Klaviyo again." },
+        invalid_state: { tone: "warn", text: "Klaviyo OAuth state validation failed. Start Connect Klaviyo again." },
+      };
+      setOauthNotice(messages[klaviyoStatus] || { tone: "warn", text: `Klaviyo OAuth error: ${klaviyoStatus}` });
+      params.delete("klaviyo_oauth");
+    }
+
+    if (shopifyStatus || klaviyoStatus) {
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+      window.history.replaceState({}, "", next);
+    }
   }, []);
 
   const patch = (fn) => {
@@ -641,6 +794,10 @@ function BrandConfigPage({ section = "shopify" }) {
 
   const updateShopify = (key, value) => {
     patch((prev) => ({ ...prev, shopify: { ...prev.shopify, [key]: value } }));
+  };
+
+  const updateKlaviyo = (key, value) => {
+    patch((prev) => ({ ...prev, klaviyo: { ...prev.klaviyo, [key]: value } }));
   };
 
   const hasUnsavedShopifyFormChanges = () => {
@@ -670,6 +827,71 @@ function BrandConfigPage({ section = "shopify" }) {
       return "Invalid Shop Domain format. Use brand-name.myshopify.com.";
     }
     return null;
+  };
+
+  const handleSaveKlaviyoConfig = async () => {
+    setError(null);
+    setOauthNotice(null);
+    setSaving(true);
+    try {
+      const data = await API.saveConfig(localToSaveKlaviyoPayload(config));
+      const local = {
+        ...apiToLocal(data),
+        klaviyoApiKey: "",
+        klaviyoOauthClientSecret: "",
+      };
+      setConfig(local);
+      setKlaviyoSavedBaseline(serializeKlaviyoForCompare(local.klaviyo));
+      setOauthNotice({ tone: "pos", text: "Klaviyo configuration saved." });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConnectKlaviyo = async () => {
+    setError(null);
+    setOauthNotice(null);
+    setKlaviyoConnectNotice(null);
+
+    if (!config?.klaviyo) {
+      setKlaviyoConnectNotice({ tone: "warn", text: "Configuration not loaded." });
+      return;
+    }
+    if (config.klaviyo.authType !== "oauth") {
+      setKlaviyoConnectNotice({ tone: "warn", text: "Set Auth type to OAuth first." });
+      return;
+    }
+    if (!config.klaviyo.oauthClientId.trim()) {
+      setKlaviyoConnectNotice({ tone: "warn", text: "Save OAuth Client ID before connecting." });
+      return;
+    }
+    if (!config.klaviyo.hasOAuthClientSecret && !config.klaviyoOauthClientSecret?.trim()) {
+      setKlaviyoConnectNotice({ tone: "warn", text: "Save OAuth Client Secret before connecting." });
+      return;
+    }
+
+    setKlaviyoConnecting(true);
+    try {
+      const data = await API.saveConfig(localToSaveKlaviyoPayload(config));
+      const local = {
+        ...apiToLocal(data),
+        klaviyoApiKey: "",
+        klaviyoOauthClientSecret: "",
+      };
+      setConfig(local);
+      setKlaviyoSavedBaseline(serializeKlaviyoForCompare(local.klaviyo));
+
+      const result = await API.startKlaviyoOAuth();
+      if (!result?.authorizeUrl) {
+        throw new Error("OAuth start did not return an authorize URL.");
+      }
+      window.location.assign(result.authorizeUrl);
+    } catch (err) {
+      setKlaviyoConnectNotice({ tone: "warn", text: err.message });
+      setKlaviyoConnecting(false);
+    }
   };
 
   const handleSaveShopifyConfig = async () => {
@@ -860,6 +1082,8 @@ function BrandConfigPage({ section = "shopify" }) {
   }
 
   const shopify = config.shopify;
+  const klaviyo = config.klaviyo;
+  const isKlaviyoOAuth = KLAVIYO_OAUTH_ENABLED && klaviyo.authType === "oauth";
   const shopifyReady = Boolean(shopify?.hasAccessToken && shopify?.shopDomain);
   const webhookPaymentUrl = config.shopify?.webhookTenantKey
     ? `${config.webhookPublicBaseUrl}/webhooks/shopify/${config.shopify.webhookTenantKey}/orders-payment`
@@ -1056,6 +1280,188 @@ function BrandConfigPage({ section = "shopify" }) {
               className="btn primary"
               disabled={saving || connecting}
               onClick={handleSaveShopifyConfig}
+            >
+              {saving ? "Saving…" : "Save configuration"}
+            </button>
+          </div>
+        </Panel>
+      </section>
+      )}
+
+      {section === "klaviyo" && (
+      <section className="module" style={{ marginTop: 0 }}>
+        <ModuleHead title="Klaviyo Config" />
+
+        <Panel title={isKlaviyoOAuth ? "Klaviyo OAuth" : "API credentials"}>
+          {isKlaviyoOAuth && klaviyo.hasOAuthToken && (
+            <div className="cfg-alert pos" style={{ marginBottom: 16 }}>
+              <span className="cfg-pill pos"><span className="d" />Authorized</span>
+              {klaviyo.tokenExpiresAt && (
+                <span className="mono muted">
+                  Token expires: {new Date(klaviyo.tokenExpiresAt).toLocaleString()}
+                </span>
+              )}
+            </div>
+          )}
+          {!isKlaviyoOAuth && klaviyo.hasApiKey && (
+            <div className="cfg-alert pos" style={{ marginBottom: 16 }}>
+              <span className="cfg-pill pos"><span className="d" />Configured</span>
+              {klaviyo.lastFullSyncAt && (
+                <span className="mono muted">
+                  Last sync: {new Date(klaviyo.lastFullSyncAt).toLocaleString()}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="cfg-form grid grid-2">
+            <ConfigField label="Auth type">
+              <select
+                className="cfg-input"
+                value={klaviyo.authType}
+                onChange={(e) => updateKlaviyo("authType", e.target.value)}
+              >
+                <option value="private_key">Private API Key</option>
+                <option value="oauth" disabled={!KLAVIYO_OAUTH_ENABLED}>
+                  OAuth{!KLAVIYO_OAUTH_ENABLED ? " (coming soon)" : ""}
+                </option>
+              </select>
+            </ConfigField>
+            {isKlaviyoOAuth && (
+              <>
+                <ConfigField label="OAuth Client ID" hint="From Klaviyo → Manage Apps" mono fullRow>
+                  <input
+                    className="cfg-input mono"
+                    value={klaviyo.oauthClientId}
+                    onChange={(e) => updateKlaviyo("oauthClientId", e.target.value)}
+                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  />
+                </ConfigField>
+                <ConfigField
+                  label="OAuth Client Secret"
+                  hint={klaviyo.hasOAuthClientSecret ? "Configured · leave blank to keep current value" : "From Klaviyo → Manage Apps"}
+                  mono
+                  fullRow
+                >
+                  <input
+                    className="cfg-input mono"
+                    type="password"
+                    value={config.klaviyoOauthClientSecret}
+                    onChange={(e) => patch((prev) => ({ ...prev, klaviyoOauthClientSecret: e.target.value }))}
+                    placeholder={klaviyo.hasOAuthClientSecret ? "•••••••• (configured)" : "Client secret"}
+                    autoComplete="off"
+                  />
+                </ConfigField>
+              </>
+            )}
+            {!isKlaviyoOAuth && (
+              <ConfigField
+                label="Private API Key"
+                hint={klaviyo.hasApiKey ? "Configured · leave blank to keep current value" : "From Klaviyo → Settings → API keys"}
+                mono
+                fullRow
+              >
+                <input
+                  className="cfg-input mono"
+                  type="password"
+                  value={config.klaviyoApiKey}
+                  onChange={(e) => patch((prev) => ({ ...prev, klaviyoApiKey: e.target.value }))}
+                  placeholder={klaviyo.hasApiKey ? "•••••••• (configured)" : "pk_xxxxxxxx"}
+                  autoComplete="off"
+                />
+              </ConfigField>
+            )}
+            <ConfigField label="API revision" mono>
+              <input
+                className="cfg-input mono"
+                value={klaviyo.apiRevision}
+                onChange={(e) => updateKlaviyo("apiRevision", e.target.value)}
+                placeholder="2026-04-15"
+              />
+            </ConfigField>
+            {!isKlaviyoOAuth && <KlaviyoScopeGuideCards />}
+            {isKlaviyoOAuth && (
+              <ConfigField
+                label="Scopes"
+                hint="Space-separated scopes used in OAuth authorization"
+                mono
+                fullRow
+              >
+                <input
+                  className="cfg-input mono"
+                  value={klaviyo.scopes}
+                  onChange={(e) => updateKlaviyo("scopes", e.target.value)}
+                  placeholder={KLAVIYO_DEFAULT_SCOPES}
+                />
+              </ConfigField>
+            )}
+            {isKlaviyoOAuth && (
+              <ConfigField label="OAuth callback URL" hint="Add this URL to your Klaviyo app redirect allowlist" mono fullRow>
+                <div className="cfg-copy-row">
+                  <input
+                    className="cfg-input mono cfg-copy-text"
+                    type="text"
+                    readOnly
+                    value={klaviyo.oauthCallbackUrl}
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <CopyTextButton text={klaviyo.oauthCallbackUrl} />
+                </div>
+              </ConfigField>
+            )}
+          </div>
+
+          {isKlaviyoOAuth && (
+            <>
+              {klaviyoConnectNotice && (
+                <div className={`cfg-alert ${klaviyoConnectNotice.tone}`} style={{ marginTop: 14 }}>
+                  <I.info /> {klaviyoConnectNotice.text}
+                </div>
+              )}
+              <div className="row cfg-shopify-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={saving || klaviyoConnecting}
+                  onClick={handleConnectKlaviyo}
+                >
+                  {klaviyoConnecting ? "Redirecting…" : "Connect Klaviyo"}
+                </button>
+              </div>
+            </>
+          )}
+        </Panel>
+
+        <Panel title="Integration settings">
+          <div className="cfg-form grid grid-2">
+            <ConfigField label="Sync enabled">
+              <label className="cfg-checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={klaviyo.syncEnabled}
+                  onChange={(e) => updateKlaviyo("syncEnabled", e.target.checked)}
+                />
+                <span>Enable Klaviyo data sync</span>
+              </label>
+            </ConfigField>
+            <ConfigField label="Status">
+              <label className="cfg-checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={klaviyo.isActive}
+                  onChange={(e) => updateKlaviyo("isActive", e.target.checked)}
+                />
+                <span>Active</span>
+              </label>
+            </ConfigField>
+          </div>
+
+          <div className="row cfg-shopify-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={saving}
+              onClick={handleSaveKlaviyoConfig}
             >
               {saving ? "Saving…" : "Save configuration"}
             </button>

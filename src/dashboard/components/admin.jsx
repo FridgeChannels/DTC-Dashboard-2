@@ -5,6 +5,7 @@ const { useState, useEffect } = React;
 
 const BRAND_CONFIG_SECTIONS = [
   { id: "shopify", label: "Shopify Config" },
+  { id: "klaviyo", label: "Klaviyo Config" },
   { id: "campaigns", label: "Campaigns" },
 ];
 
@@ -13,10 +14,20 @@ const SEGMENT_CONFIG_SECTION = {
   label: "Segment Config",
 };
 
-const ALL_SECTIONS = [...BRAND_CONFIG_SECTIONS, SEGMENT_CONFIG_SECTION];
+const SURVEY_CAMPAIGNS_SECTION = {
+  id: "survey-campaigns",
+  label: "Survey Campaigns",
+};
+
+const ALL_SECTIONS = [
+  ...BRAND_CONFIG_SECTIONS,
+  SEGMENT_CONFIG_SECTION,
+  SURVEY_CAMPAIGNS_SECTION,
+];
 
 function parseSection() {
   if (window.location.pathname === "/segment-config") return SEGMENT_CONFIG_SECTION.id;
+  if (window.location.pathname === "/survey-campaigns") return SURVEY_CAMPAIGNS_SECTION.id;
   const params = new URLSearchParams(window.location.search);
   const fromQuery = params.get("section");
   if (fromQuery === "coupon-modes") return "shopify";
@@ -56,6 +67,14 @@ function AdminSidebar({ section, onSectionChange, currentUser, onLogout }) {
           onClick={() => onSectionChange(SEGMENT_CONFIG_SECTION.id)}
         >
           <span className="admin-nav-label">{SEGMENT_CONFIG_SECTION.label}</span>
+        </button>
+        <div className="admin-nav-group-label">Survey</div>
+        <button
+          type="button"
+          className={`admin-nav-item ${section === SURVEY_CAMPAIGNS_SECTION.id ? "active" : ""}`}
+          onClick={() => onSectionChange(SURVEY_CAMPAIGNS_SECTION.id)}
+        >
+          <span className="admin-nav-label">{SURVEY_CAMPAIGNS_SECTION.label}</span>
         </button>
       </nav>
 
@@ -110,6 +129,10 @@ function AdminApp() {
       window.history.replaceState({}, "", "/segment-config");
       return;
     }
+    if (nextSection === SURVEY_CAMPAIGNS_SECTION.id) {
+      window.history.replaceState({}, "", "/survey-campaigns");
+      return;
+    }
     const params = new URLSearchParams(window.location.search);
     params.set("section", nextSection);
     const qs = params.toString();
@@ -143,7 +166,9 @@ function AdminApp() {
         <main className="admin-content">
           {section === SEGMENT_CONFIG_SECTION.id
             ? <SegmentConfigPage />
-            : <BrandConfigPage section={section} />}
+            : section === SURVEY_CAMPAIGNS_SECTION.id
+              ? <SurveyCampaignsPage />
+              : <BrandConfigPage section={section} />}
         </main>
       </div>
     </div>

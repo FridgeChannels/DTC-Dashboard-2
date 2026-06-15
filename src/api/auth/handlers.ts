@@ -10,6 +10,7 @@ import {
   getAuthUserEmailStatus,
   isObfuscatedExistingAuthUser,
 } from "../../lib/auth/auth-user-lookup.js";
+import { passwordComplexityError } from "../../lib/auth/password.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -89,8 +90,9 @@ export async function handleAuthRegister(
       errorJson(res, 400, "Email and password are required");
       return;
     }
-    if (password.length < 6) {
-      errorJson(res, 400, "Password must be at least 6 characters");
+    const passwordError = passwordComplexityError(password);
+    if (passwordError) {
+      errorJson(res, 400, passwordError);
       return;
     }
 

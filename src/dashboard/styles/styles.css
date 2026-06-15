@@ -1729,6 +1729,7 @@ table.data td.tag {
   background: var(--line);
 }
 .auth-google { width: 100%; justify-content: center; }
+.auth-google-icon { flex-shrink: 0; display: block; }
 .auth-switch { margin-top: 16px; text-align: center; }
 .auth-verify-panel {
   margin-bottom: 16px;

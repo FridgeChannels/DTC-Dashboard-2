@@ -277,15 +277,17 @@ const EMAIL_OTP_TYPES = new Set([
 async function finishAuthCallback(
   req: IncomingMessage,
   res: ServerResponse,
+  url?: URL,
 ): Promise<void> {
   const current = await getCurrentCustomer(req, res);
   if (!current) {
     await sleep(500);
   }
 
+  const queryRedirect = url ? safeRedirectPath(url.searchParams.get("next")) : null;
   const cookieRedirect = safeRedirectPath(readCookie(req, "post_login_redirect"));
   clearPostLoginRedirectCookie(res);
-  redirect(res, cookieRedirect ?? "/");
+  redirect(res, queryRedirect ?? cookieRedirect ?? "/");
 }
 
 export async function handleAuthCallback(
@@ -308,7 +310,7 @@ export async function handleAuthCallback(
         redirect(res, `/login?error=${encodeURIComponent(error.message)}`);
         return;
       }
-      await finishAuthCallback(req, res);
+      await finishAuthCallback(req, res, url);
       return;
     }
 
@@ -318,7 +320,7 @@ export async function handleAuthCallback(
         redirect(res, `/login?error=${encodeURIComponent(error.message)}`);
         return;
       }
-      await finishAuthCallback(req, res);
+      await finishAuthCallback(req, res, url);
       return;
     }
 

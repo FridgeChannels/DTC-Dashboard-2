@@ -73,14 +73,28 @@ function redirect(res: ServerResponse, location: string): void {
   res.end();
 }
 
+function normalizePathname(pathname: string): string {
+  const collapsed = pathname.replace(/\/{2,}/g, "/");
+  return collapsed.length > 1 && collapsed.endsWith("/")
+    ? collapsed.slice(0, -1)
+    : collapsed;
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
+  const pathname = normalizePathname(url.pathname);
+
+  // Supabase 邮件模板常用 /auth/confirm → 转发到正式 callback
+  if (req.method === "GET" && pathname === "/auth/confirm") {
+    redirect(res, `/api/auth/callback?${url.searchParams.toString()}`);
+    return;
+  }
 
   // Supabase auth 若落到 / or /login（Site URL 配置不当），转发到正式 callback
   if (
     req.method === "GET" &&
     (url.searchParams.has("code") || url.searchParams.has("token_hash")) &&
-    (url.pathname === "/" || url.pathname === "/login")
+    (pathname === "/" || pathname === "/login")
   ) {
     redirect(res, `/api/auth/callback?${url.searchParams.toString()}`);
     return;
@@ -335,13 +349,13 @@ const server = createServer(async (req, res) => {
 
   // ---- 静态前端（消费者 FC 页，独立于 dashboard）----
   if (req.method === "GET" || req.method === "HEAD") {
-    const fcHandled = await serveFcStatic(url.pathname, res);
+    const fcHandled = await serveFcStatic(pathname, res);
     if (fcHandled) return;
   }
 
   // ---- 静态前端（dashboard）----
   if (req.method === "GET" || req.method === "HEAD") {
-    const handled = await serveStatic(url.pathname, res);
+    const handled = await serveStatic(pathname, res);
     if (handled) return;
   }
 

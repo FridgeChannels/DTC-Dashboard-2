@@ -55,6 +55,7 @@ import {
   handleAuthMe,
   handleAuthOAuthStart,
   handleAuthRegister,
+  handleAuthResendVerification,
 } from "./api/auth/handlers.js";
 import { serveStatic } from "./api/serve-static.js";
 import { serveFcStatic } from "./api/serve-fc-static.js";
@@ -75,10 +76,10 @@ function redirect(res: ServerResponse, location: string): void {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
 
-  // Supabase OAuth 若落到 / or /login（Site URL 配置不当），转发到正式回调以换取 Session
+  // Supabase auth 若落到 / or /login（Site URL 配置不当），转发到正式 callback
   if (
     req.method === "GET" &&
-    url.searchParams.has("code") &&
+    (url.searchParams.has("code") || url.searchParams.has("token_hash")) &&
     (url.pathname === "/" || url.pathname === "/login")
   ) {
     redirect(res, `/api/auth/callback?${url.searchParams.toString()}`);
@@ -99,6 +100,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/auth/register") {
     await handleAuthRegister(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/resend-verification") {
+    await handleAuthResendVerification(req, res);
     return;
   }
 

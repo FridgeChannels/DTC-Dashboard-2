@@ -584,15 +584,16 @@ function QuestionCard({ question, onUpdated, busy, setBusy, setError }) {
   if (question.status === "inactive") return null;
 
   return (
-    <Panel
-      title={`Q${question.displayOrder}: ${question.questionText}`}
-      sub={`Single choice · ${activeOptions.length} option(s)`}
-      action={
+    <div className="survey-question">
+      <div className="survey-question-head">
+        <div className="survey-question-titles">
+          <div className="survey-question-title">Q{question.displayOrder}: {question.questionText}</div>
+          <div className="survey-question-sub">Single choice · {activeOptions.length} option(s)</div>
+        </div>
         <button type="button" className="btn" disabled={busy} onClick={handleDeactivateQuestion}>
           Remove question
         </button>
-      }
-    >
+      </div>
       <div className="survey-options-list">
         {(question.options || []).map((opt) => (
           <OptionRow
@@ -611,7 +612,7 @@ function QuestionCard({ question, onUpdated, busy, setBusy, setError }) {
         setBusy={setBusy}
         setError={setError}
       />
-    </Panel>
+    </div>
   );
 }
 
@@ -877,38 +878,39 @@ function SurveyCampaignsPage() {
       )}
 
       {view === "list" && (
-        <Panel title="All campaigns" sub="Manage questionnaire activities for your brand">
-          <SurveyCampaignTable
-            campaigns={campaigns}
-            onEdit={openEdit}
-            onDashboard={openDashboard}
-          />
-        </Panel>
+        <SurveyCampaignTable
+          campaigns={campaigns}
+          onEdit={openEdit}
+          onDashboard={openDashboard}
+        />
       )}
 
       {view === "create" && (
-        <Panel title="New survey campaign" sub="Draft settings — add questions after creation">
+        <CfgSection
+          title="New survey campaign"
+          sub="Draft settings — add questions after creation"
+        >
           <SurveyCampaignSettingsForm
             form={form}
             onChange={patchForm}
             segments={segments}
             disabled={busy}
           />
-          <div className="row" style={{ marginTop: 16, justifyContent: "flex-end" }}>
+          <CfgActions>
             <button type="button" className="btn primary" disabled={busy} onClick={handleCreate}>
               {busy ? "Creating…" : "Create campaign"}
             </button>
-          </div>
-        </Panel>
+          </CfgActions>
+        </CfgSection>
       )}
 
       {view === "edit" && detail && (
         <>
-          <Panel
+          <CfgSection
             title={detail.name}
             sub={`${formatGoal(detail.campaignGoal)} · ${detail.activeQuestionCount} question(s)`}
             action={
-              <div className="row">
+              <>
                 <button type="button" className="btn" disabled={busy} onClick={() => openDashboard(detail)}>
                   Dashboard
                 </button>
@@ -920,7 +922,7 @@ function SurveyCampaignsPage() {
                 <button type="button" className="btn" disabled={busy} onClick={handleSaveSettings}>
                   {busy ? "Saving…" : "Save settings"}
                 </button>
-              </div>
+              </>
             }
           >
             <SurveyCampaignSettingsForm
@@ -930,13 +932,12 @@ function SurveyCampaignsPage() {
               showStatus
               disabled={busy}
             />
-          </Panel>
+          </CfgSection>
 
-          <div className="module" style={{ marginTop: 24 }}>
-            <ModuleHead
-              title="Questions"
-              sub="Single-choice only · 2–4 options per question · Other option allows text input"
-            />
+          <CfgSection
+            title="Questions"
+            sub="Single-choice only · 2–4 options per question · Other option allows text input"
+          >
             {(detail.questions || [])
               .filter((q) => q.status === "active")
               .map((q) => (
@@ -949,7 +950,8 @@ function SurveyCampaignsPage() {
                   setError={setError}
                 />
               ))}
-            <Panel title="Add question">
+            <div className="survey-add-question">
+              <div className="cfg-scopes-title">Add question</div>
               <AddQuestionForm
                 campaignId={detail.id}
                 onAdded={handleCampaignUpdated}
@@ -957,8 +959,8 @@ function SurveyCampaignsPage() {
                 setBusy={setBusy}
                 setError={setError}
               />
-            </Panel>
-          </div>
+            </div>
+          </CfgSection>
         </>
       )}
 

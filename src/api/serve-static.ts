@@ -29,9 +29,10 @@ export async function serveStatic(
   res: ServerResponse,
 ): Promise<boolean> {
   let relativePath = pathname;
-  if (pathname === "/") relativePath = "/index.html";
-  else if (pathname === "/login") relativePath = "/login.html";
+  if (pathname === "/login") relativePath = "/login.html";
   else if (
+    pathname === "/" ||
+    pathname === "/dashboard" ||
     pathname === "/brand-config" ||
     pathname === "/segment-config" ||
     pathname === "/survey-campaigns"

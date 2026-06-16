@@ -346,6 +346,33 @@ function Panel({ title, sub, action, children, locked, requiredTier, lockedNote 
 }
 window.Panel = Panel;
 
+// ---------- CfgSection (card-free content region) ----------
+// 用一级标题 + 分隔线区分区域，替代 Panel 卡片。除 Dashboard 外，配置/管理页一律用它。
+function CfgSection({ title, sub, desc, action, children }) {
+  const hasHead = Boolean(title || sub || desc || action);
+  return (
+    <section className="cfg-section">
+      {hasHead && (
+        <header className="cfg-section-head">
+          <div className="cfg-section-titles">
+            {title && <h2 className="cfg-section-title">{title}</h2>}
+            {sub && <div className="cfg-section-sub">{sub}</div>}
+            {desc && <div className="cfg-section-desc">{desc}</div>}
+          </div>
+          {action && <div className="cfg-section-action">{action}</div>}
+        </header>
+      )}
+      {children}
+    </section>
+  );
+}
+window.CfgSection = CfgSection;
+
+function CfgActions({ children }) {
+  return <div className="cfg-actions">{children}</div>;
+}
+window.CfgActions = CfgActions;
+
 // ---------- Tier-aware visibility helper ----------
 function getVis(metricId, tier) {
   const map = window.CARD_VIS[metricId];

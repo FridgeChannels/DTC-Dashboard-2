@@ -1,41 +1,114 @@
 // ============================================================
 // FC Admin — sidebar navigation + configuration panels
 // ============================================================
-const { useState, useEffect } = React;
+const { useState: useStateAdmin, useEffect: useEffectAdmin } = React;
 
-const BRAND_CONFIG_SECTIONS = [
-  { id: "shopify", label: "Shopify Config" },
-  { id: "klaviyo", label: "Klaviyo Config" },
-  { id: "campaigns", label: "Campaigns" },
-];
-
-const SEGMENT_CONFIG_SECTION = {
-  id: "segment-config",
-  label: "Segment Config",
+const DASHBOARD_SECTION = {
+  id: "dashboard",
+  label: "Dashboard",
 };
 
-const SURVEY_CAMPAIGNS_SECTION = {
-  id: "survey-campaigns",
-  label: "Survey Campaigns",
-};
+// 营销活动（对外投放）
+const COUPON_CAMPAIGNS_SECTION = { id: "campaigns", label: "Coupon Campaigns" };
+const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Survey Campaigns" };
+
+// 受众与规则
+const SEGMENT_CONFIG_SECTION = { id: "segment-config", label: "Segment Discounts" };
+
+// Accounts 区（底部）：FC Account + 集成 Shopify / Klaviyo
+const ACCOUNT_SECTION = { id: "account", label: "FC Account" };
+const SHOPIFY_SECTION = { id: "shopify", label: "Shopify" };
+const KLAVIYO_SECTION = { id: "klaviyo", label: "Klaviyo" };
+
+// section 属于 Accounts 区时，底部 Accounts 保持展开/高亮
+const ACCOUNT_MATCH = [ACCOUNT_SECTION.id, SHOPIFY_SECTION.id, KLAVIYO_SECTION.id];
 
 const ALL_SECTIONS = [
-  ...BRAND_CONFIG_SECTIONS,
-  SEGMENT_CONFIG_SECTION,
+  DASHBOARD_SECTION,
+  COUPON_CAMPAIGNS_SECTION,
   SURVEY_CAMPAIGNS_SECTION,
+  SEGMENT_CONFIG_SECTION,
+  ACCOUNT_SECTION,
+  SHOPIFY_SECTION,
+  KLAVIYO_SECTION,
 ];
 
+// 依赖门控：shopify → Coupon Campaigns；klaviyo → Segment Discounts / Survey Campaigns
+// 层级：Coupons（券线）下含 Coupon Campaigns + Segment Discounts；Surveys（问卷线）独立；
+//       Integrations（Shopify+Klaviyo 合并）为地基，单独一项。
+function buildNavGroups(conn) {
+  const shopifyReady = conn.shopifyReady;
+  const klaviyoReady = conn.klaviyoReady;
+  return [
+    {
+      label: "Overview",
+      items: [{ ...DASHBOARD_SECTION }],
+    },
+    {
+      label: "Coupons",
+      items: [
+        {
+          ...COUPON_CAMPAIGNS_SECTION,
+          locked: !shopifyReady,
+          lockHint: "Connect Shopify before creating coupon campaigns.",
+        },
+        {
+          ...SEGMENT_CONFIG_SECTION,
+          locked: !klaviyoReady,
+          lockHint: "Connect Klaviyo and sync segments before configuring discounts.",
+        },
+      ],
+    },
+    {
+      label: "Surveys",
+      items: [
+        {
+          ...SURVEY_CAMPAIGNS_SECTION,
+          locked: !klaviyoReady,
+          lockHint: "Connect Klaviyo before running survey campaigns.",
+        },
+      ],
+    },
+  ];
+}
+
+
 function parseSection() {
+  if (window.location.pathname === "/" || window.location.pathname === "/dashboard") return DASHBOARD_SECTION.id;
   if (window.location.pathname === "/segment-config") return SEGMENT_CONFIG_SECTION.id;
   if (window.location.pathname === "/survey-campaigns") return SURVEY_CAMPAIGNS_SECTION.id;
   const params = new URLSearchParams(window.location.search);
   const fromQuery = params.get("section");
   if (fromQuery === "coupon-modes") return "shopify";
   if (ALL_SECTIONS.some((s) => s.id === fromQuery)) return fromQuery;
-  return "shopify";
+  // /brand-config without a section defaults to Shopify integration
+  return SHOPIFY_SECTION.id;
 }
 
-function AdminSidebar({ section, onSectionChange, currentUser, onLogout }) {
+function AdminNavItem({ item, active, onSelect }) {
+  return (
+    <button
+      type="button"
+      className={`admin-nav-item${active ? " active" : ""}${item.locked ? " locked" : ""}${item.indent ? " indent" : ""}`}
+      title={item.locked ? item.lockHint : (item.statusLabel || undefined)}
+      aria-disabled={item.locked || undefined}
+      onClick={() => onSelect(item.id)}
+    >
+      <span className="admin-nav-label">{item.label}</span>
+
+      {item.status && (
+        <span
+          className={`admin-nav-status ${item.status}`}
+          aria-label={item.statusLabel}
+        />
+      )}
+    </button>
+  );
+}
+
+function AdminSidebar({ section, onSectionChange, connections }) {
+  const groups = buildNavGroups(connections);
+  const accountsActive = ACCOUNT_MATCH.includes(section);
   return (
     <aside className="admin-sidebar">
       <div className="admin-sidebar-brand">
@@ -49,53 +122,102 @@ function AdminSidebar({ section, onSectionChange, currentUser, onLogout }) {
       </div>
 
       <nav className="admin-nav" aria-label="Admin navigation">
-        <div className="admin-nav-group-label">Brand configuration</div>
-        {BRAND_CONFIG_SECTIONS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`admin-nav-item ${section === item.id ? "active" : ""}`}
-            onClick={() => onSectionChange(item.id)}
+        {groups.map((group, gi) => (
+          <div
+            key={group.label || `group-${gi}`}
+            className={`admin-nav-group${group.settings ? " settings" : ""}`}
           >
-            <span className="admin-nav-label">{item.label}</span>
-          </button>
+            {group.label && <div className="admin-nav-group-label">{group.label}</div>}
+            {group.items.map((item) => (
+              <AdminNavItem
+                key={item.id}
+                item={item}
+                active={
+                  item.activeMatch
+                    ? item.activeMatch.includes(section)
+                    : section === item.id
+                }
+                onSelect={onSectionChange}
+              />
+            ))}
+          </div>
         ))}
-        <div className="admin-nav-group-label">Segment configuration</div>
-        <button
-          type="button"
-          className={`admin-nav-item ${section === SEGMENT_CONFIG_SECTION.id ? "active" : ""}`}
-          onClick={() => onSectionChange(SEGMENT_CONFIG_SECTION.id)}
-        >
-          <span className="admin-nav-label">{SEGMENT_CONFIG_SECTION.label}</span>
-        </button>
-        <div className="admin-nav-group-label">Survey</div>
-        <button
-          type="button"
-          className={`admin-nav-item ${section === SURVEY_CAMPAIGNS_SECTION.id ? "active" : ""}`}
-          onClick={() => onSectionChange(SURVEY_CAMPAIGNS_SECTION.id)}
-        >
-          <span className="admin-nav-label">{SURVEY_CAMPAIGNS_SECTION.label}</span>
-        </button>
       </nav>
 
       <div className="admin-sidebar-foot">
-        <a className="admin-nav-link" href="/">← Back to Dashboard</a>
-        {currentUser && (
-          <div className="admin-user">
-            {currentUser.customer?.nickname || currentUser.customer?.email || currentUser.authUser?.email}
-          </div>
-        )}
-        <button type="button" className="btn admin-logout" onClick={onLogout}>Log out</button>
+        <button
+          type="button"
+          className={`admin-nav-item${accountsActive ? " active" : ""}`}
+          onClick={() => onSectionChange(SHOPIFY_SECTION.id)}
+        >
+          <span className="admin-nav-label">Accounts</span>
+        </button>
       </div>
     </aside>
   );
 }
 
-function AdminApp() {
-  const [section, setSection] = useState(parseSection);
-  const [auth, setAuth] = useState({ loading: true, user: null });
+// Accounts 二级布局：左侧子导航（Account / Integration → Shopify, Klaviyo）+ 右侧内容
+function AccountsPage({ section, user, connections, onSubChange, onLogout }) {
+  const subItem = (sec, label, status) => (
+    <button
+      type="button"
+      className={`admin-nav-item${sec === section ? " active" : ""}${status ? " indent" : ""}`}
+      onClick={() => onSubChange(sec)}
+    >
+      <span className="admin-nav-label">{label}</span>
+      {status && <span className={`admin-nav-status ${status}`} />}
+    </button>
+  );
 
-  useEffect(() => {
+  return (
+    <div className="accounts-layout">
+      <aside className="accounts-subnav" aria-label="Accounts navigation">
+        <div className="admin-nav-group-label">Accounts</div>
+        {subItem(ACCOUNT_SECTION.id, "Account")}
+        <div className="admin-nav-group-label">Integration</div>
+        {subItem(SHOPIFY_SECTION.id, "Shopify", connections.shopifyReady ? "online" : "offline")}
+        {subItem(KLAVIYO_SECTION.id, "Klaviyo", connections.klaviyoReady ? "online" : "offline")}
+      </aside>
+      <main className="admin-content accounts-body">
+        {section === ACCOUNT_SECTION.id
+          ? <FcAccountView user={user} onLogout={onLogout} />
+          : <BrandConfigPage section={section} />}
+      </main>
+    </div>
+  );
+}
+
+function FcAccountView({ user, onLogout }) {
+  const name = user?.customer?.nickname || user?.customer?.email || user?.authUser?.email || "—";
+  const email = user?.customer?.email || user?.authUser?.email || "—";
+  return (
+    <div className="cfg-page">
+      <CfgSection title="Account" desc="Your FridgeChannel sign-in.">
+        <div className="cfg-form grid grid-2">
+          <label className="cfg-field">
+            <span className="cfg-label">Name</span>
+            <div className="cfg-static-value">{name}</div>
+          </label>
+          <label className="cfg-field">
+            <span className="cfg-label">Email</span>
+            <div className="cfg-static-value mono">{email}</div>
+          </label>
+        </div>
+        <CfgActions>
+          <button type="button" className="btn" onClick={onLogout}>Log out</button>
+        </CfgActions>
+      </CfgSection>
+    </div>
+  );
+}
+
+function AdminApp() {
+  const [section, setSection] = useStateAdmin(parseSection);
+  const [auth, setAuth] = useStateAdmin({ loading: true, user: null });
+  const [connections, setConnections] = useStateAdmin({ shopifyReady: false, klaviyoReady: false });
+
+  useEffectAdmin(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has("code")) {
       window.location.href = `/api/auth/callback?${params.toString()}`;
@@ -123,8 +245,33 @@ function AdminApp() {
     return () => { cancelled = true; };
   }, []);
 
+  // 连接状态：驱动侧边栏的状态点与依赖锁定
+  useEffectAdmin(() => {
+    if (auth.loading || !auth.user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/brand-config");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setConnections({
+          shopifyReady: Boolean(data.shopify?.hasAccessToken && data.shopify?.shopDomain),
+          klaviyoReady: Boolean(data.klaviyo?.hasApiKey || data.klaviyo?.hasOAuthToken),
+        });
+      } catch {
+        /* 状态点降级为未连接即可，无需打断导航 */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [auth.loading, auth.user]);
+
   const handleSectionChange = (nextSection) => {
     setSection(nextSection);
+    if (nextSection === DASHBOARD_SECTION.id) {
+      window.history.replaceState({}, "", "/");
+      return;
+    }
     if (nextSection === SEGMENT_CONFIG_SECTION.id) {
       window.history.replaceState({}, "", "/segment-config");
       return;
@@ -159,17 +306,30 @@ function AdminApp() {
       <AdminSidebar
         section={section}
         onSectionChange={handleSectionChange}
-        currentUser={auth.user}
-        onLogout={handleLogout}
+        connections={connections}
       />
       <div className="admin-main">
-        <main className="admin-content">
-          {section === SEGMENT_CONFIG_SECTION.id
-            ? <SegmentConfigPage />
-            : section === SURVEY_CAMPAIGNS_SECTION.id
-              ? <SurveyCampaignsPage />
-              : <BrandConfigPage section={section} />}
-        </main>
+        {section === DASHBOARD_SECTION.id
+          ? <DashboardPage />
+          : ACCOUNT_MATCH.includes(section)
+            ? (
+              <AccountsPage
+                section={section}
+                user={auth.user}
+                connections={connections}
+                onSubChange={handleSectionChange}
+                onLogout={handleLogout}
+              />
+            )
+            : (
+              <main className="admin-content">
+                {section === SEGMENT_CONFIG_SECTION.id
+                  ? <SegmentConfigPage />
+                  : section === SURVEY_CAMPAIGNS_SECTION.id
+                    ? <SurveyCampaignsPage />
+                    : <BrandConfigPage section={section} />}
+              </main>
+            )}
       </div>
     </div>
   );

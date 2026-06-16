@@ -30,25 +30,34 @@ const KLAVIYO_API_SCOPES = [
 
 const KLAVIYO_DEFAULT_SCOPES = KLAVIYO_API_SCOPES.map((scope) => scope.id).join(" ");
 
-function KlaviyoScopeGuideCards() {
+function KlaviyoScopeGuide() {
   return (
-    <div className="cfg-field cfg-field-full">
-      <span className="cfg-label">Required API key permissions</span>
-      <p className="cfg-klaviyo-scope-intro">
+    <div className="cfg-subgroup">
+      <div className="cfg-scopes-title">Required API key permissions</div>
+      <p className="cfg-hint" style={{ marginTop: 0, marginBottom: 12 }}>
         In Klaviyo, go to <strong>Settings → API keys → Create Private API key</strong> and enable
         the permissions below. FridgeChannel does not need write access for coupon operations.
       </p>
-      <div className="cfg-klaviyo-scope-grid">
-        {KLAVIYO_API_SCOPES.map((scope) => (
-          <div key={scope.id} className="cfg-klaviyo-scope-card">
-            <div className="cfg-klaviyo-scope-card-head">
-              <span className="cfg-pill accent"><span className="d" />Required</span>
-              <code className="cfg-klaviyo-scope-id">{scope.id}</code>
-            </div>
-            <div className="cfg-klaviyo-scope-title">{scope.title}</div>
-            <p className="cfg-klaviyo-scope-desc">{scope.desc}</p>
-          </div>
-        ))}
+      <div className="table-wrap">
+        <table className="data cfg-scope-table">
+          <thead>
+            <tr>
+              <th>Permission</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            {KLAVIYO_API_SCOPES.map((scope) => (
+              <tr key={scope.id}>
+                <td className="mono">{scope.id}</td>
+                <td>
+                  <strong>{scope.title}</strong>
+                  <div className="muted cfg-scope-desc">{scope.desc}</div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -290,6 +299,8 @@ function ConfigField({ label, hint, children, mono, fullRow }) {
     </label>
   );
 }
+
+// CfgSection / CfgActions 定义在 shared.jsx，并挂在 window 上全局可用
 
 function CopyTextButton({ text, label = "Copy" }) {
   const [copied, setCopied] = useStateBC(false);
@@ -1090,6 +1101,9 @@ function BrandConfigPage({ section = "shopify" }) {
     : "";
   const shopifyScopesText = shopify.scopes.join(",");
 
+  const showShopify = section === "shopify";
+  const showKlaviyo = section === "klaviyo";
+
   return (
     <div className="brand-config">
       {error && (
@@ -1104,11 +1118,12 @@ function BrandConfigPage({ section = "shopify" }) {
         </div>
       )}
 
-      {section === "shopify" && (
-      <section className="module" style={{ marginTop: 0 }}>
-        <ModuleHead title="Shopify Config" />
-
-        <Panel title="Shopify OAuth">
+      {showShopify && (
+      <div className="cfg-page">
+        <CfgSection
+          title="Authorization"
+          desc="Connect your store via Admin OAuth. FridgeChannel uses this to read orders and manage discounts."
+        >
           {shopify.hasAccessToken && (
             <div className="cfg-alert pos" style={{ marginBottom: 16 }}>
               <span className="cfg-pill pos"><span className="d" />Authorized</span>
@@ -1150,7 +1165,7 @@ function BrandConfigPage({ section = "shopify" }) {
             </ConfigField>
           </div>
 
-          <div className="row cfg-shopify-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+          <CfgActions>
             <button
               type="button"
               className="btn primary"
@@ -1159,14 +1174,86 @@ function BrandConfigPage({ section = "shopify" }) {
             >
               {connecting ? "Redirecting…" : "Connect Shopify"}
             </button>
-          </div>
-        </Panel>
+          </CfgActions>
+        </CfgSection>
 
-        <Panel title="Customer Account API (Consumer Shopify Login)">
-          <p className="cfg-hint" style={{ marginTop: 0, marginBottom: 16 }}>
-            与上方 Admin OAuth 不同。请在 Shopify 后台 → Sales channels → Headless → Customer Account API settings 复制 UUID 格式的 Client ID / Secret。
-            Callback URL 填 <span className="mono">{(config?.webhookPublicBaseUrl || window.location.origin).replace(/\/$/, "")}/shopify/customer/callback</span>
-          </p>
+        <CfgSection
+          title="Webhooks & scopes"
+          desc="Verify webhook signatures and review the access scopes requested during authorization."
+        >
+          <div className="cfg-form grid grid-2">
+            <ConfigField
+              label="Webhook signing secret"
+              hint={shopify.hasWebhookSecret ? "Configured · leave blank to keep current value" : "Signing secret shown on the Shopify webhook page"}
+              mono
+              fullRow
+            >
+              <input
+                className="cfg-input mono"
+                type="password"
+                value={config.shopifyWebhookSigningSecret}
+                onChange={(e) => patch((prev) => ({ ...prev, shopifyWebhookSigningSecret: e.target.value }))}
+                placeholder={shopify.hasWebhookSecret ? "•••••••• (configured)" : "Paste the signing secret from Shopify"}
+                autoComplete="off"
+              />
+            </ConfigField>
+          </div>
+
+          <div className="cfg-subgroup">
+            <div className="cfg-scopes-title">Webhook URL</div>
+            {config.shopify?.webhookTenantKey ? (
+              <ConfigField label="Order payment" mono fullRow>
+                <div className="cfg-copy-row">
+                  <input
+                    className="cfg-input mono cfg-copy-text"
+                    type="text"
+                    readOnly
+                    value={webhookPaymentUrl}
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <CopyTextButton text={webhookPaymentUrl} />
+                </div>
+              </ConfigField>
+            ) : (
+              <p className="cfg-hint">Save Shopify configuration to generate the webhook URL.</p>
+            )}
+          </div>
+
+          <div className="cfg-subgroup">
+            <div className="cfg-scopes-title">Scopes</div>
+            <div className="cfg-copy-row cfg-scopes-copy">
+              <input
+                className="cfg-input mono cfg-copy-text"
+                type="text"
+                readOnly
+                value={shopifyScopesText}
+                onFocus={(e) => e.target.select()}
+              />
+              <CopyTextButton text={shopifyScopesText} />
+            </div>
+          </div>
+
+          <CfgActions>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={saving || connecting}
+              onClick={handleSaveShopifyConfig}
+            >
+              {saving ? "Saving…" : "Save configuration"}
+            </button>
+          </CfgActions>
+        </CfgSection>
+
+        <CfgSection
+          title="Customer Account API"
+          desc={(
+            <>
+              消费者 Shopify 登录,与上方 Admin OAuth 不同。请在 Shopify 后台 → Sales channels → Headless → Customer Account API settings 复制 UUID 格式的 Client ID / Secret。
+              Callback URL 填 <span className="mono">{(config?.webhookPublicBaseUrl || window.location.origin).replace(/\/$/, "")}/shopify/customer/callback</span>
+            </>
+          )}
+        >
           <div className="cfg-form grid grid-2">
             <ConfigField
               label="Customer Account Client ID"
@@ -1207,7 +1294,7 @@ function BrandConfigPage({ section = "shopify" }) {
               />
             </ConfigField>
           </div>
-          <div className="row cfg-shopify-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+          <CfgActions>
             <button
               type="button"
               className="btn"
@@ -1216,83 +1303,17 @@ function BrandConfigPage({ section = "shopify" }) {
             >
               {saving ? "Saving…" : "Save Customer Account credentials"}
             </button>
-          </div>
-        </Panel>
-
-        <Panel title="Shopify Config">
-          <div className="cfg-form grid grid-2">
-            <ConfigField
-              label="Webhook signing secret"
-              hint={shopify.hasWebhookSecret ? "Configured · leave blank to keep current value" : "Signing secret shown on the Shopify webhook page"}
-              mono
-              fullRow
-            >
-              <input
-                className="cfg-input mono"
-                type="password"
-                value={config.shopifyWebhookSigningSecret}
-                onChange={(e) => patch((prev) => ({ ...prev, shopifyWebhookSigningSecret: e.target.value }))}
-                placeholder={shopify.hasWebhookSecret ? "•••••••• (configured)" : "Paste the signing secret from Shopify"}
-                autoComplete="off"
-              />
-            </ConfigField>
-          </div>
-
-          <div className="dotted" />
-          <div className="cfg-webhook-urls">
-            <div className="cfg-scopes-title">Webhook URL</div>
-            {config.shopify?.webhookTenantKey ? (
-              <ConfigField label="Order payment" mono fullRow>
-                <div className="cfg-copy-row">
-                  <input
-                    className="cfg-input mono cfg-copy-text"
-                    type="text"
-                    readOnly
-                    value={webhookPaymentUrl}
-                    onFocus={(e) => e.target.select()}
-                  />
-                  <CopyTextButton text={webhookPaymentUrl} />
-                </div>
-              </ConfigField>
-            ) : (
-              <p className="cfg-hint">Save Shopify configuration to generate the webhook URL.</p>
-            )}
-          </div>
-
-          <div className="dotted" />
-          <div className="cfg-scopes">
-            <div className="cfg-scopes-title">Scopes</div>
-            <div className="cfg-copy-row cfg-scopes-copy">
-              <input
-                className="cfg-input mono cfg-copy-text"
-                type="text"
-                readOnly
-                value={shopifyScopesText}
-                onFocus={(e) => e.target.select()}
-              />
-              <CopyTextButton text={shopifyScopesText} />
-            </div>
-          </div>
-
-          <div className="row cfg-shopify-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={saving || connecting}
-              onClick={handleSaveShopifyConfig}
-            >
-              {saving ? "Saving…" : "Save configuration"}
-            </button>
-          </div>
-        </Panel>
-      </section>
+          </CfgActions>
+        </CfgSection>
+      </div>
       )}
 
-      {section === "klaviyo" && (
-      <section className="module" style={{ marginTop: 0 }}>
-        <ModuleHead title="Klaviyo Config" />
-
-        <Panel title={isKlaviyoOAuth ? "Klaviyo OAuth" : "API credentials"}>
+      {showKlaviyo && (
+      <div className="cfg-page">
+        <CfgSection
+          title={isKlaviyoOAuth ? "Klaviyo OAuth" : "API credentials"}
+          desc="Connect Klaviyo so FridgeChannel can read profiles and segments for coupon targeting."
+        >
           {isKlaviyoOAuth && klaviyo.hasOAuthToken && (
             <div className="cfg-alert pos" style={{ marginBottom: 16 }}>
               <span className="cfg-pill pos"><span className="d" />Authorized</span>
@@ -1379,7 +1400,6 @@ function BrandConfigPage({ section = "shopify" }) {
                 placeholder="2026-04-15"
               />
             </ConfigField>
-            {!isKlaviyoOAuth && <KlaviyoScopeGuideCards />}
             {isKlaviyoOAuth && (
               <ConfigField
                 label="Scopes"
@@ -1411,6 +1431,8 @@ function BrandConfigPage({ section = "shopify" }) {
             )}
           </div>
 
+          {!isKlaviyoOAuth && <KlaviyoScopeGuide />}
+
           {isKlaviyoOAuth && (
             <>
               {klaviyoConnectNotice && (
@@ -1418,7 +1440,7 @@ function BrandConfigPage({ section = "shopify" }) {
                   <I.info /> {klaviyoConnectNotice.text}
                 </div>
               )}
-              <div className="row cfg-shopify-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+              <CfgActions>
                 <button
                   type="button"
                   className="btn primary"
@@ -1427,12 +1449,15 @@ function BrandConfigPage({ section = "shopify" }) {
                 >
                   {klaviyoConnecting ? "Redirecting…" : "Connect Klaviyo"}
                 </button>
-              </div>
+              </CfgActions>
             </>
           )}
-        </Panel>
+        </CfgSection>
 
-        <Panel title="Integration settings">
+        <CfgSection
+          title="Integration settings"
+          desc="Control whether FridgeChannel keeps Klaviyo data in sync."
+        >
           <div className="cfg-form grid grid-2">
             <ConfigField label="Sync enabled">
               <label className="cfg-checkbox-row">
@@ -1456,7 +1481,7 @@ function BrandConfigPage({ section = "shopify" }) {
             </ConfigField>
           </div>
 
-          <div className="row cfg-shopify-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+          <CfgActions>
             <button
               type="button"
               className="btn primary"
@@ -1465,9 +1490,9 @@ function BrandConfigPage({ section = "shopify" }) {
             >
               {saving ? "Saving…" : "Save configuration"}
             </button>
-          </div>
-        </Panel>
-      </section>
+          </CfgActions>
+        </CfgSection>
+      </div>
       )}
 
       {section === "campaigns" && (
@@ -1489,15 +1514,13 @@ function BrandConfigPage({ section = "shopify" }) {
                 </button>
               )}
             />
-            <Panel>
-              <CampaignEditForm
-                form={editForm}
-                saving={campaignSaving}
-                error={campaignError}
-                onChange={updateEditForm}
-                onSubmit={handleUpdateCampaign}
-              />
-            </Panel>
+            <CampaignEditForm
+              form={editForm}
+              saving={campaignSaving}
+              error={campaignError}
+              onChange={updateEditForm}
+              onSubmit={handleUpdateCampaign}
+            />
           </>
         ) : showCampaignCreate ? (
           <>
@@ -1527,16 +1550,14 @@ function BrandConfigPage({ section = "shopify" }) {
                 </>
               )}
             />
-            <Panel>
-              <CampaignCreateForm
-                shopifyReady={shopifyReady}
-                creating={campaignCreating}
-                error={campaignError}
-                form={campaignForm}
-                onChange={updateCampaignForm}
-                onSubmit={handleCreateCampaign}
-              />
-            </Panel>
+            <CampaignCreateForm
+              shopifyReady={shopifyReady}
+              creating={campaignCreating}
+              error={campaignError}
+              form={campaignForm}
+              onChange={updateCampaignForm}
+              onSubmit={handleCreateCampaign}
+            />
           </>
         ) : (
           <>
@@ -1565,18 +1586,16 @@ function BrandConfigPage({ section = "shopify" }) {
                 </>
               )}
             />
-            <Panel>
-              {syncNotice && (
-                <p className="cfg-hint" style={{ marginBottom: 12 }}>{syncNotice}</p>
-              )}
-              {campaignError && !showCampaignCreate && !editForm && (
-                <p className="cfg-error" style={{ marginBottom: 12 }}>{campaignError}</p>
-              )}
-              <CampaignTable
-                campaigns={config.campaigns}
-                onEdit={handleEditCampaign}
-              />
-            </Panel>
+            {syncNotice && (
+              <p className="cfg-hint" style={{ marginBottom: 12 }}>{syncNotice}</p>
+            )}
+            {campaignError && !showCampaignCreate && !editForm && (
+              <p className="cfg-error" style={{ marginBottom: 12 }}>{campaignError}</p>
+            )}
+            <CampaignTable
+              campaigns={config.campaigns}
+              onEdit={handleEditCampaign}
+            />
           </>
         )}
       </section>

@@ -1,7 +1,6 @@
 // ============================================================
-// FC Brand Dashboard — app shell
+// FC Brand Dashboard — Dashboard page (rendered inside the unified admin shell)
 // ============================================================
-const { useState: useStateApp, useEffect: useEffectApp } = React;
 
 function formatSummaryValue(item) {
   if (item.unit === "$") return window.FCFmt.fmtMoney(item.value);
@@ -35,23 +34,16 @@ function TierSwitcher({ tier, onTierChange }) {
   );
 }
 
-function FilterChip({ label, value, locked }) {
+function DashboardHeader({ tier, onTierChange, dateRange, onDateRangeChange }) {
+  const activeTier = window.TIERS[tier];
   return (
-    <button className={`filter-chip ${locked ? "locked" : ""}`} disabled={locked} title={locked ? "Upgrade plan to use this filter" : `${label}: ${value}`}>
-      {locked && <I.lock />}
-      <span className="label">{label}</span>
-      <span className="value">{locked ? "Locked" : value}</span>
-      {!locked && <I.chevDown />}
-    </button>
-  );
-}
-
-function FilterBar({ tier, dateRange, onDateRangeChange }) {
-  const isPresence = tier === "presence";
-  const isMoat = tier === "retention_moat";
-  return (
-    <div className="filterbar">
-      <div className="filterbar-inner">
+    <header className="topbar">
+      <div className="topbar-inner">
+        <div className="breadcrumb">
+          <b>{activeTier.label} Package</b>
+        </div>
+        <div className="topbar-spacer" />
+        <div className="last-updated"><span className="dot" /> Updated 2026-05-22 10:00 Asia/Shanghai</div>
         <label className="select-chip">
           <span className="label">Date range</span>
           <select value={dateRange} onChange={(e) => onDateRangeChange(e.target.value)} aria-label="Date range">
@@ -61,41 +53,12 @@ function FilterBar({ tier, dateRange, onDateRangeChange }) {
           </select>
           <I.chevDown />
         </label>
-        <div className="filter-actions">
-          <button className="btn"><I.download /> Export</button>
+        <button className="btn"><I.download /> Export</button>
+        <div className="topbar-actions">
+          <TierSwitcher tier={tier} onTierChange={onTierChange} />
         </div>
       </div>
-    </div>
-  );
-}
-
-function Header({ tier, onTierChange, dateRange, onDateRangeChange }) {
-  const activeTier = window.TIERS[tier];
-  return (
-    <>
-      <header className="topbar">
-        <div className="topbar-inner">
-          <div className="brand-mark">
-            <div className="brand-glyph">
-              <img src="assets/fc-logo.png" alt="FridgeChannel" />
-            </div>
-            <div className="brand-name">FridgeChannel <span className="muted">Dashboard</span></div>
-          </div>
-          <div className="breadcrumb">
-            <b>{activeTier.label} Package</b>
-          </div>
-          <div className="topbar-spacer" />
-          <div className="last-updated"><span className="dot" /> Updated 2026-05-22 10:00 Asia/Shanghai</div>
-          <div className="topbar-actions">
-            <TierSwitcher tier={tier} onTierChange={onTierChange} />
-            <a href="/brand-config" className="btn topbar-settings" aria-label="Settings">
-              <I.settings /> Settings
-            </a>
-          </div>
-        </div>
-      </header>
-      <FilterBar tier={tier} dateRange={dateRange} onDateRangeChange={onDateRangeChange} />
-    </>
+    </header>
   );
 }
 
@@ -147,18 +110,9 @@ function ExecutiveSummary({ tier }) {
 }
 
 const DASHBOARD_MODULES = [
-  {
-    id: "revenue",
-    Component: RevenueModule,
-  },
-  {
-    id: "retention",
-    Component: RetentionModule,
-  },
-  {
-    id: "cta",
-    Component: CTAModule,
-  },
+  { id: "revenue", Component: RevenueModule },
+  { id: "retention", Component: RetentionModule },
+  { id: "cta", Component: CTAModule },
 ];
 
 function getVisibleModules(tier) {
@@ -168,59 +122,14 @@ function getVisibleModules(tier) {
   });
 }
 
-function App() {
-  const [tier, setTier] = useStateApp("retention_moat");
-  const [dateRange, setDateRange] = useStateApp("30day");
-  const [auth, setAuth] = useStateApp({ loading: true, user: null });
+function DashboardPage() {
+  const [tier, setTier] = React.useState("retention_moat");
+  const [dateRange, setDateRange] = React.useState("30day");
   const visibleModules = getVisibleModules(tier);
 
-  useEffectApp(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("shopify_oauth")) {
-      window.location.href = `/brand-config?${params.toString()}`;
-      return;
-    }
-    if (params.has("code")) {
-      window.location.href = `/api/auth/callback?${params.toString()}`;
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/auth/me");
-        if (!res.ok) {
-          params.delete("code");
-          params.delete("state");
-          const qs = params.toString();
-          const redirectTo = `${window.location.pathname}${qs ? `?${qs}` : ""}`;
-          window.location.href = `/login?redirectedFrom=${encodeURIComponent(redirectTo)}`;
-          return;
-        }
-        const user = await res.json();
-        if (!cancelled) setAuth({ loading: false, user });
-      } catch {
-        if (!cancelled) {
-          window.location.href = "/login";
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  if (auth.loading) {
-    return (
-      <div className="app">
-        <main style={{ padding: 48 }}>
-          <PageLoading />
-        </main>
-      </div>
-    );
-  }
-
   return (
-    <div className="app">
-      <Header
+    <div className="dashboard-view">
+      <DashboardHeader
         tier={tier}
         onTierChange={setTier}
         dateRange={dateRange}
@@ -243,4 +152,4 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+window.DashboardPage = DashboardPage;

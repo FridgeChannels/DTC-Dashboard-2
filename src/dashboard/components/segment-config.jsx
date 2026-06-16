@@ -267,37 +267,36 @@ function SegmentConfigPage() {
         </div>
       )}
 
-      <section className="module" style={{ marginTop: 0 }}>
-        <ModuleHead title="Segment discount configuration" />
-        <Panel>
-          <SegmentConfigTable
-            rows={rows}
-            onChange={setRows}
-            onSetDefault={handleSetDefault}
-            settingDefaultId={settingDefaultId}
-            disabled={saving || settingDefaultId != null}
-          />
-          <div className="dotted" />
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <span className="muted" style={{ fontSize: 12.5 }}>
-              {savableRows.length > 0
-                ? `${savableRows.length} segment(s) ready to save · one default required when configured`
-                : "Enter min or max discount before saving"}
-            </span>
-            <div className="row" style={{ gap: 8 }}>
-              <button type="button" className="btn" disabled={saving} onClick={load}>Refresh</button>
-              <button
-                type="button"
-                className="btn primary"
-                disabled={saving}
-                onClick={handleSaveAll}
-              >
-                {saving ? "Saving…" : "Save changes"}
-              </button>
-            </div>
+      <CfgSection
+        title="Segment discount configuration"
+        desc="Set the discount range (% off) applied to coupon campaigns for each Klaviyo segment, and choose one default segment."
+      >
+        <SegmentConfigTable
+          rows={rows}
+          onChange={setRows}
+          onSetDefault={handleSetDefault}
+          settingDefaultId={settingDefaultId}
+          disabled={saving || settingDefaultId != null}
+        />
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>
+          <span className="muted" style={{ fontSize: 12.5 }}>
+            {savableRows.length > 0
+              ? `${savableRows.length} segment(s) ready to save · one default required when configured`
+              : "Enter min or max discount before saving"}
+          </span>
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" className="btn" disabled={saving} onClick={load}>Refresh</button>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={saving}
+              onClick={handleSaveAll}
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
           </div>
-        </Panel>
-      </section>
+        </div>
+      </CfgSection>
     </div>
   );
 }

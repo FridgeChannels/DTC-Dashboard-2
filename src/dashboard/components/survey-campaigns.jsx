@@ -123,7 +123,7 @@ function svIsoToDateTimeInput(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function createDefaultCampaignForm() {
+function createDefaultSurveyCampaignForm() {
   return {
     name: "",
     description: "",
@@ -712,7 +712,7 @@ function SurveyCampaignsPage() {
   const [campaigns, setCampaigns] = useStateSV([]);
   const [segments, setSegments] = useStateSV([]);
   const [detail, setDetail] = useStateSV(null);
-  const [form, setForm] = useStateSV(createDefaultCampaignForm());
+  const [form, setForm] = useStateSV(createDefaultSurveyCampaignForm());
   const [loading, setLoading] = useStateSV(true);
   const [busy, setBusy] = useStateSV(false);
   const [error, setError] = useStateSV(null);
@@ -738,7 +738,7 @@ function SurveyCampaignsPage() {
   useEffectSV(() => { loadList(); }, [loadList]);
 
   const openCreate = () => {
-    setForm(createDefaultCampaignForm());
+    setForm(createDefaultSurveyCampaignForm());
     setDetail(null);
     setView("create");
     setError(null);

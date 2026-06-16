@@ -382,11 +382,10 @@ function campaignToEditForm(campaign) {
   };
 }
 
-function createDefaultCampaignForm() {
+function createDefaultCouponCampaignForm() {
   return {
     name: "",
     campaignKind: "order_amount",
-    amountKind: "percentage",
     value: "15",
     buyQuantity: "2",
     getQuantity: "1",
@@ -448,28 +447,14 @@ function CampaignCreateForm({ shopifyReady, creating, error, form, onChange, onS
           ))}
         </select>
       </ConfigField>
-      {isOrderAmount && (
-        <ConfigField label="Discount type">
-          <select
-            className="cfg-input"
-            value={form.amountKind}
-            onChange={(e) => onChange("amountKind", e.target.value)}
-          >
-            <option value="percentage">Percentage</option>
-            <option value="fixed_amount">Fixed amount</option>
-          </select>
-        </ConfigField>
-      )}
       {showOrderValue && (
-        <ConfigField
-          label={form.amountKind === "percentage" ? "Discount (%)" : "Discount amount"}
-        >
+        <ConfigField label="Discount (%)">
           <input
             className="cfg-input mono"
             type="number"
-            min={form.amountKind === "percentage" ? "1" : "0"}
-            max={form.amountKind === "percentage" ? "100" : undefined}
-            step={form.amountKind === "percentage" ? "1" : "0.01"}
+            min="1"
+            max="100"
+            step="1"
             value={form.value}
             onChange={(e) => onChange("value", e.target.value)}
           />
@@ -727,7 +712,7 @@ function BrandConfigPage({ section = "shopify" }) {
   const [shopifySavedBaseline, setShopifySavedBaseline] = useStateBC(null);
   const [error, setError] = useStateBC(null);
   const [oauthNotice, setOauthNotice] = useStateBC(null);
-  const [campaignForm, setCampaignForm] = useStateBC(createDefaultCampaignForm);
+  const [campaignForm, setCampaignForm] = useStateBC(() => createDefaultCouponCampaignForm());
   const [campaignCreating, setCampaignCreating] = useStateBC(false);
   const [campaignSaving, setCampaignSaving] = useStateBC(false);
   const [campaignError, setCampaignError] = useStateBC(null);
@@ -1051,7 +1036,7 @@ function BrandConfigPage({ section = "shopify" }) {
       if (endsAt) payload.ends_at = endsAt;
 
       if (campaignForm.campaignKind === "order_amount") {
-        payload.discount_type = campaignForm.amountKind;
+        payload.discount_type = "percentage";
         if (campaignForm.value !== "") {
           payload.value = Number(campaignForm.value);
         }
@@ -1075,7 +1060,7 @@ function BrandConfigPage({ section = "shopify" }) {
         ...prev,
         campaigns: [campaign, ...prev.campaigns.filter((c) => c.key !== campaign.key)],
       }));
-      setCampaignForm(createDefaultCampaignForm());
+      setCampaignForm(createDefaultCouponCampaignForm());
       setShowCampaignCreate(false);
     } catch (err) {
       setCampaignError(err.message);
@@ -1542,7 +1527,7 @@ function BrandConfigPage({ section = "shopify" }) {
                     onClick={() => {
                       setShowCampaignCreate(false);
                       setCampaignError(null);
-                      setCampaignForm(createDefaultCampaignForm());
+                      setCampaignForm(createDefaultCouponCampaignForm());
                     }}
                   >
                     Back to list
@@ -1578,6 +1563,7 @@ function BrandConfigPage({ section = "shopify" }) {
                     className="btn primary"
                     onClick={() => {
                       setEditForm(null);
+                      setCampaignForm(createDefaultCouponCampaignForm());
                       setShowCampaignCreate(true);
                     }}
                   >

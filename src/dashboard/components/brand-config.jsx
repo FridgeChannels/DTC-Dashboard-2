@@ -754,12 +754,12 @@ function BrandConfigPage({ section = "shopify" }) {
     if (shopifyStatus) {
       const messages = {
         success: { tone: "pos", text: "Shopify authorized. Access token saved to the secret store." },
-        failed: { tone: "warn", text: "Shopify authorization failed. Check Client ID, Secret, and callback URL." },
-        missing_app_config: { tone: "warn", text: "OAuth setup incomplete. Fill in Shop Domain, Client ID, and Client Secret before connecting." },
+        failed: { tone: "warn", text: "Shopify authorization failed. Check Shop Domain and callback URL, then try again." },
+        missing_app_config: { tone: "warn", text: "OAuth setup incomplete. Enter Shop Domain before connecting." },
         invalid_shop: { tone: "warn", text: "Invalid shop domain. Use the format your-store.myshopify.com." },
         invalid_callback: { tone: "warn", text: "Invalid OAuth callback. Start Connect Shopify again." },
         invalid_state: { tone: "warn", text: "OAuth state validation failed. Start Connect Shopify again." },
-        invalid_hmac: { tone: "warn", text: "HMAC validation failed. Confirm the Client Secret is correct." },
+        invalid_hmac: { tone: "warn", text: "HMAC validation failed. OAuth app configuration may be incorrect." },
       };
       setOauthNotice(messages[shopifyStatus] || { tone: "warn", text: `OAuth error: ${shopifyStatus}` });
       params.delete("shopify_oauth");
@@ -814,8 +814,9 @@ function BrandConfigPage({ section = "shopify" }) {
     const missing = [];
     const shopDomain = shopify.shopDomain.trim();
     if (!shopDomain) missing.push("Shop Domain");
-    if (!shopify.shopifyAppClientId.trim()) missing.push("Client ID");
-    if (!shopify.hasShopifyAppClientSecret) missing.push("Client Secret");
+    if (!shopify.shopifyAppClientId.trim() || !shopify.hasShopifyAppClientSecret) {
+      return "Shopify OAuth app is not configured. Contact your administrator.";
+    }
     if (missing.length > 0) {
       return `Save ${missing.join(", ")} before connecting Shopify.`;
     }
@@ -1117,35 +1118,12 @@ function BrandConfigPage({ section = "shopify" }) {
           )}
 
           <div className="cfg-form grid grid-2">
-            <ConfigField label="Shop Domain">
+            <ConfigField label="Shop Domain" fullRow>
               <input
                 className="cfg-input"
                 value={shopify.shopDomain}
                 onChange={(e) => updateShopify("shopDomain", e.target.value)}
                 placeholder="brand-name.myshopify.com"
-              />
-            </ConfigField>
-            <ConfigField label="Client ID">
-              <input
-                className="cfg-input mono"
-                value={shopify.shopifyAppClientId}
-                onChange={(e) => updateShopify("shopifyAppClientId", e.target.value)}
-                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-              />
-            </ConfigField>
-            <ConfigField
-              label="Client Secret"
-              hint={shopify.hasShopifyAppClientSecret ? "Configured · leave blank to keep current value" : undefined}
-              mono
-              fullRow
-            >
-              <input
-                className="cfg-input mono"
-                type="password"
-                value={config.shopifyAppClientSecret}
-                onChange={(e) => patch((prev) => ({ ...prev, shopifyAppClientSecret: e.target.value }))}
-                placeholder={shopify.hasShopifyAppClientSecret ? "•••••••• (configured)" : "shpss_xxxxxxxx"}
-                autoComplete="off"
               />
             </ConfigField>
           </div>
@@ -1234,15 +1212,15 @@ function BrandConfigPage({ section = "shopify" }) {
           title="Customer Account API"
           desc={(
             <>
-              消费者 Shopify 登录,与上方 Admin OAuth 不同。请在 Shopify 后台 → Sales channels → Headless → Customer Account API settings 复制 UUID 格式的 Client ID / Secret。
-              Callback URL 填 <span className="mono">{(config?.webhookPublicBaseUrl || window.location.origin).replace(/\/$/, "")}/shopify/customer/callback</span>
+              Consumer Shopify sign-in is separate from Admin OAuth above. In Shopify Admin, go to Sales channels → Headless → Customer Account API settings and copy the UUID-format Client ID and Secret.
+              Set the callback URL to <span className="mono">{(config?.webhookPublicBaseUrl || window.location.origin).replace(/\/$/, "")}/shopify/customer/callback</span>
             </>
           )}
         >
           <div className="cfg-form grid grid-2">
             <ConfigField
               label="Customer Account Client ID"
-              hint="UUID 格式，不是 32 位 Admin Client ID"
+              hint="UUID format — not the 32-character Admin Client ID"
               mono
               fullRow
             >

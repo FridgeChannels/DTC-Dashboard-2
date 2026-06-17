@@ -29,18 +29,6 @@ const SegmentAPI = {
   },
 };
 
-function ratioToPercent(ratio) {
-  if (ratio == null || ratio === "") return "";
-  return String(Math.round(Number(ratio) * 1000) / 10);
-}
-
-function percentToRatio(percent) {
-  if (percent === "" || percent == null) return null;
-  const n = Number(percent);
-  if (Number.isNaN(n)) return null;
-  return Math.round(n * 10) / 1000;
-}
-
 function apiToLocalRows(items) {
   return items.map((item) => ({
     segmentId: item.segmentId,
@@ -49,8 +37,7 @@ function apiToLocalRows(items) {
     isProcessing: item.isProcessing,
     syncedAt: item.syncedAt,
     configId: item.config.configId,
-    minPercent: ratioToPercent(item.config.minDiscountRatio),
-    maxPercent: ratioToPercent(item.config.maxDiscountRatio),
+    campaignIds: item.config.campaignIds ?? [],
     isActive: item.config.isActive,
     isDefault: item.config.isDefault,
     notes: item.config.notes ?? "",
@@ -59,16 +46,76 @@ function apiToLocalRows(items) {
 }
 
 function getSavableRows(rows) {
-  return rows.filter((r) => r.minPercent !== "" || r.maxPercent !== "");
+  return rows.filter((r) => r.dirty || (r.campaignIds ?? []).length > 0);
 }
 
-function validateRow(row) {
-  const min = percentToRatio(row.minPercent);
-  const max = percentToRatio(row.maxPercent);
-  if (min != null && max != null && min > max) {
-    return `${row.name || "This segment"}: min discount must be ≤ max discount (% off; higher means a larger discount)`;
-  }
-  return null;
+function campaignOptionLabel(campaign) {
+  const value = campaign.value == null
+    ? campaign.discountType
+    : `${campaign.value}${campaign.discountType === "percentage" ? "%" : ""}`;
+  return `${campaign.name || campaign.key} · ${value} · ${campaign.status}`;
+}
+
+function campaignSelectSummary(campaigns, selectedIds) {
+  if (!selectedIds.length) return "Select campaigns";
+  const selected = campaigns.filter((campaign) => selectedIds.includes(campaign.id));
+  if (selected.length === 1) return selected[0].name || selected[0].key;
+  return `${selected.length} campaigns selected`;
+}
+
+function CampaignMultiSelect({ row, campaigns, open, disabled, onToggleOpen, onChange }) {
+  const selectedIds = row.campaignIds ?? [];
+  const selectedSet = new Set(selectedIds);
+
+  const toggleCampaign = (campaignId) => {
+    const next = selectedSet.has(campaignId)
+      ? selectedIds.filter((id) => id !== campaignId)
+      : [...selectedIds, campaignId];
+    onChange(next);
+  };
+
+  return (
+    <div className="segment-campaign-select">
+      <button
+        type="button"
+        className="segment-campaign-trigger"
+        disabled={disabled}
+        onClick={onToggleOpen}
+        aria-expanded={open}
+      >
+        <span>{campaignSelectSummary(campaigns, selectedIds)}</span>
+        <span className="segment-campaign-count">{selectedIds.length}</span>
+      </button>
+      {open && (
+        <div className="segment-campaign-menu">
+          <div className="segment-campaign-menu-head">
+            <strong>Campaigns</strong>
+            <button
+              type="button"
+              className="link-btn"
+              disabled={!selectedIds.length || disabled}
+              onClick={() => onChange([])}
+            >
+              Clear
+            </button>
+          </div>
+          <div className="segment-campaign-options">
+            {campaigns.map((campaign) => (
+              <label key={campaign.id} className="segment-campaign-option">
+                <input
+                  type="checkbox"
+                  checked={selectedSet.has(campaign.id)}
+                  disabled={disabled}
+                  onChange={() => toggleCampaign(campaign.id)}
+                />
+                <span>{campaignOptionLabel(campaign)}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SegmentStatusBadge({ active, processing }) {
@@ -80,7 +127,9 @@ function SegmentStatusBadge({ active, processing }) {
     : <span className="cfg-pill neutral"><span className="d" />Inactive</span>;
 }
 
-function SegmentConfigTable({ rows, onChange, onSetDefault, settingDefaultId, disabled }) {
+function SegmentConfigTable({ rows, campaigns, onChange, onSetDefault, settingDefaultId, disabled }) {
+  const [openCampaignSegmentId, setOpenCampaignSegmentId] = useStateSC(null);
+
   if (!rows.length) {
     return <EmptyState title="No segments yet" note="Wait for segment data to sync before configuring." compact />;
   }
@@ -93,12 +142,13 @@ function SegmentConfigTable({ rows, onChange, onSetDefault, settingDefaultId, di
     );
   };
 
-  const hasSavedConfig = (row) => Boolean(row.configId);
-
   const handleDefaultSelect = (row) => {
     if (row.isDefault || disabled || settingDefaultId) return;
-    if (!hasSavedConfig(row)) return;
     onSetDefault(row.segmentId);
+  };
+
+  const updateCampaignIds = (segmentId, campaignIds) => {
+    updateRow(segmentId, { campaignIds });
   };
 
   return (
@@ -109,8 +159,7 @@ function SegmentConfigTable({ rows, onChange, onSetDefault, settingDefaultId, di
             <th className="table-default-col">Default</th>
             <th>Segment</th>
             <th>Status</th>
-            <th>Min % off</th>
-            <th>Max % off</th>
+            <th>Campaigns</th>
           </tr>
         </thead>
         <tbody>
@@ -118,14 +167,14 @@ function SegmentConfigTable({ rows, onChange, onSetDefault, settingDefaultId, di
             <tr key={row.segmentId} className={row.dirty ? "row-dirty" : ""}>
               <td className="table-default-col">
                 <label
-                  className={`table-default-radio${!hasSavedConfig(row) ? " disabled" : ""}`}
-                  title={hasSavedConfig(row) ? "Set as default segment" : "Save discount config first"}
+                  className="table-default-radio"
+                  title="Set as default segment"
                 >
                   <input
                     type="radio"
                     name="default-segment"
                     checked={row.isDefault}
-                    disabled={disabled || settingDefaultId != null || !hasSavedConfig(row)}
+                    disabled={disabled || settingDefaultId != null}
                     onChange={() => handleDefaultSelect(row)}
                   />
                   {row.isDefault && <span className="table-default-label">Default</span>}
@@ -134,30 +183,20 @@ function SegmentConfigTable({ rows, onChange, onSetDefault, settingDefaultId, di
               <td><strong>{row.name || "—"}</strong></td>
               <td><SegmentStatusBadge active={row.segmentActive} processing={row.isProcessing} /></td>
               <td>
-                <input
-                  className="cfg-input cfg-input-sm mono"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  placeholder="5"
-                  value={row.minPercent}
-                  disabled={disabled}
-                  onChange={(e) => updateRow(row.segmentId, { minPercent: e.target.value })}
-                />
-              </td>
-              <td>
-                <input
-                  className="cfg-input cfg-input-sm mono"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  placeholder="30"
-                  value={row.maxPercent}
-                  disabled={disabled}
-                  onChange={(e) => updateRow(row.segmentId, { maxPercent: e.target.value })}
-                />
+                {campaigns.length ? (
+                  <CampaignMultiSelect
+                    row={row}
+                    campaigns={campaigns}
+                    open={openCampaignSegmentId === row.segmentId}
+                    disabled={disabled}
+                    onToggleOpen={() => setOpenCampaignSegmentId((prev) =>
+                      prev === row.segmentId ? null : row.segmentId,
+                    )}
+                    onChange={(campaignIds) => updateCampaignIds(row.segmentId, campaignIds)}
+                  />
+                ) : (
+                  <span className="muted">Create campaigns first</span>
+                )}
               </td>
             </tr>
           ))}
@@ -169,6 +208,7 @@ function SegmentConfigTable({ rows, onChange, onSetDefault, settingDefaultId, di
 
 function SegmentConfigPage() {
   const [rows, setRows] = useStateSC([]);
+  const [campaigns, setCampaigns] = useStateSC([]);
   const [loading, setLoading] = useStateSC(true);
   const [saving, setSaving] = useStateSC(false);
   const [settingDefaultId, setSettingDefaultId] = useStateSC(null);
@@ -181,6 +221,7 @@ function SegmentConfigPage() {
     try {
       const data = await SegmentAPI.list("percentage");
       setRows(apiToLocalRows(data.items));
+      setCampaigns(data.campaigns ?? []);
       setSaved(false);
     } catch (err) {
       setError(err.message);
@@ -195,18 +236,9 @@ function SegmentConfigPage() {
 
   const handleSaveAll = async () => {
     if (!savableRows.length) {
-      setError("Enter a min or max discount for at least one segment");
+      setError("Choose campaigns for at least one segment");
       setSaved(false);
       return;
-    }
-
-    for (const row of savableRows) {
-      const msg = validateRow(row);
-      if (msg) {
-        setError(msg);
-        setSaved(false);
-        return;
-      }
     }
 
     setSaving(true);
@@ -217,8 +249,7 @@ function SegmentConfigPage() {
         discountType: "percentage",
         items: savableRows.map((row) => ({
           segmentId: row.segmentId,
-          minDiscountRatio: percentToRatio(row.minPercent),
-          maxDiscountRatio: percentToRatio(row.maxPercent),
+          campaignIds: row.campaignIds ?? [],
         })),
       };
       const data = await SegmentAPI.save(payload);
@@ -269,10 +300,11 @@ function SegmentConfigPage() {
 
       <CfgSection
         title="Segment discount configuration"
-        desc="Set the discount range (% off) applied to coupon campaigns for each Klaviyo segment, and choose one default segment."
+        desc="Bind coupon campaigns to each Klaviyo segment. A user's available campaigns are resolved from the segments they belong to."
       >
         <SegmentConfigTable
           rows={rows}
+          campaigns={campaigns}
           onChange={setRows}
           onSetDefault={handleSetDefault}
           settingDefaultId={settingDefaultId}
@@ -281,8 +313,8 @@ function SegmentConfigPage() {
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>
           <span className="muted" style={{ fontSize: 12.5 }}>
             {savableRows.length > 0
-              ? `${savableRows.length} segment(s) ready to save · one default required when configured`
-              : "Enter min or max discount before saving"}
+              ? `${savableRows.length} segment(s) ready to save · explicit campaign bindings take priority`
+              : "Choose campaigns before saving"}
           </span>
           <div className="row" style={{ gap: 8 }}>
             <button type="button" className="btn" disabled={saving} onClick={load}>Refresh</button>

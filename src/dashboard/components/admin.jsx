@@ -8,6 +8,9 @@ const DASHBOARD_SECTION = {
   label: "Dashboard",
 };
 
+const BRAND_COLLECT_SECTION = { id: "brand-collect", label: "Brand Info" };
+const PRODUCT_ADD_SECTION = { id: "product-add", label: "Add Product" };
+
 // 营销活动（对外投放）
 const COUPON_CAMPAIGNS_SECTION = { id: "campaigns", label: "Coupon Campaigns" };
 const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Survey Campaigns" };
@@ -25,6 +28,8 @@ const ACCOUNT_MATCH = [ACCOUNT_SECTION.id, SHOPIFY_SECTION.id, KLAVIYO_SECTION.i
 
 const ALL_SECTIONS = [
   DASHBOARD_SECTION,
+  BRAND_COLLECT_SECTION,
+  PRODUCT_ADD_SECTION,
   COUPON_CAMPAIGNS_SECTION,
   SURVEY_CAMPAIGNS_SECTION,
   SEGMENT_CONFIG_SECTION,
@@ -42,7 +47,11 @@ function buildNavGroups(conn) {
   return [
     {
       label: "Overview",
-      items: [{ ...DASHBOARD_SECTION }],
+      items: [
+        { ...DASHBOARD_SECTION },
+        { ...BRAND_COLLECT_SECTION },
+        { ...PRODUCT_ADD_SECTION },
+      ],
     },
     {
       label: "Coupons",
@@ -75,6 +84,8 @@ function buildNavGroups(conn) {
 
 function parseSection() {
   if (window.location.pathname === "/" || window.location.pathname === "/dashboard") return DASHBOARD_SECTION.id;
+  if (window.location.pathname === "/brand-collect") return BRAND_COLLECT_SECTION.id;
+  if (window.location.pathname === "/product-add") return PRODUCT_ADD_SECTION.id;
   if (window.location.pathname === "/segment-config") return SEGMENT_CONFIG_SECTION.id;
   if (window.location.pathname === "/survey-campaigns") return SURVEY_CAMPAIGNS_SECTION.id;
   const params = new URLSearchParams(window.location.search);
@@ -272,6 +283,14 @@ function AdminApp() {
       window.history.replaceState({}, "", "/");
       return;
     }
+    if (nextSection === BRAND_COLLECT_SECTION.id) {
+      window.history.replaceState({}, "", "/brand-collect");
+      return;
+    }
+    if (nextSection === PRODUCT_ADD_SECTION.id) {
+      window.history.replaceState({}, "", "/product-add");
+      return;
+    }
     if (nextSection === SEGMENT_CONFIG_SECTION.id) {
       window.history.replaceState({}, "", "/segment-config");
       return;
@@ -311,7 +330,11 @@ function AdminApp() {
       <div className="admin-main">
         {section === DASHBOARD_SECTION.id
           ? <DashboardPage />
-          : ACCOUNT_MATCH.includes(section)
+          : section === BRAND_COLLECT_SECTION.id
+            ? <BrandCollectPage />
+            : section === PRODUCT_ADD_SECTION.id
+              ? <ProductAddPage />
+              : ACCOUNT_MATCH.includes(section)
             ? (
               <AccountsPage
                 section={section}

@@ -1662,6 +1662,117 @@ select.cfg-input-sm {
   transform: translateX(16px);
 }
 
+.cfg-upload-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.cfg-upload-row .cfg-input {
+  flex: 1;
+  min-width: 0;
+}
+.cfg-upload-btn {
+  flex-shrink: 0;
+  cursor: pointer;
+  margin: 0;
+}
+.cfg-upload-btn input {
+  display: none;
+}
+.cfg-image-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.cfg-image-preview img {
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.cfg-image-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 4px;
+}
+.cfg-image-preview--logo img {
+  object-fit: contain;
+  padding: 8px;
+  background: var(--bg-elev);
+}
+.cfg-image-placeholder {
+  margin-top: 10px;
+  padding: 20px 16px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink-4);
+  font-size: 14px;
+  text-align: center;
+  background: var(--bg-sunken);
+}
+.cfg-color-input-row {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+.cfg-color-swatch {
+  display: block;
+  width: 44px;
+  height: 38px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  cursor: pointer;
+  overflow: hidden;
+}
+.cfg-color-swatch input[type="color"] {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.cfg-busy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: oklch(0.98 0.01 90 / 0.88);
+  backdrop-filter: blur(6px);
+}
+.cfg-busy-card {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  max-width: 360px;
+  padding: 28px 32px;
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-2);
+  text-align: center;
+}
+.cfg-busy-card p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
 .cfg-alert {
   display: flex;
   align-items: flex-start;

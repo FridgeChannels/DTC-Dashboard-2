@@ -39,4 +39,9 @@ export const env = {
   secretsProvider: process.env.SECRETS_PROVIDER ?? "supabase_vault",
   /** 内部 M2M 接口密钥；生产环境必填 */
   apiKey: process.env.API_KEY ?? "",
+  /** 品牌信息收集：默认 Shopify customer_id（商品同步） */
+  shopifyCustomerId: Number(process.env.SHOPIFY_CUSTOMER_ID ?? process.env.DEFAULT_CUSTOMER_ID ?? 1),
+  /** Dify 品牌色分析 */
+  difyApiUrl: process.env.DIFY_API_URL ?? "",
+  difyApiKey: process.env.DIFY_API_KEY ?? "",
 } as const;

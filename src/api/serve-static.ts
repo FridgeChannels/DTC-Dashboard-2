@@ -35,7 +35,9 @@ export async function serveStatic(
     pathname === "/dashboard" ||
     pathname === "/brand-config" ||
     pathname === "/segment-config" ||
-    pathname === "/survey-campaigns"
+    pathname === "/survey-campaigns" ||
+    pathname === "/brand-collect" ||
+    pathname === "/product-add"
   ) relativePath = "/admin.html";
   const safePath = normalize(relativePath).replace(/^(\.\.[/\\])+/, "");
   const filePath = join(DASHBOARD_ROOT, safePath);

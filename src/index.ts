@@ -61,6 +61,16 @@ import {
 import { serveStatic } from "./api/serve-static.js";
 import { serveFcStatic } from "./api/serve-fc-static.js";
 import {
+  handleGetBrandCollectConfig,
+  handlePostBrand,
+  handlePostBrandColors,
+  handlePostBrandInfo,
+  handlePostPageHtml,
+  handlePostProduct,
+  handlePostUploadImage,
+  handleGetProducts,
+} from "./api/brand-collect.js";
+import {
   handleConsumerMe,
   handleShopifyCustomerUnlink,
   handleShopifyCustomerOAuthCallback,
@@ -326,6 +336,46 @@ const server = createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/api/tap-choice/surveys/answers") {
     if (!requireApiKey(req, res)) return;
     await handlePostSurveyAnswers(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/brand-colors") {
+    await handlePostBrandColors(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/page-html") {
+    await handlePostPageHtml(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/config") {
+    await handleGetBrandCollectConfig(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/brand-info") {
+    await handlePostBrandInfo(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/upload-image") {
+    await handlePostUploadImage(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/brand") {
+    await handlePostBrand(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/products") {
+    await handleGetProducts(req, res, url);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/products") {
+    await handlePostProduct(req, res);
     return;
   }
 

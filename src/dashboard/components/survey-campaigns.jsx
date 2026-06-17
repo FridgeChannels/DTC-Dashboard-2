@@ -261,299 +261,162 @@ function SurveyCampaignSettingsForm({
   disabled,
 }) {
   return (
-    <div className="cfg-form grid grid-2">
-      <SurveyField label="Campaign name" fullRow>
-        <input
-          className="cfg-input"
-          value={form.name}
-          disabled={disabled}
-          onChange={(e) => onChange("name", e.target.value)}
-          placeholder="Summer Reward Preference"
-        />
-      </SurveyField>
-      <SurveyField label="Campaign goal">
-        <select
-          className="cfg-input"
-          value={form.campaignGoal}
-          disabled={disabled}
-          onChange={(e) => onChange("campaignGoal", e.target.value)}
-        >
-          {CAMPAIGN_GOAL_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      </SurveyField>
-      {showStatus && (
-        <SurveyField label="Status">
-          <select
-            className="cfg-input"
-            value={form.status}
-            disabled={disabled}
-            onChange={(e) => onChange("status", e.target.value)}
-          >
-            {CAMPAIGN_STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </SurveyField>
-      )}
-      <SurveyField label="Description" fullRow>
-        <textarea
-          className="cfg-input"
-          rows={2}
-          value={form.description}
-          disabled={disabled}
-          onChange={(e) => onChange("description", e.target.value)}
-          placeholder="Internal notes for this survey campaign"
-        />
-      </SurveyField>
-      <SurveyField
-        label="Klaviyo segments"
-        hint="Leave empty for all users. Select one or more segments to limit the audience."
-        fullRow
-      >
-        <SegmentPicker
-          segments={segments}
-          selectedIds={form.selectedSegmentIds}
-          disabled={disabled}
-          onChange={(ids) => onChange("selectedSegmentIds", ids)}
-        />
-      </SurveyField>
-      <SurveyField label="Question order">
-        <select
-          className="cfg-input"
-          value={form.questionOrderPolicy}
-          disabled={disabled}
-          onChange={(e) => onChange("questionOrderPolicy", e.target.value)}
-        >
-          <option value="fixed_order">Fixed order</option>
-          <option value="random">Random</option>
-        </select>
-      </SurveyField>
-      <SurveyField label="Starts at">
-        <input
-          className="cfg-input"
-          type="datetime-local"
-          step="60"
-          value={form.startAt}
-          disabled={disabled}
-          onChange={(e) => onChange("startAt", e.target.value)}
-        />
-      </SurveyField>
-      <SurveyField label="Ends at">
-        <input
-          className="cfg-input"
-          type="datetime-local"
-          step="60"
-          value={form.endAt}
-          min={form.startAt || undefined}
-          disabled={disabled}
-          onChange={(e) => onChange("endAt", e.target.value)}
-        />
-      </SurveyField>
-      <SurveyField label="Priority" hint="Higher wins when multiple campaigns match">
-        <input
-          className="cfg-input mono"
-          type="number"
-          value={form.priority}
-          disabled={disabled}
-          onChange={(e) => onChange("priority", e.target.value)}
-        />
-      </SurveyField>
-      <SurveyField label="Max questions per user">
-        <input
-          className="cfg-input mono"
-          type="number"
-          min="1"
-          value={form.maxQuestionsPerUser}
-          disabled={disabled}
-          onChange={(e) => onChange("maxQuestionsPerUser", e.target.value)}
-          placeholder="Optional"
-        />
-      </SurveyField>
-      <SurveyField label="Allow skip">
-        <label className="survey-checkbox-row">
-          <input
-            type="checkbox"
-            checked={form.allowSkip}
-            disabled={disabled}
-            onChange={(e) => onChange("allowSkip", e.target.checked)}
-          />
-          Users can skip questions
-        </label>
-      </SurveyField>
-    </div>
-  );
-}
-
-function OptionRow({ option, onDeactivate, busy }) {
-  return (
-    <div className={`survey-option-row${option.status === "inactive" ? " inactive" : ""}`}>
-      <span className="survey-option-order">{option.displayOrder}</span>
-      <span className="survey-option-label">{option.label}</span>
-      <code className="mono muted">{option.value}</code>
-      {option.isOtherOption && (
-        <span className="cfg-pill accent"><span className="d" />Other</span>
-      )}
-      {option.allowTextInput && (
-        <span className="cfg-pill warn"><span className="d" />Text input</span>
-      )}
-      {option.status === "active" && (
-        <button
-          type="button"
-          className="btn"
-          disabled={busy}
-          onClick={() => onDeactivate(option.id)}
-        >
-          Remove
-        </button>
-      )}
-    </div>
-  );
-}
-
-function AddOptionForm({ questionId, activeCount, onAdded, busy, setBusy, setError }) {
-  const [form, setForm] = useStateSV({
-    label: "",
-    value: "",
-    isOtherOption: false,
-    allowTextInput: false,
-    otherTextRequired: false,
-    textInputPlaceholder: "",
-    maxTextLength: "100",
-  });
-
-  const canAdd = activeCount < 4;
-
-  const handleSubmit = async () => {
-    if (!canAdd) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const payload = {
-        survey_question_id: questionId,
-        label: form.label,
-        value: form.value,
-        is_other_option: form.isOtherOption,
-        allow_text_input: form.isOtherOption && form.allowTextInput,
-        other_text_required: form.isOtherOption && form.otherTextRequired,
-        text_input_placeholder: form.isOtherOption ? form.textInputPlaceholder : null,
-        max_text_length: form.isOtherOption ? Number(form.maxTextLength) || 100 : 100,
-      };
-      const data = await SurveyAPI.createOption(payload);
-      onAdded(data.campaign);
-      setForm({
-        label: "",
-        value: "",
-        isOtherOption: false,
-        allowTextInput: false,
-        otherTextRequired: false,
-        textInputPlaceholder: "",
-        maxTextLength: "100",
-      });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (!canAdd) {
-    return <p className="cfg-hint">Maximum 4 active options reached.</p>;
-  }
-
-  return (
-    <div className="survey-add-option cfg-form grid grid-2">
-      <SurveyField label="Option label">
-        <input
-          className="cfg-input"
-          value={form.label}
-          onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
-          placeholder="Free shipping"
-        />
-      </SurveyField>
-      <SurveyField label="Option value (snake_case)">
-        <input
-          className="cfg-input mono"
-          value={form.value}
-          onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
-          placeholder="free_shipping"
-        />
-      </SurveyField>
-      <SurveyField label="Other option" fullRow>
-        <label className="survey-checkbox-row">
-          <input
-            type="checkbox"
-            checked={form.isOtherOption}
-            onChange={(e) => setForm((f) => ({
-              ...f,
-              isOtherOption: e.target.checked,
-              allowTextInput: e.target.checked ? f.allowTextInput : false,
-            }))}
-          />
-          This is an &quot;Other&quot; option (only Other allows text input)
-        </label>
-      </SurveyField>
-      {form.isOtherOption && (
-        <>
-          <SurveyField label="Allow text input">
-            <label className="survey-checkbox-row">
-              <input
-                type="checkbox"
-                checked={form.allowTextInput}
-                onChange={(e) => setForm((f) => ({ ...f, allowTextInput: e.target.checked }))}
-              />
-              Show input field when selected
-            </label>
-          </SurveyField>
-          <SurveyField label="Text required">
-            <label className="survey-checkbox-row">
-              <input
-                type="checkbox"
-                checked={form.otherTextRequired}
-                onChange={(e) => setForm((f) => ({ ...f, otherTextRequired: e.target.checked }))}
-              />
-              Require user to fill Other text
-            </label>
-          </SurveyField>
-          <SurveyField label="Placeholder">
+    <div className="survey-settings-form-layout">
+      {/* Card 1: Basic Information */}
+      <div className="survey-layout-card">
+        <div className="survey-layout-card-title">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          Basic Details
+        </div>
+        <div className="cfg-form grid grid-2">
+          <SurveyField label="Campaign name" fullRow>
             <input
               className="cfg-input"
-              value={form.textInputPlaceholder}
-              onChange={(e) => setForm((f) => ({ ...f, textInputPlaceholder: e.target.value }))}
-              placeholder="Tell us what you prefer"
+              value={form.name}
+              disabled={disabled}
+              onChange={(e) => onChange("name", e.target.value)}
+              placeholder="Summer Reward Preference"
             />
           </SurveyField>
-          <SurveyField label="Max text length">
+          <SurveyField label="Campaign goal">
+            <select
+              className="cfg-input"
+              value={form.campaignGoal}
+              disabled={disabled}
+              onChange={(e) => onChange("campaignGoal", e.target.value)}
+            >
+              {CAMPAIGN_GOAL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </SurveyField>
+          {showStatus && (
+            <SurveyField label="Status">
+              <select
+                className="cfg-input"
+                value={form.status}
+                disabled={disabled}
+                onChange={(e) => onChange("status", e.target.value)}
+              >
+                {CAMPAIGN_STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </SurveyField>
+          )}
+          <SurveyField label="Description" fullRow>
+            <textarea
+              className="cfg-input"
+              rows={2}
+              value={form.description}
+              disabled={disabled}
+              onChange={(e) => onChange("description", e.target.value)}
+              placeholder="Internal notes for this survey campaign"
+            />
+          </SurveyField>
+        </div>
+      </div>
+
+      {/* Card 2: Target Audience */}
+      <div className="survey-layout-card">
+        <div className="survey-layout-card-title">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          Target Audience
+        </div>
+        <SurveyField
+          label="Klaviyo segments"
+          hint="Leave empty for all users. Select one or more segments to limit the audience."
+          fullRow
+        >
+          <SegmentPicker
+            segments={segments}
+            selectedIds={form.selectedSegmentIds}
+            disabled={disabled}
+            onChange={(ids) => onChange("selectedSegmentIds", ids)}
+          />
+        </SurveyField>
+      </div>
+
+      {/* Card 3: Scheduling & Priority */}
+      <div className="survey-layout-card">
+        <div className="survey-layout-card-title">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          Scheduling &amp; Priority
+        </div>
+        <div className="cfg-form grid grid-2">
+          <SurveyField label="Starts at">
+            <input
+              className="cfg-input"
+              type="datetime-local"
+              step="60"
+              value={form.startAt}
+              disabled={disabled}
+              onChange={(e) => onChange("startAt", e.target.value)}
+            />
+          </SurveyField>
+          <SurveyField label="Ends at">
+            <input
+              className="cfg-input"
+              type="datetime-local"
+              step="60"
+              value={form.endAt}
+              min={form.startAt || undefined}
+              disabled={disabled}
+              onChange={(e) => onChange("endAt", e.target.value)}
+            />
+          </SurveyField>
+          <SurveyField label="Priority" hint="Higher wins when multiple campaigns match">
             <input
               className="cfg-input mono"
               type="number"
-              min="1"
-              max="500"
-              value={form.maxTextLength}
-              onChange={(e) => setForm((f) => ({ ...f, maxTextLength: e.target.value }))}
+              value={form.priority}
+              disabled={disabled}
+              onChange={(e) => onChange("priority", e.target.value)}
             />
           </SurveyField>
-        </>
-      )}
-      <div className="row" style={{ gridColumn: "1 / -1", justifyContent: "flex-end" }}>
-        <button type="button" className="btn primary" disabled={busy} onClick={handleSubmit}>
-          {busy ? "Adding…" : "Add option"}
-        </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function QuestionCard({ question, onUpdated, busy, setBusy, setError }) {
-  const activeOptions = (question.options || []).filter((o) => o.status === "active");
+function SurveyOptionInput({ option, onUpdated, busy, setBusy, setError }) {
+  const [label, setLabel] = useStateSV(option.label);
 
-  const handleDeactivateOption = async (optionId) => {
+  // Sync state if option label changes externally
+  React.useEffect(() => {
+    setLabel(option.label);
+  }, [option.label]);
+
+  const handleSave = async () => {
+    if (!label.trim() || label === option.label) {
+      setLabel(option.label); // restore original
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const generatedValue = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      const data = await SurveyAPI.updateOption({
+        option_id: option.id,
+        label: label.trim(),
+        value: generatedValue || `opt_${option.id.slice(0, 4)}`,
+      });
+      onUpdated(data.campaign);
+    } catch (err) {
+      setError(err.message);
+      setLabel(option.label);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
     setBusy(true);
     setError(null);
     try {
       const data = await SurveyAPI.updateOption({
-        option_id: optionId,
+        option_id: option.id,
         status: "inactive",
       });
       onUpdated(data.campaign);
@@ -564,7 +427,100 @@ function QuestionCard({ question, onUpdated, busy, setBusy, setError }) {
     }
   };
 
-  const handleDeactivateQuestion = async () => {
+  return (
+    <div className="survey-card-option-row">
+      <span className="survey-card-radio-icon" />
+      <input
+        type="text"
+        className="survey-card-option-input"
+        value={label}
+        disabled={busy}
+        onChange={(e) => setLabel(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={(e) => e.key === "Enter" && handleSave()}
+        placeholder="Option text"
+      />
+      <button
+        type="button"
+        className="survey-card-option-remove"
+        title="Remove option"
+        disabled={busy}
+        onClick={handleDelete}
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+  );
+}
+
+function SurveyQuestionCard({
+  question,
+  activeQuestionId,
+  setActiveQuestionId,
+  onUpdated,
+  busy,
+  setBusy,
+  setError,
+  onDuplicate,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+}) {
+  const isActive = activeQuestionId === question.id;
+  const activeOptions = (question.options || []).filter((o) => o.status === "active");
+  const hasOther = activeOptions.some((o) => o.isOtherOption);
+
+  const [text, setText] = useStateSV(question.questionText);
+
+  // Sync text if question changes externally
+  React.useEffect(() => {
+    setText(question.questionText);
+  }, [question.questionText]);
+
+  const handleSaveText = async () => {
+    if (!text.trim() || text === question.questionText) {
+      setText(question.questionText);
+      return;
+    }
+    if (text.length > 80) {
+      setError("Question text must be 80 characters or fewer");
+      setText(question.questionText);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await SurveyAPI.updateQuestion({
+        question_id: question.id,
+        question_text: text.trim(),
+      });
+      onUpdated(data.campaign);
+    } catch (err) {
+      setError(err.message);
+      setText(question.questionText);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleToggleRequired = async (checked) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await SurveyAPI.updateQuestion({
+        question_id: question.id,
+        is_required: checked,
+      });
+      onUpdated(data.campaign);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteQuestion = async () => {
     if (!window.confirm("Remove this question from the campaign?")) return;
     setBusy(true);
     setError(null);
@@ -572,6 +528,36 @@ function QuestionCard({ question, onUpdated, busy, setBusy, setError }) {
       const data = await SurveyAPI.updateQuestion({
         question_id: question.id,
         status: "inactive",
+      });
+      onUpdated(data.campaign);
+      if (isActive) {
+        setActiveQuestionId(null);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAddOption = async (isOther = false) => {
+    if (activeOptions.length >= 4) {
+      setError("Each question supports at most 4 active options");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const label = isOther ? "Other..." : `Option ${activeOptions.length + 1}`;
+      const value = isOther ? "other" : `option_${activeOptions.length + 1}`;
+      const data = await SurveyAPI.createOption({
+        survey_question_id: question.id,
+        label,
+        value,
+        is_other_option: isOther,
+        allow_text_input: isOther,
+        other_text_required: isOther,
+        text_input_placeholder: isOther ? "Please specify" : null,
       });
       onUpdated(data.campaign);
     } catch (err) {
@@ -583,73 +569,178 @@ function QuestionCard({ question, onUpdated, busy, setBusy, setError }) {
 
   if (question.status === "inactive") return null;
 
-  return (
-    <div className="survey-question">
-      <div className="survey-question-head">
-        <div className="survey-question-titles">
-          <div className="survey-question-title">Q{question.displayOrder}: {question.questionText}</div>
-          <div className="survey-question-sub">Single choice · {activeOptions.length} option(s)</div>
+  // Render Preview Mode
+  if (!isActive) {
+    return (
+      <div
+        className="survey-question-card survey-preview-card"
+        onClick={() => setActiveQuestionId(question.id)}
+      >
+        <div className="survey-card-drag-handle">&#8942;&#8942;</div>
+        <div className="survey-preview-title">
+          <span>Q{question.displayOrder}: {question.questionText}</span>
+          {question.isRequired && <span className="survey-preview-required-marker">*</span>}
         </div>
-        <button type="button" className="btn" disabled={busy} onClick={handleDeactivateQuestion}>
-          Remove question
-        </button>
+        <div className="survey-preview-options">
+          {activeOptions.map((opt) => (
+            <div key={opt.id} className="survey-preview-option">
+              <span className="survey-card-radio-icon" />
+              <span>{opt.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="survey-options-list">
-        {(question.options || []).map((opt) => (
-          <OptionRow
+    );
+  }
+
+  // Render Edit Mode
+  return (
+    <div className="survey-question-card active">
+      <div className="survey-card-drag-handle">&#8942;&#8942;</div>
+      
+      {/* Top Row: Question Text + Type Select */}
+      <div className="survey-card-row-top">
+        <div className="survey-card-question-input-wrapper">
+          <div className="survey-card-question-input-row">
+            <input
+              type="text"
+              className="survey-card-question-input"
+              value={text}
+              disabled={busy}
+              onChange={(e) => setText(e.target.value)}
+              onBlur={handleSaveText}
+              onKeyDown={(e) => e.key === "Enter" && handleSaveText()}
+              placeholder="Question text"
+            />
+            <button type="button" className="survey-card-img-btn" title="Add image (mock)">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            </button>
+          </div>
+          
+          {/* Rich Text Toolbar Mock */}
+          <div className="survey-card-format-bar">
+            <button type="button" className="survey-card-format-btn" style={{ fontWeight: "bold" }}>B</button>
+            <button type="button" className="survey-card-format-btn" style={{ fontStyle: "italic" }}>I</button>
+            <button type="button" className="survey-card-format-btn" style={{ textDecoration: "underline" }}>U</button>
+            <button type="button" className="survey-card-format-btn">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            </button>
+            <button type="button" className="survey-card-format-btn" style={{ textDecoration: "line-through", opacity: 0.6 }}>T</button>
+          </div>
+        </div>
+
+        <select className="survey-card-type-select" defaultValue="single_choice" disabled>
+          <option value="single_choice">&#9673; Multiple choice</option>
+        </select>
+      </div>
+
+      {/* Options List */}
+      <div className="survey-card-options-list">
+        {activeOptions.map((opt) => (
+          <SurveyOptionInput
             key={opt.id}
             option={opt}
+            onUpdated={onUpdated}
             busy={busy}
-            onDeactivate={handleDeactivateOption}
+            setBusy={setBusy}
+            setError={setError}
           />
         ))}
+
+        {/* Add option links */}
+        {activeOptions.length < 4 && (
+          <div className="survey-card-add-option-row">
+            <span className="survey-card-radio-icon" />
+            <span>
+              <button
+                type="button"
+                className="survey-card-add-link"
+                disabled={busy}
+                onClick={() => handleAddOption(false)}
+              >
+                Add option
+              </button>
+              {!hasOther && (
+                <>
+                  {" or "}
+                  <button
+                    type="button"
+                    className="survey-card-add-link"
+                    disabled={busy}
+                    onClick={() => handleAddOption(true)}
+                  >
+                    add &quot;Other&quot;
+                  </button>
+                </>
+              )}
+            </span>
+          </div>
+        )}
       </div>
-      <AddOptionForm
-        questionId={question.id}
-        activeCount={activeOptions.length}
-        onAdded={onUpdated}
-        busy={busy}
-        setBusy={setBusy}
-        setError={setError}
-      />
-    </div>
-  );
-}
 
-function AddQuestionForm({ campaignId, onAdded, busy, setBusy, setError }) {
-  const [text, setText] = useStateSV("");
+      <hr className="survey-card-divider" />
 
-  const handleSubmit = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const data = await SurveyAPI.createQuestion({
-        survey_campaign_id: campaignId,
-        question_text: text,
-      });
-      onAdded(data.campaign);
-      setText("");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+      {/* Bottom Actions */}
+      <div className="survey-card-actions">
+        {/* Reordering actions */}
+        <button
+          type="button"
+          className="survey-card-action-btn"
+          title="Move up"
+          disabled={busy || isFirst}
+          onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+        </button>
+        <button
+          type="button"
+          className="survey-card-action-btn"
+          title="Move down"
+          disabled={busy || isLast}
+          onClick={(e) => { e.stopPropagation(); onMoveDown(); }}
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
 
-  return (
-    <div className="cfg-form grid grid-2">
-      <SurveyField label="Question text" hint="Max 80 characters" fullRow>
-        <input
-          className="cfg-input"
-          value={text}
-          maxLength={80}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Which reward would you prefer this time?"
-        />
-      </SurveyField>
-      <div className="row" style={{ gridColumn: "1 / -1", justifyContent: "flex-end" }}>
-        <button type="button" className="btn primary" disabled={busy || !text.trim()} onClick={handleSubmit}>
-          {busy ? "Adding…" : "Add question"}
+        <div className="survey-card-actions-sep" />
+
+        <button
+          type="button"
+          className="survey-card-action-btn"
+          title="Duplicate question"
+          disabled={busy}
+          onClick={(e) => { e.stopPropagation(); onDuplicate(question); }}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </button>
+        
+        <button
+          type="button"
+          className="survey-card-action-btn delete"
+          title="Delete question"
+          disabled={busy}
+          onClick={(e) => { e.stopPropagation(); handleDeleteQuestion(); }}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+        </button>
+
+        <div className="survey-card-actions-sep" />
+
+        <label className="survey-card-required-toggle" onClick={(e) => e.stopPropagation()}>
+          <span>Required</span>
+          <label className="survey-switch">
+            <input
+              type="checkbox"
+              checked={question.isRequired}
+              disabled={busy}
+              onChange={(e) => handleToggleRequired(e.target.checked)}
+            />
+            <span className="survey-slider"></span>
+          </label>
+        </label>
+        
+        <button type="button" className="survey-card-action-btn" title="More options" onClick={(e) => e.stopPropagation()}>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
         </button>
       </div>
     </div>
@@ -717,6 +808,8 @@ function SurveyCampaignsPage() {
   const [busy, setBusy] = useStateSV(false);
   const [error, setError] = useStateSV(null);
   const [notice, setNotice] = useStateSV(null);
+  const [editTab, setEditTab] = useStateSV("settings");
+  const [activeQuestionId, setActiveQuestionId] = useStateSV(null);
 
   const loadList = useCallbackSV(async () => {
     setLoading(true);
@@ -743,13 +836,16 @@ function SurveyCampaignsPage() {
     setView("create");
     setError(null);
     setNotice(null);
+    setActiveQuestionId(null);
   };
 
   const openEdit = async (campaign) => {
     setView("edit");
+    setEditTab("settings");
     setError(null);
     setNotice(null);
     setLoading(true);
+    setActiveQuestionId(null);
     try {
       const data = await SurveyAPI.getCampaign(campaign.id);
       setDetail(data.campaign);
@@ -778,11 +874,110 @@ function SurveyCampaignsPage() {
     setDetail(null);
     setError(null);
     setNotice(null);
+    setActiveQuestionId(null);
     loadList();
   };
 
   const patchForm = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleDuplicateQuestion = async (originalQ) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const createRes = await SurveyAPI.createQuestion({
+        survey_campaign_id: detail.id,
+        question_text: `${originalQ.questionText} (Copy)`,
+      });
+      let campaign = createRes.campaign;
+      
+      const newQ = campaign.questions.find(
+        (q) => !detail.questions.some((oldQ) => oldQ.id === q.id)
+      );
+      
+      if (newQ) {
+        const activeOpts = (originalQ.options || []).filter((o) => o.status === "active");
+        for (const opt of activeOpts) {
+          const optRes = await SurveyAPI.createOption({
+            survey_question_id: newQ.id,
+            label: opt.label,
+            value: opt.value,
+            is_other_option: opt.isOtherOption,
+            allow_text_input: opt.allowTextInput,
+            other_text_required: opt.otherTextRequired,
+            text_input_placeholder: opt.textInputPlaceholder,
+            max_text_length: opt.maxTextLength,
+          });
+          campaign = optRes.campaign;
+        }
+        setActiveQuestionId(newQ.id);
+      }
+      
+      handleCampaignUpdated(campaign);
+      setNotice("Question duplicated successfully.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleMoveQuestion = async (index, direction) => {
+    const activeQuestions = (detail?.questions || []).filter((q) => q.status === "active");
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= activeQuestions.length) return;
+    
+    setBusy(true);
+    setError(null);
+    try {
+      const q1 = activeQuestions[index];
+      const q2 = activeQuestions[targetIndex];
+      
+      await Promise.all([
+        SurveyAPI.updateQuestion({ question_id: q1.id, display_order: q2.displayOrder }),
+        SurveyAPI.updateQuestion({ question_id: q2.id, display_order: q1.displayOrder }),
+      ]);
+      
+      const res = await SurveyAPI.getCampaign(detail.id);
+      handleCampaignUpdated(res.campaign);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAddQuestion = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await SurveyAPI.createQuestion({
+        survey_campaign_id: detail.id,
+        question_text: "Question",
+      });
+      let campaign = data.campaign;
+      
+      const newQ = campaign.questions.find(
+        (q) => !detail.questions.some((oldQ) => oldQ.id === q.id)
+      );
+      
+      if (newQ) {
+        const optData = await SurveyAPI.createOption({
+          survey_question_id: newQ.id,
+          label: "Option 1",
+          value: "option_1",
+        });
+        campaign = optData.campaign;
+        setActiveQuestionId(newQ.id);
+      }
+      
+      handleCampaignUpdated(campaign);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -793,6 +988,7 @@ function SurveyCampaignsPage() {
       setDetail(data.campaign);
       setForm(campaignToForm(data.campaign));
       setView("edit");
+      setEditTab("settings");
       setNotice("Campaign created. Add questions and options, then publish.");
     } catch (err) {
       setError(err.message);
@@ -837,6 +1033,10 @@ function SurveyCampaignsPage() {
     setDetail(campaign);
     setForm(campaignToForm(campaign));
   };
+
+  // Publish unlocks once the campaign has a name and at least one active question.
+  const activeQuestions = (detail?.questions || []).filter((q) => q.status === "active");
+  const canPublish = !!form.name?.trim() && activeQuestions.length >= 1;
 
   if (loading && view === "list") {
     return (
@@ -905,26 +1105,53 @@ function SurveyCampaignsPage() {
       )}
 
       {view === "edit" && detail && (
-        <>
-          <CfgSection
-            title={detail.name}
-            sub={`${formatGoal(detail.campaignGoal)} · ${detail.activeQuestionCount} question(s)`}
-            action={
-              <>
-                <button type="button" className="btn" disabled={busy} onClick={() => openDashboard(detail)}>
-                  Dashboard
+        <CfgSection
+          title={detail.name}
+          sub={`${formatGoal(detail.campaignGoal)} · ${activeQuestions.length} question(s)`}
+          action={
+            <>
+              <button type="button" className="btn" disabled={busy} onClick={() => openDashboard(detail)}>
+                Dashboard
+              </button>
+              {detail.status !== "active" && (
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={busy || !canPublish}
+                  title={canPublish ? undefined : "Add a campaign name and at least one question before publishing"}
+                  onClick={handlePublish}
+                >
+                  {busy ? "Publishing…" : "Publish"}
                 </button>
-                {detail.status !== "active" && (
-                  <button type="button" className="btn primary" disabled={busy} onClick={handlePublish}>
-                    {busy ? "Publishing…" : "Publish"}
-                  </button>
-                )}
-                <button type="button" className="btn" disabled={busy} onClick={handleSaveSettings}>
-                  {busy ? "Saving…" : "Save settings"}
-                </button>
-              </>
-            }
-          >
+              )}
+              <button type="button" className="btn" disabled={busy} onClick={handleSaveSettings}>
+                {busy ? "Saving…" : "Save settings"}
+              </button>
+            </>
+          }
+        >
+          <div className="survey-dashboard-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={editTab === "settings"}
+              className={`survey-dashboard-tab ${editTab === "settings" ? "active" : ""}`}
+              onClick={() => setEditTab("settings")}
+            >
+              Settings
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={editTab === "questions"}
+              className={`survey-dashboard-tab ${editTab === "questions" ? "active" : ""}`}
+              onClick={() => setEditTab("questions")}
+            >
+              Questions ({activeQuestions.length})
+            </button>
+          </div>
+
+          {editTab === "settings" && (
             <SurveyCampaignSettingsForm
               form={form}
               onChange={patchForm}
@@ -932,36 +1159,45 @@ function SurveyCampaignsPage() {
               showStatus
               disabled={busy}
             />
-          </CfgSection>
+          )}
 
-          <CfgSection
-            title="Questions"
-            sub="Single-choice only · 2–4 options per question · Other option allows text input"
-          >
-            {(detail.questions || [])
-              .filter((q) => q.status === "active")
-              .map((q) => (
-                <QuestionCard
+          {editTab === "questions" && (
+            <div className="survey-questions-tab">
+              {activeQuestions.map((q, idx) => (
+                <SurveyQuestionCard
                   key={q.id}
                   question={q}
+                  activeQuestionId={activeQuestionId}
+                  setActiveQuestionId={setActiveQuestionId}
                   onUpdated={handleCampaignUpdated}
                   busy={busy}
                   setBusy={setBusy}
                   setError={setError}
+                  onDuplicate={handleDuplicateQuestion}
+                  onMoveUp={() => handleMoveQuestion(idx, -1)}
+                  onMoveDown={() => handleMoveQuestion(idx, 1)}
+                  isFirst={idx === 0}
+                  isLast={idx === activeQuestions.length - 1}
                 />
               ))}
-            <div className="survey-add-question">
-              <div className="cfg-scopes-title">Add question</div>
-              <AddQuestionForm
-                campaignId={detail.id}
-                onAdded={handleCampaignUpdated}
-                busy={busy}
-                setBusy={setBusy}
-                setError={setError}
-              />
+              {!activeQuestions.length && (
+                <p className="cfg-hint">No questions yet — add your first question below.</p>
+              )}
+              
+              <div className="survey-add-question-trigger-row">
+                <button
+                  type="button"
+                  className="btn-add-question"
+                  disabled={busy}
+                  onClick={handleAddQuestion}
+                >
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Add Question
+                </button>
+              </div>
             </div>
-          </CfgSection>
-        </>
+          )}
+        </CfgSection>
       )}
 
       {view === "dashboard" && detail && (

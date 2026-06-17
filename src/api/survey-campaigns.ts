@@ -8,6 +8,8 @@ import {
   createSurveyCampaignForCustomer,
   updateSurveyCampaignForCustomer,
   publishSurveyCampaignForCustomer,
+  transitionSurveyCampaignForCustomer,
+  type SurveyCampaignTransition,
   createSurveyQuestionForCustomer,
   updateSurveyQuestionForCustomer,
   createSurveyOptionForCustomer,
@@ -85,6 +87,7 @@ export async function handleCreateSurveyCampaign(
     const body = await readJsonBody<{
       name?: string;
       description?: string | null;
+      intro_text?: string | null;
       campaign_goal?: string;
       scope_type?: CreateSurveyCampaignRequest["scopeType"];
       start_at?: string | null;
@@ -93,6 +96,8 @@ export async function handleCreateSurveyCampaign(
       question_order_policy?: CreateSurveyCampaignRequest["questionOrderPolicy"];
       max_questions_per_user?: number | null;
       allow_skip?: boolean;
+      frequency_cap?: CreateSurveyCampaignRequest["frequencyCap"];
+      timezone?: string | null;
       segments?: Array<{
         klaviyo_segment_id: string;
         klaviyo_segment_name?: string | null;
@@ -103,6 +108,7 @@ export async function handleCreateSurveyCampaign(
     const input: CreateSurveyCampaignRequest = {
       name: body.name ?? "",
       description: body.description,
+      introText: body.intro_text,
       campaignGoal: body.campaign_goal ?? "",
       scopeType: body.scope_type,
       startAt: body.start_at,
@@ -111,6 +117,8 @@ export async function handleCreateSurveyCampaign(
       questionOrderPolicy: body.question_order_policy,
       maxQuestionsPerUser: body.max_questions_per_user,
       allowSkip: body.allow_skip,
+      frequencyCap: body.frequency_cap,
+      timezone: body.timezone,
       segments: body.segments?.map((s) => ({
         klaviyoSegmentId: s.klaviyo_segment_id,
         klaviyoSegmentName: s.klaviyo_segment_name,
@@ -136,6 +144,7 @@ export async function handleUpdateSurveyCampaign(
       campaign_id?: string;
       name?: string;
       description?: string | null;
+      intro_text?: string | null;
       campaign_goal?: string;
       scope_type?: UpdateSurveyCampaignRequest["scopeType"];
       status?: UpdateSurveyCampaignRequest["status"];
@@ -145,6 +154,8 @@ export async function handleUpdateSurveyCampaign(
       question_order_policy?: UpdateSurveyCampaignRequest["questionOrderPolicy"];
       max_questions_per_user?: number | null;
       allow_skip?: boolean;
+      frequency_cap?: UpdateSurveyCampaignRequest["frequencyCap"];
+      timezone?: string | null;
       segments?: Array<{
         klaviyo_segment_id: string;
         klaviyo_segment_name?: string | null;
@@ -156,6 +167,7 @@ export async function handleUpdateSurveyCampaign(
       campaignId: body.campaign_id ?? "",
       name: body.name,
       description: body.description,
+      introText: body.intro_text,
       campaignGoal: body.campaign_goal,
       scopeType: body.scope_type,
       status: body.status,
@@ -165,6 +177,8 @@ export async function handleUpdateSurveyCampaign(
       questionOrderPolicy: body.question_order_policy,
       maxQuestionsPerUser: body.max_questions_per_user,
       allowSkip: body.allow_skip,
+      frequencyCap: body.frequency_cap,
+      timezone: body.timezone,
       segments: body.segments?.map((s) => ({
         klaviyoSegmentId: s.klaviyo_segment_id,
         klaviyoSegmentName: s.klaviyo_segment_name,
@@ -199,6 +213,38 @@ export async function handlePublishSurveyCampaign(
   }
 }
 
+const VALID_TRANSITIONS: SurveyCampaignTransition[] = [
+  "submit_review",
+  "mark_ready",
+  "pause",
+  "resume",
+  "end",
+  "archive",
+];
+
+export async function handleTransitionSurveyCampaign(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const body = await readJsonBody<{ campaign_id?: string; action?: string }>(req);
+    const action = body.action as SurveyCampaignTransition | undefined;
+    if (!action || !VALID_TRANSITIONS.includes(action)) {
+      throw new Error(`action must be one of: ${VALID_TRANSITIONS.join(", ")}`);
+    }
+    const customerId = await getRequestCustomerId(req, res);
+    const campaign = await transitionSurveyCampaignForCustomer(
+      customerId,
+      body.campaign_id ?? "",
+      action,
+    );
+    json(res, 200, { campaign });
+  } catch (err) {
+    const status = err instanceof AuthError ? 401 : 400;
+    errorJson(res, status, toErrorMessage(err, "Failed to update campaign status"));
+  }
+}
+
 export async function handleCreateSurveyQuestion(
   req: IncomingMessage,
   res: ServerResponse,
@@ -207,14 +253,20 @@ export async function handleCreateSurveyQuestion(
     const body = await readJsonBody<{
       survey_campaign_id?: string;
       question_text?: string;
+      question_type?: CreateSurveyQuestionRequest["questionType"];
+      rating_scale?: number | null;
       display_order?: number;
+      is_required?: boolean;
       allow_skip?: boolean;
     }>(req);
 
     const input: CreateSurveyQuestionRequest = {
       surveyCampaignId: body.survey_campaign_id ?? "",
       questionText: body.question_text ?? "",
+      questionType: body.question_type,
+      ratingScale: body.rating_scale,
       displayOrder: body.display_order,
+      isRequired: body.is_required,
       allowSkip: body.allow_skip,
     };
 
@@ -235,7 +287,10 @@ export async function handleUpdateSurveyQuestion(
     const body = await readJsonBody<{
       question_id?: string;
       question_text?: string;
+      question_type?: UpdateSurveyQuestionRequest["questionType"];
+      rating_scale?: number | null;
       display_order?: number;
+      is_required?: boolean;
       allow_skip?: boolean;
       status?: "active" | "inactive";
     }>(req);
@@ -243,7 +298,10 @@ export async function handleUpdateSurveyQuestion(
     const input: UpdateSurveyQuestionRequest = {
       questionId: body.question_id ?? "",
       questionText: body.question_text,
+      questionType: body.question_type,
+      ratingScale: body.rating_scale,
       displayOrder: body.display_order,
+      isRequired: body.is_required,
       allowSkip: body.allow_skip,
       status: body.status,
     };

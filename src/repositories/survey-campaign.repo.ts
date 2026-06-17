@@ -2,6 +2,7 @@ import { getSupabase } from "../clients/supabase.client.js";
 import type {
   QSurveyCampaignRow,
   SurveyCampaignStatus,
+  SurveyFrequencyCap,
   SurveyQuestionOrderPolicy,
   SurveyScopeType,
 } from "../surveys/survey.types.js";
@@ -10,6 +11,7 @@ export interface CreateSurveyCampaignInput {
   customerId: number;
   name: string;
   description?: string | null;
+  introText?: string | null;
   campaignGoal: string;
   scopeType?: SurveyScopeType;
   startAt?: string | null;
@@ -18,11 +20,14 @@ export interface CreateSurveyCampaignInput {
   questionOrderPolicy?: SurveyQuestionOrderPolicy;
   maxQuestionsPerUser?: number | null;
   allowSkip?: boolean;
+  frequencyCap?: SurveyFrequencyCap;
+  timezone?: string | null;
 }
 
 export interface UpdateSurveyCampaignPatch {
   name?: string;
   description?: string | null;
+  introText?: string | null;
   campaignGoal?: string;
   scopeType?: SurveyScopeType;
   status?: SurveyCampaignStatus;
@@ -32,6 +37,8 @@ export interface UpdateSurveyCampaignPatch {
   questionOrderPolicy?: SurveyQuestionOrderPolicy;
   maxQuestionsPerUser?: number | null;
   allowSkip?: boolean;
+  frequencyCap?: SurveyFrequencyCap;
+  timezone?: string | null;
 }
 
 export async function listSurveyCampaignsByCustomerId(
@@ -103,6 +110,7 @@ export async function insertSurveyCampaign(
       customer_id: input.customerId,
       name: input.name,
       description: input.description ?? null,
+      intro_text: input.introText ?? null,
       campaign_goal: input.campaignGoal,
       scope_type: input.scopeType ?? "all_users",
       status: "draft",
@@ -112,6 +120,8 @@ export async function insertSurveyCampaign(
       question_order_policy: input.questionOrderPolicy ?? "fixed_order",
       max_questions_per_user: input.maxQuestionsPerUser ?? null,
       allow_skip: input.allowSkip ?? true,
+      frequency_cap: input.frequencyCap ?? "once_per_user",
+      timezone: input.timezone ?? null,
     })
     .select("*")
     .single();
@@ -130,6 +140,7 @@ export async function updateSurveyCampaignById(
   };
   if (patch.name !== undefined) row.name = patch.name;
   if (patch.description !== undefined) row.description = patch.description;
+  if (patch.introText !== undefined) row.intro_text = patch.introText;
   if (patch.campaignGoal !== undefined) row.campaign_goal = patch.campaignGoal;
   if (patch.scopeType !== undefined) row.scope_type = patch.scopeType;
   if (patch.status !== undefined) row.status = patch.status;
@@ -143,6 +154,8 @@ export async function updateSurveyCampaignById(
     row.max_questions_per_user = patch.maxQuestionsPerUser;
   }
   if (patch.allowSkip !== undefined) row.allow_skip = patch.allowSkip;
+  if (patch.frequencyCap !== undefined) row.frequency_cap = patch.frequencyCap;
+  if (patch.timezone !== undefined) row.timezone = patch.timezone;
 
   const { data, error } = await getSupabase()
     .from("q_survey_campaigns")

@@ -1,15 +1,28 @@
 export type SurveyCampaignStatus =
   | "draft"
   | "review"
+  | "ready_to_publish"
+  | "scheduled"
   | "active"
   | "paused"
+  | "ended"
   | "archived";
+
+export type SurveyFrequencyCap =
+  | "once_per_user"
+  | "once_per_day"
+  | "once_per_round";
 
 export type SurveyScopeType = "all_users" | "selected_segments";
 
 export type SurveyQuestionOrderPolicy = "fixed_order" | "random";
 
-export type SurveyQuestionType = "single_choice" | "multi_choice";
+export type SurveyQuestionType =
+  | "single_choice"
+  | "multiple_choice"
+  | "rating"
+  | "yes_no"
+  | "short_text";
 
 export type SurveyEntityStatus = "active" | "inactive";
 
@@ -18,6 +31,7 @@ export interface QSurveyCampaignRow {
   customer_id: number;
   name: string;
   description: string | null;
+  intro_text: string | null;
   campaign_goal: string;
   scope_type: SurveyScopeType;
   status: SurveyCampaignStatus;
@@ -27,6 +41,8 @@ export interface QSurveyCampaignRow {
   question_order_policy: SurveyQuestionOrderPolicy;
   max_questions_per_user: number | null;
   allow_skip: boolean;
+  frequency_cap: SurveyFrequencyCap;
+  timezone: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -47,6 +63,7 @@ export interface QSurveyQuestionRow {
   survey_campaign_id: string;
   question_text: string;
   question_type: SurveyQuestionType;
+  rating_scale: number | null;
   display_order: number;
   is_required: boolean;
   allow_skip: boolean;

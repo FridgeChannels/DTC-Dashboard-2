@@ -41,6 +41,7 @@ import {
   handleCreateSurveyCampaign,
   handleUpdateSurveyCampaign,
   handlePublishSurveyCampaign,
+  handleTransitionSurveyCampaign,
   handleCreateSurveyQuestion,
   handleUpdateSurveyQuestion,
   handleCreateSurveyOption,
@@ -272,6 +273,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/survey-campaigns/publish") {
     await handlePublishSurveyCampaign(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/survey-campaigns/transition") {
+    await handleTransitionSurveyCampaign(req, res);
     return;
   }
 

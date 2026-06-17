@@ -9,6 +9,7 @@ export interface CreateSurveyQuestionInput {
   surveyCampaignId: string;
   questionText: string;
   questionType?: SurveyQuestionType;
+  ratingScale?: number | null;
   displayOrder?: number;
   isRequired?: boolean;
   allowSkip?: boolean;
@@ -16,6 +17,8 @@ export interface CreateSurveyQuestionInput {
 
 export interface UpdateSurveyQuestionPatch {
   questionText?: string;
+  questionType?: SurveyQuestionType;
+  ratingScale?: number | null;
   displayOrder?: number;
   isRequired?: boolean;
   allowSkip?: boolean;
@@ -103,6 +106,7 @@ export async function insertQuestion(
       survey_campaign_id: input.surveyCampaignId,
       question_text: input.questionText,
       question_type: input.questionType ?? "single_choice",
+      rating_scale: input.ratingScale ?? null,
       display_order: input.displayOrder ?? 0,
       is_required: input.isRequired ?? false,
       allow_skip: input.allowSkip ?? true,
@@ -123,6 +127,8 @@ export async function updateQuestionById(
     updated_at: new Date().toISOString(),
   };
   if (patch.questionText !== undefined) row.question_text = patch.questionText;
+  if (patch.questionType !== undefined) row.question_type = patch.questionType;
+  if (patch.ratingScale !== undefined) row.rating_scale = patch.ratingScale;
   if (patch.displayOrder !== undefined) row.display_order = patch.displayOrder;
   if (patch.isRequired !== undefined) row.is_required = patch.isRequired;
   if (patch.allowSkip !== undefined) row.allow_skip = patch.allowSkip;

@@ -5,7 +5,9 @@ import * as optionRepo from "../repositories/survey-question-option.repo.js";
 import { listKlaviyoSegmentsByCustomerId } from "../repositories/klaviyo-segment.repo.js";
 import type {
   SurveyCampaignStatus,
+  SurveyFrequencyCap,
   SurveyQuestionOrderPolicy,
+  SurveyQuestionType,
   SurveyScopeType,
 } from "../surveys/survey.types.js";
 
@@ -34,6 +36,7 @@ export interface SurveyQuestionDto {
   id: string;
   questionText: string;
   questionType: string;
+  ratingScale: number | null;
   displayOrder: number;
   isRequired: boolean;
   allowSkip: boolean;
@@ -45,6 +48,7 @@ export interface SurveyCampaignSummary {
   id: string;
   name: string;
   description: string | null;
+  introText: string | null;
   campaignGoal: string;
   scopeType: SurveyScopeType;
   status: SurveyCampaignStatus;
@@ -54,6 +58,8 @@ export interface SurveyCampaignSummary {
   questionOrderPolicy: SurveyQuestionOrderPolicy;
   maxQuestionsPerUser: number | null;
   allowSkip: boolean;
+  frequencyCap: SurveyFrequencyCap;
+  timezone: string | null;
   activeQuestionCount: number;
   segmentCount: number;
   createdAt: string;
@@ -74,6 +80,7 @@ export interface KlaviyoSegmentOption {
 export interface CreateSurveyCampaignRequest {
   name: string;
   description?: string | null;
+  introText?: string | null;
   campaignGoal: string;
   scopeType?: SurveyScopeType;
   startAt?: string | null;
@@ -82,6 +89,8 @@ export interface CreateSurveyCampaignRequest {
   questionOrderPolicy?: SurveyQuestionOrderPolicy;
   maxQuestionsPerUser?: number | null;
   allowSkip?: boolean;
+  frequencyCap?: SurveyFrequencyCap;
+  timezone?: string | null;
   segments?: Array<{
     klaviyoSegmentId: string;
     klaviyoSegmentName?: string | null;
@@ -93,6 +102,7 @@ export interface UpdateSurveyCampaignRequest {
   campaignId: string;
   name?: string;
   description?: string | null;
+  introText?: string | null;
   campaignGoal?: string;
   scopeType?: SurveyScopeType;
   status?: SurveyCampaignStatus;
@@ -102,6 +112,8 @@ export interface UpdateSurveyCampaignRequest {
   questionOrderPolicy?: SurveyQuestionOrderPolicy;
   maxQuestionsPerUser?: number | null;
   allowSkip?: boolean;
+  frequencyCap?: SurveyFrequencyCap;
+  timezone?: string | null;
   segments?: Array<{
     klaviyoSegmentId: string;
     klaviyoSegmentName?: string | null;
@@ -112,14 +124,20 @@ export interface UpdateSurveyCampaignRequest {
 export interface CreateSurveyQuestionRequest {
   surveyCampaignId: string;
   questionText: string;
+  questionType?: SurveyQuestionType;
+  ratingScale?: number | null;
   displayOrder?: number;
+  isRequired?: boolean;
   allowSkip?: boolean;
 }
 
 export interface UpdateSurveyQuestionRequest {
   questionId: string;
   questionText?: string;
+  questionType?: SurveyQuestionType;
+  ratingScale?: number | null;
   displayOrder?: number;
+  isRequired?: boolean;
   allowSkip?: boolean;
   status?: "active" | "inactive";
 }
@@ -182,6 +200,7 @@ function mapQuestion(
     id: row.id,
     questionText: row.question_text,
     questionType: row.question_type,
+    ratingScale: row.rating_scale,
     displayOrder: row.display_order,
     isRequired: row.is_required,
     allowSkip: row.allow_skip,
@@ -234,8 +253,18 @@ function validateOptionInput(input: {
 
 function normalizeCampaignScope(
   segments: CreateSurveyCampaignRequest["segments"],
+  explicitScopeType?: SurveyScopeType,
 ): { scopeType: SurveyScopeType; segments: NonNullable<CreateSurveyCampaignRequest["segments"]> } {
   const activeSegments = (segments ?? []).filter((s) => s.klaviyoSegmentId?.trim());
+  // 显式选择 All users：忽略任何已选 segment
+  if (explicitScopeType === "all_users") {
+    return { scopeType: "all_users", segments: [] };
+  }
+  // 显式选择 Specific segments：保留所选（数量校验在 publish 时进行）
+  if (explicitScopeType === "selected_segments") {
+    return { scopeType: "selected_segments", segments: activeSegments };
+  }
+  // 未显式指定时回退到旧的推断逻辑
   if (activeSegments.length === 0) {
     return { scopeType: "all_users", segments: [] };
   }
@@ -269,6 +298,7 @@ async function buildCampaignDetail(
     id: campaign.id,
     name: campaign.name,
     description: campaign.description,
+    introText: campaign.intro_text,
     campaignGoal: campaign.campaign_goal,
     scopeType: campaign.scope_type,
     status: campaign.status,
@@ -278,6 +308,8 @@ async function buildCampaignDetail(
     questionOrderPolicy: campaign.question_order_policy,
     maxQuestionsPerUser: campaign.max_questions_per_user,
     allowSkip: campaign.allow_skip,
+    frequencyCap: campaign.frequency_cap,
+    timezone: campaign.timezone,
     activeQuestionCount,
     segmentCount: segments.filter((s) => s.status === "active").length,
     createdAt: campaign.created_at,
@@ -304,25 +336,43 @@ async function validatePublishReady(
   }
 
   for (const question of activeQuestions) {
-    if (question.questionType !== "single_choice") {
-      throw new Error("P0 only supports single_choice questions");
-    }
+    const label = `Question "${question.questionText.slice(0, 20)}…"`;
     if (question.questionText.length > 80) {
-      throw new Error(`Question "${question.questionText.slice(0, 20)}…" exceeds 80 characters`);
+      throw new Error(`${label} exceeds 80 characters`);
     }
 
     const activeOptions = question.options.filter((o) => o.status === "active");
-    if (activeOptions.length < 2 || activeOptions.length > 4) {
-      throw new Error(
-        `Question "${question.questionText.slice(0, 20)}…" must have 2–4 active options`,
-      );
-    }
 
-    for (const opt of activeOptions) {
-      if (opt.allowTextInput && !opt.isOtherOption) {
-        throw new Error("Only Other options can allow text input");
+    switch (question.questionType) {
+      case "single_choice":
+      case "multiple_choice":
+      case "yes_no": {
+        if (activeOptions.length < 2 || activeOptions.length > 4) {
+          throw new Error(`${label} must have 2–4 options`);
+        }
+        for (const opt of activeOptions) {
+          if (opt.allowTextInput && !opt.isOtherOption) {
+            throw new Error("Only Other options can allow text input");
+          }
+        }
+        break;
       }
+      case "rating": {
+        if ((question.ratingScale ?? 0) < 2) {
+          throw new Error(`${label} must have a rating scale of at least 2`);
+        }
+        break;
+      }
+      case "short_text":
+        break;
+      default:
+        throw new Error(`${label} has an unsupported question type`);
     }
+  }
+
+  // 受众必须显式：选择 Specific segments 时至少要有 1 个 segment
+  if (detail.scopeType === "selected_segments" && detail.segmentCount < 1) {
+    throw new Error("Select at least one Klaviyo segment, or target all users");
   }
 
   if (
@@ -369,6 +419,7 @@ export async function listSurveyCampaignsForCustomer(
     id: c.id,
     name: c.name,
     description: c.description,
+    introText: c.intro_text,
     campaignGoal: c.campaign_goal,
     scopeType: c.scope_type,
     status: c.status,
@@ -378,6 +429,8 @@ export async function listSurveyCampaignsForCustomer(
     questionOrderPolicy: c.question_order_policy,
     maxQuestionsPerUser: c.max_questions_per_user,
     allowSkip: c.allow_skip,
+    frequencyCap: c.frequency_cap,
+    timezone: c.timezone,
     activeQuestionCount: questionCounts.get(c.id) ?? 0,
     segmentCount: segmentCounts.get(c.id) ?? 0,
     createdAt: c.created_at,
@@ -400,12 +453,13 @@ export async function createSurveyCampaignForCustomer(
   if (!input.name.trim()) throw new Error("Campaign name is required");
   if (!input.campaignGoal.trim()) throw new Error("Campaign goal is required");
 
-  const { scopeType, segments } = normalizeCampaignScope(input.segments);
+  const { scopeType, segments } = normalizeCampaignScope(input.segments, input.scopeType);
 
   const campaign = await campaignRepo.insertSurveyCampaign({
     customerId,
     name: input.name.trim(),
     description: input.description ?? null,
+    introText: input.introText ?? null,
     campaignGoal: input.campaignGoal.trim(),
     scopeType,
     startAt: input.startAt ?? null,
@@ -414,6 +468,8 @@ export async function createSurveyCampaignForCustomer(
     questionOrderPolicy: input.questionOrderPolicy,
     maxQuestionsPerUser: input.maxQuestionsPerUser ?? null,
     allowSkip: input.allowSkip,
+    frequencyCap: input.frequencyCap,
+    timezone: input.timezone ?? null,
   });
 
   if (segments.length) {
@@ -448,8 +504,8 @@ export async function updateSurveyCampaignForCustomer(
   });
 
   const normalized =
-    input.segments !== undefined
-      ? normalizeCampaignScope(input.segments)
+    input.segments !== undefined || input.scopeType !== undefined
+      ? normalizeCampaignScope(input.segments, input.scopeType)
       : null;
 
   if (input.status === "active" && existing.status !== "active") {
@@ -459,6 +515,7 @@ export async function updateSurveyCampaignForCustomer(
   await campaignRepo.updateSurveyCampaignById(customerId, campaignId, {
     name: input.name?.trim(),
     description: input.description,
+    introText: input.introText,
     campaignGoal: input.campaignGoal?.trim(),
     scopeType: normalized?.scopeType ?? input.scopeType,
     status: input.status,
@@ -468,6 +525,8 @@ export async function updateSurveyCampaignForCustomer(
     questionOrderPolicy: input.questionOrderPolicy,
     maxQuestionsPerUser: input.maxQuestionsPerUser,
     allowSkip: input.allowSkip,
+    frequencyCap: input.frequencyCap,
+    timezone: input.timezone,
   });
 
   if (normalized) {
@@ -496,10 +555,57 @@ export async function publishSurveyCampaignForCustomer(
 
   await validatePublishReady(customerId, id);
 
+  // start_at 在未来 → scheduled，否则立即 active
+  const startsInFuture =
+    existing.start_at != null && Date.parse(existing.start_at) > Date.now();
   await campaignRepo.updateSurveyCampaignById(customerId, id, {
-    status: "active",
+    status: startsInFuture ? "scheduled" : "active",
   });
 
+  return buildCampaignDetail(customerId, id);
+}
+
+/** 允许的状态流转（§5）。键为目标 action，值为允许的来源状态。 */
+const STATUS_TRANSITIONS: Record<
+  "submit_review" | "mark_ready" | "pause" | "resume" | "end" | "archive",
+  { from: SurveyCampaignStatus[]; to: SurveyCampaignStatus }
+> = {
+  submit_review: { from: ["draft"], to: "review" },
+  mark_ready: { from: ["draft", "review"], to: "ready_to_publish" },
+  pause: { from: ["scheduled", "active"], to: "paused" },
+  resume: { from: ["paused"], to: "active" },
+  end: { from: ["scheduled", "active", "paused"], to: "ended" },
+  archive: { from: ["ended", "paused", "draft", "review", "ready_to_publish"], to: "archived" },
+};
+
+export type SurveyCampaignTransition = keyof typeof STATUS_TRANSITIONS;
+
+export async function transitionSurveyCampaignForCustomer(
+  customerId: number,
+  campaignId: string,
+  action: SurveyCampaignTransition,
+): Promise<SurveyCampaignDetail> {
+  const id = campaignId.trim();
+  if (!id) throw new Error("campaign_id is required");
+
+  const rule = STATUS_TRANSITIONS[action];
+  if (!rule) throw new Error(`Unsupported action: ${action}`);
+
+  const existing = await campaignRepo.findSurveyCampaignById(customerId, id);
+  if (!existing) throw new Error("Survey campaign not found");
+
+  if (!rule.from.includes(existing.status)) {
+    throw new Error(
+      `Cannot ${action.replace("_", " ")} a campaign in "${existing.status}" state`,
+    );
+  }
+
+  // mark_ready 需要通过完整发布校验
+  if (action === "mark_ready") {
+    await validatePublishReady(customerId, id);
+  }
+
+  await campaignRepo.updateSurveyCampaignById(customerId, id, { status: rule.to });
   return buildCampaignDetail(customerId, id);
 }
 
@@ -517,15 +623,37 @@ export async function createSurveyQuestionForCustomer(
   if (!text) throw new Error("Question text is required");
   if (text.length > 80) throw new Error("Question text must be 80 characters or fewer");
 
+  const questionType: SurveyQuestionType = input.questionType ?? "single_choice";
+  const ratingScale = questionType === "rating" ? (input.ratingScale ?? 5) : null;
+
   const displayOrder =
     input.displayOrder ?? (await questionRepo.getNextQuestionDisplayOrder(campaignId));
 
-  await questionRepo.insertQuestion({
+  const question = await questionRepo.insertQuestion({
     surveyCampaignId: campaignId,
     questionText: text,
+    questionType,
+    ratingScale,
     displayOrder,
+    isRequired: input.isRequired,
     allowSkip: input.allowSkip,
   });
+
+  // yes_no：自动播种 Yes / No 两个固定选项
+  if (questionType === "yes_no") {
+    await optionRepo.insertOption({
+      surveyQuestionId: question.id,
+      label: "Yes",
+      value: "yes",
+      displayOrder: 1,
+    });
+    await optionRepo.insertOption({
+      surveyQuestionId: question.id,
+      label: "No",
+      value: "no",
+      displayOrder: 2,
+    });
+  }
 
   return buildCampaignDetail(customerId, campaignId);
 }
@@ -554,7 +682,10 @@ export async function updateSurveyQuestionForCustomer(
 
   await questionRepo.updateQuestionById(questionId, {
     questionText: input.questionText?.trim(),
+    questionType: input.questionType,
+    ratingScale: input.ratingScale,
     displayOrder: input.displayOrder,
+    isRequired: input.isRequired,
     allowSkip: input.allowSkip,
     status: input.status,
   });

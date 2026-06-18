@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:25-alpine AS builder
+FROM node:25-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -11,17 +11,22 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run build
 
-FROM node:25-alpine AS production
+FROM node:25-bookworm-slim AS production
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=8080
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001 -G nodejs
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 --ingroup nodejs nodejs
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev \
+  && npx playwright install --with-deps chromium \
+  && npm cache clean --force \
+  && rm -rf /var/lib/apt/lists/* \
+  && chown -R nodejs:nodejs /app /ms-playwright
 
 COPY --from=builder /app/dist ./dist
 COPY src/dashboard ./src/dashboard

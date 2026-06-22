@@ -17,8 +17,8 @@ export async function saveBrandInfo(input) {
     website: brandWebsite,
     brandLogo,
     primaryColor: colors.primary,
-    secondaryColor: colors.secondary,
-    accentColor: colors.accent,
+    secondaryColor: colors.secondary || colors.accent,
+    customerId: input.customerId,
   });
 
   let productRecord = null;

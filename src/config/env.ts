@@ -33,9 +33,15 @@ export const env = {
   supabaseServiceRoleKey: () => requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
   publicSiteUrl: process.env.PUBLIC_SITE_URL ?? process.env.SITE_URL ?? "",
   shopifyApiVersion: process.env.SHOPIFY_API_VERSION ?? "2025-04",
+  /** Shopify Partners App — 全租户共用 Admin OAuth 凭据 */
+  shopifyClientId: process.env.SHOPIFY_CLIENT_ID ?? "",
+  shopifyClientSecret: process.env.SHOPIFY_CLIENT_SECRET ?? "",
   shopifyAppHost:
     process.env.SHOPIFY_APP_HOST ??
     `http://localhost:${process.env.PORT ?? 8080}`,
+  klaviyoClientId: process.env.KLAVIYO_CLIENT_ID ?? "",
+  klaviyoClientSecret: process.env.KLAVIYO_CLIENT_SECRET ?? "",
+  klaviyoOAuthRedirectUri: process.env.KLAVIYO_OAUTH_REDIRECT_URI ?? "",
   secretsProvider: process.env.SECRETS_PROVIDER ?? "supabase_vault",
   /** 内部 M2M 接口密钥；生产环境必填 */
   apiKey: process.env.API_KEY ?? "",

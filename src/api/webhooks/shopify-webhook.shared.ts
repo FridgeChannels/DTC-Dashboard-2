@@ -1,9 +1,9 @@
 import {
   hasSecret,
   resolveSecret,
-  shopifyAppClientSecretRef,
   shopifyWebhookSecretRef,
 } from "../../clients/secrets.client.js";
+import { env } from "../../config/env.js";
 import { verifyShopifyWebhookHmacWithAnySecret } from "../../shopify/webhook.verify.js";
 import type { CustomerShopifyConfig, ShopifyOrderPayload } from "../../coupons/coupon.types.js";
 import * as shopifyConfigRepo from "../../repositories/customer-shopify-config.repo.js";
@@ -55,11 +55,8 @@ async function collectWebhookSigningSecretCandidates(
   config: CustomerShopifyConfig,
 ): Promise<Array<{ ref: string; value: string }>> {
   const canonicalWebhookRef = shopifyWebhookSecretRef(config.customer_id);
-  const canonicalClientRef =
-    config.shopify_app_client_secret_ref ??
-    shopifyAppClientSecretRef(config.customer_id);
 
-  const refs = [canonicalWebhookRef, canonicalClientRef];
+  const refs = [canonicalWebhookRef];
   if (
     config.webhook_secret_ref &&
     config.webhook_secret_ref !== canonicalWebhookRef &&
@@ -71,6 +68,11 @@ async function collectWebhookSigningSecretCandidates(
 
   const seenValues = new Set<string>();
   const candidates: Array<{ ref: string; value: string }> = [];
+
+  if (env.shopifyClientSecret) {
+    seenValues.add(env.shopifyClientSecret);
+    candidates.push({ ref: "env:SHOPIFY_CLIENT_SECRET", value: env.shopifyClientSecret });
+  }
 
   for (const ref of uniqueRefs) {
     const value = await tryResolveSecret(ref);
@@ -116,7 +118,6 @@ export async function authenticateShopifyWebhook(
       shopDomain: headerShop,
       customerId: config.customer_id,
       webhookSecretRef: config.webhook_secret_ref,
-      clientSecretRef: config.shopify_app_client_secret_ref,
     });
     return { ok: false, result: { status: 401, body: "Webhook secret not configured" } };
   }
@@ -134,7 +135,7 @@ export async function authenticateShopifyWebhook(
       triedRefs: candidates.map((c) => c.ref),
       bodyByteLength: req.rawBody.length,
       hmacPresent: Boolean(hmac),
-      hint: "Save the webhook signing secret or Client Secret in Shopify Config for this brand.",
+      hint: "Set SHOPIFY_CLIENT_SECRET in server environment or save webhook signing secret.",
     });
     return { ok: false, result: { status: 401, body: "Invalid HMAC" } };
   }

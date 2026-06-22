@@ -92,7 +92,7 @@ export async function createProduct(input, options = {}) {
     mode: 'insert',
   });
 
-  await syncMagnetBrandParamStoreWebsite(shopifyResult.shopifyProductUrl, requestId);
+  await syncMagnetBrandParamStoreWebsite(shopifyResult.shopifyProductUrl, customerId, requestId);
 
   return {
     ...mapProductRow(data),
@@ -141,7 +141,7 @@ async function updateProduct(existing, input, options = {}) {
     mode: 'update',
   });
 
-  await syncMagnetBrandParamStoreWebsite(shopifyResult.shopifyProductUrl, requestId);
+  await syncMagnetBrandParamStoreWebsite(shopifyResult.shopifyProductUrl, customerId, requestId);
 
   return {
     ...mapProductRow(data),
@@ -246,7 +246,7 @@ async function persistProductRow({ requestId, row, mode, productId }) {
   return data;
 }
 
-async function syncMagnetBrandParamStoreWebsite(storeWebsite, requestId) {
+async function syncMagnetBrandParamStoreWebsite(storeWebsite, customerId, requestId) {
   if (!storeWebsite) {
     return;
   }
@@ -254,11 +254,12 @@ async function syncMagnetBrandParamStoreWebsite(storeWebsite, requestId) {
   productLog('3/3b 更新 magnet_brand_param.store_website', {
     requestId,
     storeWebsite,
+    customerId,
   });
 
   const magnetElapsed = stepTimer();
   try {
-    const magnetResult = await updateMagnetBrandParamStoreWebsite(storeWebsite);
+    const magnetResult = await updateMagnetBrandParamStoreWebsite(storeWebsite, customerId);
     productLog('3/3b magnet_brand_param 更新完成', {
       requestId,
       durationMs: magnetElapsed(),

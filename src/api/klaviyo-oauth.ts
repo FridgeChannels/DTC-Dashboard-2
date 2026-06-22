@@ -1,15 +1,11 @@
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { env } from "../config/env.js";
-import { features } from "../config/features.js";
 import { json, errorJson } from "./http.js";
 import { getRequestCustomerId } from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import {
-  resolveSecret,
   storeSecret,
-  hasSecret,
-  klaviyoOauthClientSecretRef,
   klaviyoOauthTokenRef,
   klaviyoOauthRefreshRef,
 } from "../clients/secrets.client.js";
@@ -22,6 +18,7 @@ import type { CustomerKlaviyoConfig } from "../coupons/coupon.types.js";
 
 const KLAVIYO_AUTHORIZE_URL = "https://www.klaviyo.com/oauth/authorize";
 const KLAVIYO_TOKEN_URL = "https://a.klaviyo.com/oauth/token";
+const KLAVIYO_DEFAULT_SCOPES = "profiles:read segments:read events:read metrics:read";
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000;
 
 const oauthSessions = new Map<
@@ -35,32 +32,23 @@ function redirect(res: ServerResponse, location: string): void {
 }
 
 function getRedirectUri(): string {
-  return `${env.shopifyAppHost.replace(/\/$/, "")}/api/klaviyo/oauth/callback`;
+  return (
+    env.klaviyoOAuthRedirectUri ||
+    `${env.shopifyAppHost.replace(/\/$/, "")}/api/klaviyo/callback`
+  );
 }
 
 function getBasicAuthorizationHeader(clientId: string, clientSecret: string): string {
   return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;
 }
 
-async function getKlaviyoOAuthCredentials(
-  customerId: number,
-): Promise<{ clientId: string; clientSecret: string; config: CustomerKlaviyoConfig }> {
-  const config = await klaviyoConfigRepo.getKlaviyoConfigByCustomerId(customerId);
-  if (!config?.oauth_client_id) {
-    throw new Error("Klaviyo OAuth Client ID is not configured");
+function getKlaviyoOAuthAppCredentials(): { clientId: string; clientSecret: string } {
+  if (!env.klaviyoClientId || !env.klaviyoClientSecret) {
+    throw new Error("Klaviyo OAuth app is not configured");
   }
-
-  const secretRef =
-    config.oauth_client_secret_ref ?? klaviyoOauthClientSecretRef(customerId);
-  if (!(await hasSecret(secretRef))) {
-    throw new Error("Klaviyo OAuth Client Secret is not configured");
-  }
-
-  const clientSecret = await resolveSecret(secretRef);
   return {
-    config,
-    clientId: config.oauth_client_id,
-    clientSecret,
+    clientId: env.klaviyoClientId,
+    clientSecret: env.klaviyoClientSecret,
   };
 }
 
@@ -75,11 +63,10 @@ interface KlaviyoTokenResponse {
 }
 
 async function exchangeCodeForTokens(
-  customerId: number,
   code: string,
   codeVerifier: string,
 ): Promise<KlaviyoTokenResponse> {
-  const { clientId, clientSecret } = await getKlaviyoOAuthCredentials(customerId);
+  const { clientId, clientSecret } = getKlaviyoOAuthAppCredentials();
   const redirectUri = getRedirectUri();
 
   const res = await fetch(KLAVIYO_TOKEN_URL, {
@@ -110,33 +97,31 @@ async function exchangeCodeForTokens(
   return data;
 }
 
+function resolveOAuthScopes(config: CustomerKlaviyoConfig | null): string {
+  return config?.scopes?.trim() || KLAVIYO_DEFAULT_SCOPES;
+}
+
 export async function handleKlaviyoOAuthStart(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  if (!features.klaviyoOAuthEnabled) {
-    errorJson(res, 403, "Klaviyo OAuth is temporarily disabled.");
-    return;
-  }
-
   try {
     const customerId = await getRequestCustomerId(req, res);
 
-    let oauthCredentials: Awaited<ReturnType<typeof getKlaviyoOAuthCredentials>>;
+    let appCredentials: ReturnType<typeof getKlaviyoOAuthAppCredentials>;
     try {
-      oauthCredentials = await getKlaviyoOAuthCredentials(customerId);
+      appCredentials = getKlaviyoOAuthAppCredentials();
     } catch {
       errorJson(
         res,
         400,
-        "Klaviyo OAuth setup incomplete. Save Client ID and Client Secret in Klaviyo Config first.",
+        "Klaviyo OAuth app is not configured. Set KLAVIYO_CLIENT_ID and KLAVIYO_CLIENT_SECRET in server environment.",
       );
       return;
     }
 
-    const scopes =
-      oauthCredentials.config.scopes?.trim() ||
-      "profiles:read segments:read events:read metrics:read";
+    const config = await klaviyoConfigRepo.getKlaviyoConfigByCustomerId(customerId);
+    const scopes = resolveOAuthScopes(config);
 
     const codeVerifier = generateCodeVerifier();
     const codeChallenge = generateCodeChallenge(codeVerifier);
@@ -146,7 +131,7 @@ export async function handleKlaviyoOAuthStart(
 
     const params = new URLSearchParams({
       response_type: "code",
-      client_id: oauthCredentials.clientId,
+      client_id: appCredentials.clientId,
       redirect_uri: getRedirectUri(),
       scope: scopes,
       state,
@@ -167,11 +152,6 @@ export async function handleKlaviyoOAuthCallback(
   res: ServerResponse,
   url: URL,
 ): Promise<void> {
-  if (!features.klaviyoOAuthEnabled) {
-    redirect(res, "/brand-config?klaviyo_oauth=disabled&section=klaviyo");
-    return;
-  }
-
   try {
     const oauthError = url.searchParams.get("error");
     const state = url.searchParams.get("state");
@@ -196,7 +176,7 @@ export async function handleKlaviyoOAuthCallback(
       return;
     }
 
-    const tokenData = await exchangeCodeForTokens(session.customerId, code, session.codeVerifier);
+    const tokenData = await exchangeCodeForTokens(code, session.codeVerifier);
     const customerId = session.customerId;
     const oauthTokenRef = klaviyoOauthTokenRef(customerId);
     const oauthRefreshRef = klaviyoOauthRefreshRef(customerId);
@@ -212,18 +192,11 @@ export async function handleKlaviyoOAuthCallback(
         : null;
 
     const existing = await klaviyoConfigRepo.getKlaviyoConfigByCustomerId(customerId);
-    const clientSecretRef =
-      existing?.oauth_client_secret_ref ?? klaviyoOauthClientSecretRef(customerId);
 
     await klaviyoConfigRepo.upsertKlaviyoConfig({
       customerId,
-      authType: "oauth",
-      oauthClientId: existing?.oauth_client_id ?? null,
-      oauthClientSecretRef: (await hasSecret(clientSecretRef)) ? clientSecretRef : null,
       apiRevision: existing?.api_revision ?? "2026-04-15",
-      scopes: tokenData.scope ?? existing?.scopes ?? null,
-      syncEnabled: existing?.sync_enabled ?? true,
-      isActive: existing?.is_active ?? true,
+      scopes: tokenData.scope ?? existing?.scopes ?? KLAVIYO_DEFAULT_SCOPES,
       oauthTokenRef,
       oauthRefreshRef: tokenData.refresh_token ? oauthRefreshRef : existing?.oauth_refresh_ref,
       tokenExpiresAt,

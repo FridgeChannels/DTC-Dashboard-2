@@ -8,13 +8,13 @@ import {
   hasSecret,
   resolveSecret,
   storeSecret,
-  shopifyAppClientSecretRef,
   shopifyAccessTokenRef,
   shopifyWebhookSecretRef,
 } from "../clients/secrets.client.js";
 import { fetchShopInfo } from "../shopify/shop.api.js";
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
 import type { CustomerShopifyConfig } from "../coupons/coupon.types.js";
+import { getShopifyOAuthCredentials } from "../lib/shopify-oauth-app.js";
 
 const oauthStates = new Map<
   string,
@@ -88,19 +88,12 @@ async function getOAuthAppConfig(customerId: number): Promise<{
   clientId: string;
   clientSecret: string;
 }> {
+  const { clientId, clientSecret } = getShopifyOAuthCredentials();
   const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(customerId);
-  if (!config?.shopify_app_client_id) {
-    throw new Error("Shopify OAuth App client_id is not configured");
+  if (!config) {
+    throw new Error("Shopify shop is not configured for this customer");
   }
-
-  const secretRef =
-    config.shopify_app_client_secret_ref ?? shopifyAppClientSecretRef(customerId);
-  const clientSecret = await resolveSecret(secretRef);
-  return {
-    config,
-    clientId: config.shopify_app_client_id,
-    clientSecret,
-  };
+  return { config, clientId, clientSecret };
 }
 
 export async function handleShopifyOAuthStart(
@@ -113,21 +106,40 @@ export async function handleShopifyOAuthStart(
   const customerId = await getRequestCustomerId(req, res);
 
   if (!isValidShopDomain(shop)) {
-    errorJson(res, 400, "Invalid shop domain. Use the format your-store.myshopify.com.");
+    errorJson(res, 400, "Invalid Shopify URL. Use https://your-store.myshopify.com.");
     return;
   }
 
   let oauthConfig: Awaited<ReturnType<typeof getOAuthAppConfig>>;
   try {
     oauthConfig = await getOAuthAppConfig(customerId);
-  } catch {
-    errorJson(res, 400, "OAuth setup incomplete. Save Client ID and Client Secret first.");
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "OAuth setup incomplete.";
+    errorJson(res, 400, message);
     return;
   }
 
   if (oauthConfig.config.shop_domain !== shop) {
-    errorJson(res, 400, "Shop domain does not match saved Shopify configuration. Save configuration first.");
-    return;
+    const existing = oauthConfig.config;
+    await shopifyConfigRepo.upsertShopifyConfig({
+      customerId,
+      shopDomain: shop,
+      shopifyShopId:
+        existing.shop_domain === shop ? existing.shopify_shop_id ?? null : null,
+      authType: existing.auth_type ?? "oauth",
+      shopifyAppClientId: null,
+      shopifyAppClientSecretRef: null,
+      shopifyCustomerAccountClientId: existing.shopify_customer_account_client_id,
+      shopifyCustomerAccountClientSecretRef:
+        existing.shopify_customer_account_client_secret_ref,
+      accessTokenRef:
+        existing.access_token_ref ?? shopifyAccessTokenRef(customerId),
+      webhookSecretRef: existing.webhook_secret_ref,
+      scopes: existing.scopes ?? [],
+      apiVersion: existing.api_version ?? env.shopifyApiVersion,
+      status: existing.status ?? "active",
+    });
   }
 
   const state = randomBytes(24).toString("hex");
@@ -188,8 +200,6 @@ export async function handleShopifyOAuthCallback(
     const existing = oauthConfig.config;
     const accessTokenRef = existing?.access_token_ref ?? shopifyAccessTokenRef(customerId);
     const webhookSecretRef = shopifyWebhookSecretRef(customerId);
-    const clientSecretRef =
-      existing.shopify_app_client_secret_ref ?? shopifyAppClientSecretRef(customerId);
     const apiVersion = existing?.api_version ?? env.shopifyApiVersion;
     const scopes = existing?.scopes ?? [];
 
@@ -210,7 +220,7 @@ export async function handleShopifyOAuthCallback(
       const legacyValue = await resolveSecret(legacyWebhookRef);
       await storeSecret(webhookSecretRef, legacyValue);
     }
-    if (!(await hasSecret(webhookSecretRef))) {
+    if (!(await hasSecret(webhookSecretRef)) && oauthConfig.clientSecret) {
       await storeSecret(webhookSecretRef, oauthConfig.clientSecret);
     }
 
@@ -221,8 +231,11 @@ export async function handleShopifyOAuthCallback(
       shopDomain: shop,
       shopifyShopId: shopInfo.id,
       authType: "oauth",
-      shopifyAppClientId: existing.shopify_app_client_id,
-      shopifyAppClientSecretRef: clientSecretRef,
+      shopifyAppClientId: null,
+      shopifyAppClientSecretRef: null,
+      shopifyCustomerAccountClientId: existing.shopify_customer_account_client_id,
+      shopifyCustomerAccountClientSecretRef:
+        existing.shopify_customer_account_client_secret_ref,
       accessTokenRef,
       webhookSecretRef,
       scopes,

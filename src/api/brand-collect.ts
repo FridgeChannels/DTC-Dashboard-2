@@ -129,8 +129,8 @@ export async function handleGetBrandCollectConfig(
   }
 
   try {
-    await getRequestCustomerId(req, res);
-    const config = await getConfiguredInfo();
+    const customerId = await getRequestCustomerId(req, res);
+    const config = await getConfiguredInfo(customerId);
     json(res, 200, config);
   } catch (err) {
     console.error("Load brand collect config failed:", err);
@@ -148,9 +148,9 @@ export async function handlePostBrandInfo(
   }
 
   try {
-    await getRequestCustomerId(req, res);
+    const customerId = await getRequestCustomerId(req, res);
     const body = await readJsonBody(req);
-    const result = await saveBrandInfo(body ?? {});
+    const result = await saveBrandInfo({ ...(body ?? {}), customerId });
     json(res, 200, result);
   } catch (err) {
     console.error("Save brand info failed:", err);
@@ -194,7 +194,7 @@ export async function handlePostBrand(
   }
 
   try {
-    await getRequestCustomerId(req, res);
+    const customerId = await getRequestCustomerId(req, res);
     const body = await readJsonBody<{
       brandName?: string;
       brandWebsite?: string;
@@ -219,7 +219,9 @@ export async function handlePostBrand(
       brandLogo,
       primaryColor,
       secondaryColor: secondaryColor || accentColor,
+      customerId,
     });
+
     json(res, 200, result);
   } catch (err) {
     console.error("Update magnet brand param failed:", err);

@@ -1,5 +1,8 @@
 import { getSupabase } from "../clients/supabase.client.js";
-import type { CustomerKlaviyoConfig, KlaviyoAuthType } from "../coupons/coupon.types.js";
+import type { CustomerKlaviyoConfig } from "../coupons/coupon.types.js";
+
+const DEFAULT_API_REVISION = "2026-04-15";
+const DEFAULT_SCOPES = "profiles:read segments:read events:read metrics:read";
 
 export async function getKlaviyoConfigByCustomerId(
   customerId: number,
@@ -16,18 +19,11 @@ export async function getKlaviyoConfigByCustomerId(
 
 export async function upsertKlaviyoConfig(input: {
   customerId: number;
-  klaviyoAccountId?: string | null;
-  authType?: KlaviyoAuthType;
-  apiKeyRef?: string | null;
-  oauthClientId?: string | null;
-  oauthClientSecretRef?: string | null;
   apiRevision?: string;
   scopes?: string | null;
   oauthTokenRef?: string | null;
   oauthRefreshRef?: string | null;
   tokenExpiresAt?: string | null;
-  syncEnabled?: boolean;
-  isActive?: boolean;
 }): Promise<CustomerKlaviyoConfig> {
   const now = new Date().toISOString();
   const existing = await getKlaviyoConfigByCustomerId(input.customerId);
@@ -37,18 +33,6 @@ export async function upsertKlaviyoConfig(input: {
     .upsert(
       {
         customer_id: input.customerId,
-        klaviyo_account_id: input.klaviyoAccountId ?? existing?.klaviyo_account_id ?? null,
-        auth_type: input.authType ?? existing?.auth_type ?? "private_key",
-        api_key_ref:
-          input.apiKeyRef !== undefined ? input.apiKeyRef : (existing?.api_key_ref ?? null),
-        oauth_client_id:
-          input.oauthClientId !== undefined
-            ? input.oauthClientId
-            : (existing?.oauth_client_id ?? null),
-        oauth_client_secret_ref:
-          input.oauthClientSecretRef !== undefined
-            ? input.oauthClientSecretRef
-            : (existing?.oauth_client_secret_ref ?? null),
         oauth_token_ref:
           input.oauthTokenRef !== undefined
             ? input.oauthTokenRef
@@ -61,10 +45,8 @@ export async function upsertKlaviyoConfig(input: {
           input.tokenExpiresAt !== undefined
             ? input.tokenExpiresAt
             : (existing?.token_expires_at ?? null),
-        api_revision: input.apiRevision ?? existing?.api_revision ?? "2026-04-15",
-        scopes: input.scopes ?? existing?.scopes ?? null,
-        sync_enabled: input.syncEnabled ?? existing?.sync_enabled ?? true,
-        is_active: input.isActive ?? existing?.is_active ?? true,
+        api_revision: input.apiRevision ?? existing?.api_revision ?? DEFAULT_API_REVISION,
+        scopes: input.scopes ?? existing?.scopes ?? DEFAULT_SCOPES,
         updated_at: now,
         ...(existing ? {} : { created_at: now }),
       },

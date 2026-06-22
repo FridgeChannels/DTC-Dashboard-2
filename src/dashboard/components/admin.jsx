@@ -12,7 +12,7 @@ const BRAND_COLLECT_SECTION = { id: "brand-collect", label: "Brand Info" };
 const PRODUCT_ADD_SECTION = { id: "product-add", label: "Add Product" };
 
 // 营销活动（对外投放）
-const COUPON_CAMPAIGNS_SECTION = { id: "campaigns", label: "Coupon Campaigns" };
+const COUPON_CAMPAIGNS_SECTION = { id: "discounts", label: "Discounts" };
 const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Survey Campaigns" };
 
 // 受众与规则
@@ -59,7 +59,7 @@ function buildNavGroups(conn) {
         {
           ...COUPON_CAMPAIGNS_SECTION,
           locked: !shopifyReady,
-          lockHint: "Connect Shopify before creating coupon campaigns.",
+          lockHint: "Connect Shopify before creating discounts.",
         },
         {
           ...SEGMENT_CONFIG_SECTION,
@@ -91,6 +91,7 @@ function parseSection() {
   const params = new URLSearchParams(window.location.search);
   const fromQuery = params.get("section");
   if (fromQuery === "coupon-modes") return "shopify";
+  if (fromQuery === "campaigns") return COUPON_CAMPAIGNS_SECTION.id;
   if (ALL_SECTIONS.some((s) => s.id === fromQuery)) return fromQuery;
   // /brand-config without a section defaults to Shopify integration
   return SHOPIFY_SECTION.id;
@@ -229,6 +230,14 @@ function AdminApp() {
   const [connections, setConnections] = useStateAdmin({ shopifyReady: false, klaviyoReady: false });
 
   useEffectAdmin(() => {
+    if (window.location.pathname !== "/brand-config") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("section") !== "campaigns") return;
+    params.set("section", COUPON_CAMPAIGNS_SECTION.id);
+    window.history.replaceState({}, "", `/brand-config?${params.toString()}`);
+  }, []);
+
+  useEffectAdmin(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has("code")) {
       window.location.href = `/api/auth/callback?${params.toString()}`;
@@ -268,7 +277,7 @@ function AdminApp() {
         if (cancelled) return;
         setConnections({
           shopifyReady: Boolean(data.shopify?.hasAccessToken && data.shopify?.shopDomain),
-          klaviyoReady: Boolean(data.klaviyo?.hasApiKey || data.klaviyo?.hasOAuthToken),
+          klaviyoReady: Boolean(data.klaviyo?.hasOAuthToken),
         });
       } catch {
         /* 状态点降级为未连接即可，无需打断导航 */

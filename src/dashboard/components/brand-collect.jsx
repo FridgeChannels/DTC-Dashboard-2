@@ -33,11 +33,15 @@ function BrandCollectPage() {
   }, []);
 
   const applyServerConfig = useCallback((brand) => {
-    if (!brand) return;
-    setBrandName(brand.brandName || "");
-    setBrandWebsite(brand.website || "");
-    setBrandLogo(brand.brandLogo || "");
-    setColors({ primary: brand.primaryColor || "", accent: "" });
+    if (brand) {
+      setBrandName(brand.brandName || "");
+      setBrandWebsite(brand.website || "");
+      setBrandLogo(brand.brandLogo || "");
+      setColors({
+        primary: brand.primaryColor || "",
+        accent: brand.secondaryColor || brand.accentColor || "",
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -122,6 +126,9 @@ function BrandCollectPage() {
         brandLogo: brandLogo,
         colors,
       });
+      if (result.records?.[0]) {
+        applyServerConfig(result.records[0]);
+      }
       showNotice(`Brand info updated (${result.updatedCount} magnet_brand_param record${result.updatedCount === 1 ? "" : "s"}).`);
     } catch (err) {
       setError(err.message || "Failed to save brand info.");

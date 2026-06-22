@@ -203,7 +203,11 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/klaviyo/oauth/callback") {
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/api/klaviyo/callback" ||
+      url.pathname === "/api/klaviyo/oauth/callback")
+  ) {
     await handleKlaviyoOAuthCallback(res, url);
     return;
   }

@@ -187,7 +187,7 @@ function LoginPage() {
         <div className="auth-brand">
           <span className="module-num">FRIDGECHANNEL</span>
           <h1>{mode === "login" ? "Brand sign in" : "Create account"}</h1>
-          <p>Sign in to manage coupon campaigns and configuration.</p>
+          <p>Sign in to manage discounts and configuration.</p>
         </div>
 
         {error && <div className="cfg-alert warn"><span>{error}</span></div>}

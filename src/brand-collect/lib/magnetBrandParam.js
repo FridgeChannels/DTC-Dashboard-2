@@ -33,16 +33,42 @@ function buildUpdatePayload(fields) {
   return payload;
 }
 
-async function updateMagnetBrandParamRows(updatePayload) {
+async function getMagnetIdsForCustomer(customerId) {
+  if (!customerId) return null;
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('magnet')
+    .select('id')
+    .eq('customer_id', customerId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => row.id);
+}
+
+async function updateMagnetBrandParamRows(updatePayload, customerId) {
   if (!Object.keys(updatePayload).length) {
     throw new Error('没有可更新的字段');
   }
 
   const supabase = getSupabase();
+  const magnetIds = await getMagnetIdsForCustomer(customerId);
 
-  const { data: rows, error: selectError } = await supabase
+  let selectQuery = supabase
     .from('magnet_brand_param')
     .select('id, magnet_sn, magnet_id');
+
+  if (magnetIds) {
+    if (!magnetIds.length) {
+      return { updatedCount: 0, records: [] };
+    }
+    selectQuery = selectQuery.in('magnet_id', magnetIds);
+  }
+
+  const { data: rows, error: selectError } = await selectQuery;
 
   if (selectError) {
     throw new Error(selectError.message);
@@ -79,6 +105,7 @@ export async function updateAllMagnetBrandParams(input) {
     primaryColor,
     secondaryColor,
     storeWebsite,
+    customerId,
   } = input;
 
   const updatePayload = buildUpdatePayload({
@@ -93,12 +120,13 @@ export async function updateAllMagnetBrandParams(input) {
     updatePayload.brand_logo = await uploadImage(brandLogo, 'logos');
   }
 
-  return updateMagnetBrandParamRows(updatePayload);
+  return updateMagnetBrandParamRows(updatePayload, customerId);
 }
 
-export async function updateMagnetBrandParamStoreWebsite(storeWebsite) {
+export async function updateMagnetBrandParamStoreWebsite(storeWebsite, customerId) {
   return updateMagnetBrandParamRows(
-    buildUpdatePayload({ storeWebsite })
+    buildUpdatePayload({ storeWebsite }),
+    customerId
   );
 }
 
@@ -116,13 +144,24 @@ function mapBrandParamRow(row) {
   };
 }
 
-export async function getCurrentBrandConfig() {
+export async function getCurrentBrandConfig(customerId) {
   const supabase = getSupabase();
-  const { data, error } = await supabase
+  const magnetIds = await getMagnetIdsForCustomer(customerId);
+
+  let query = supabase
     .from('magnet_brand_param')
     .select(BRAND_PARAM_SELECT)
     .not('brand_name', 'is', null)
-    .neq('brand_name', '')
+    .neq('brand_name', '');
+
+  if (magnetIds) {
+    if (!magnetIds.length) {
+      return null;
+    }
+    query = query.in('magnet_id', magnetIds);
+  }
+
+  const { data, error } = await query
     .order('id', { ascending: true })
     .limit(1)
     .maybeSingle();

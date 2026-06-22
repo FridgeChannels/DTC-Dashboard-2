@@ -57,10 +57,10 @@ function campaignOptionLabel(campaign) {
 }
 
 function campaignSelectSummary(campaigns, selectedIds) {
-  if (!selectedIds.length) return "Select campaigns";
+  if (!selectedIds.length) return "Select discounts";
   const selected = campaigns.filter((campaign) => selectedIds.includes(campaign.id));
   if (selected.length === 1) return selected[0].name || selected[0].key;
-  return `${selected.length} campaigns selected`;
+  return `${selected.length} discounts selected`;
 }
 
 function CampaignMultiSelect({ row, campaigns, open, disabled, onToggleOpen, onChange }) {
@@ -89,7 +89,7 @@ function CampaignMultiSelect({ row, campaigns, open, disabled, onToggleOpen, onC
       {open && (
         <div className="segment-campaign-menu">
           <div className="segment-campaign-menu-head">
-            <strong>Campaigns</strong>
+            <strong>Discounts</strong>
             <button
               type="button"
               className="link-btn"
@@ -159,7 +159,7 @@ function SegmentConfigTable({ rows, campaigns, onChange, onSetDefault, settingDe
             <th className="table-default-col">Default</th>
             <th>Segment</th>
             <th>Status</th>
-            <th>Campaigns</th>
+            <th>Discounts</th>
           </tr>
         </thead>
         <tbody>
@@ -195,7 +195,7 @@ function SegmentConfigTable({ rows, campaigns, onChange, onSetDefault, settingDe
                     onChange={(campaignIds) => updateCampaignIds(row.segmentId, campaignIds)}
                   />
                 ) : (
-                  <span className="muted">Create campaigns first</span>
+                  <span className="muted">Create discounts first</span>
                 )}
               </td>
             </tr>
@@ -236,7 +236,7 @@ function SegmentConfigPage() {
 
   const handleSaveAll = async () => {
     if (!savableRows.length) {
-      setError("Choose campaigns for at least one segment");
+      setError("Choose discounts for at least one segment");
       setSaved(false);
       return;
     }
@@ -300,7 +300,7 @@ function SegmentConfigPage() {
 
       <CfgSection
         title="Segment discount configuration"
-        desc="Bind coupon campaigns to each Klaviyo segment. A user's available campaigns are resolved from the segments they belong to."
+        desc="Bind discounts to each Klaviyo segment. A user's available discounts are resolved from the segments they belong to."
       >
         <SegmentConfigTable
           rows={rows}
@@ -313,8 +313,8 @@ function SegmentConfigPage() {
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>
           <span className="muted" style={{ fontSize: 12.5 }}>
             {savableRows.length > 0
-              ? `${savableRows.length} segment(s) ready to save · explicit campaign bindings take priority`
-              : "Choose campaigns before saving"}
+              ? `${savableRows.length} segment(s) ready to save · explicit discount bindings take priority`
+              : "Choose discounts before saving"}
           </span>
           <div className="row" style={{ gap: 8 }}>
             <button type="button" className="btn" disabled={saving} onClick={load}>Refresh</button>

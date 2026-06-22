@@ -1,9 +1,9 @@
 import { getCurrentBrandConfig } from './magnetBrandParam.js';
 import { listProducts } from './products.js';
 
-export async function getConfiguredInfo() {
+export async function getConfiguredInfo(customerId) {
   const [brand, products] = await Promise.all([
-    getCurrentBrandConfig(),
+    getCurrentBrandConfig(customerId),
     listProducts({ limit: 1 }),
   ]);
 

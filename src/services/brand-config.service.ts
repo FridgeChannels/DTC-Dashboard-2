@@ -53,9 +53,13 @@ export interface BrandConfigResponse {
     endsAt: string | null;
     status: string;
     mode: string;
+    distributionMode: string;
+    oncePerCustomer: boolean;
+    shopifyUsageLimit: number | null;
     shopifyDiscountNodeId: string | null;
     codeCount: number;
     fcCreated: boolean;
+    discountTarget: string | null;
   }>;
   shopifyConnection: {
     connected: boolean;
@@ -205,9 +209,13 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
       endsAt: c.ends_at,
       status: c.status,
       mode: defaultMode,
+      distributionMode: c.distribution_mode,
+      oncePerCustomer: c.once_per_customer,
+      shopifyUsageLimit: c.shopify_usage_limit,
       shopifyDiscountNodeId: c.shopify_discount_node_id,
       codeCount: codeCounts.get(c.campaign_id) ?? 0,
       fcCreated: isFcCreatedCouponCampaign(c.campaign_key),
+      discountTarget: c.discount_target,
     })),
     shopifyConnection: null,
   };

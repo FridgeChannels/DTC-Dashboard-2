@@ -9,7 +9,12 @@ import {
   type CreateCampaignRequest,
   type UpdateCampaignRequest,
 } from "../services/coupon-campaign.service.js";
-import type { CampaignStatus, DiscountType } from "../coupons/coupon.types.js";
+import type {
+  CampaignStatus,
+  CouponDistributionMode,
+  DiscountTarget,
+  DiscountType,
+} from "../coupons/coupon.types.js";
 
 export async function handleCreateCouponCampaign(
   req: IncomingMessage,
@@ -26,6 +31,8 @@ export async function handleCreateCouponCampaign(
       starts_at?: string;
       ends_at?: string;
       once_per_customer?: boolean;
+      distribution_mode?: CouponDistributionMode;
+      discount_target?: DiscountTarget;
       buy_quantity?: number;
       get_quantity?: number;
     }>(req);
@@ -40,6 +47,8 @@ export async function handleCreateCouponCampaign(
       startsAt: body.starts_at,
       endsAt: body.ends_at,
       oncePerCustomer: body.once_per_customer,
+      distributionMode: body.distribution_mode,
+      discountTarget: body.discount_target,
       buyQuantity: body.buy_quantity,
       getQuantity: body.get_quantity,
     };
@@ -66,6 +75,7 @@ export async function handleUpdateCouponCampaign(
       starts_at?: string | null;
       ends_at?: string | null;
       status?: CampaignStatus;
+      distribution_mode?: CouponDistributionMode;
     }>(req);
 
     const input: UpdateCampaignRequest = {
@@ -76,6 +86,7 @@ export async function handleUpdateCouponCampaign(
       startsAt: body.starts_at,
       endsAt: body.ends_at,
       status: body.status,
+      distributionMode: body.distribution_mode,
     };
 
     const customerId = await getRequestCustomerId(req, res);

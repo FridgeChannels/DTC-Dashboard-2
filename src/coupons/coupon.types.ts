@@ -5,6 +5,9 @@ export type DiscountType =
   | "free_shipping"
   | "buy_x_get_y";
 
+/** 金额减免作用范围：产品 / 订单（仅 percentage、fixed_amount） */
+export type DiscountTarget = "product" | "order";
+
 /** 券活动状态 */
 export type CampaignStatus = "draft" | "active" | "paused" | "expired";
 
@@ -15,6 +18,20 @@ export type CouponCodeStatus =
   | "redeemed"
   | "expired"
   | "disabled";
+
+export type CouponDistributionMode = "unique_pool" | "shared_code";
+
+export type CouponCodeUsageMode = "unique" | "shared";
+
+export function resolveCouponCodeUsageMode(
+  campaign: { distribution_mode?: CouponDistributionMode | null },
+  couponCode: { usage_mode?: CouponCodeUsageMode | null },
+): CouponCodeUsageMode {
+  if (couponCode.usage_mode === "shared" || couponCode.usage_mode === "unique") {
+    return couponCode.usage_mode;
+  }
+  return campaign.distribution_mode === "shared_code" ? "shared" : "unique";
+}
 
 /** 分发渠道 */
 export type AssignmentChannel =
@@ -86,6 +103,9 @@ export interface FcCouponCampaign {
   ends_at: string | null;
   usage_limit: number | null;
   once_per_customer: boolean;
+  discount_target: DiscountTarget | null;
+  distribution_mode: CouponDistributionMode;
+  shopify_usage_limit: number | null;
   shopify_discount_node_id: string | null;
   shopify_discount_title: string | null;
   status: CampaignStatus;
@@ -100,6 +120,7 @@ export interface FcCouponCode {
   code: string;
   shopify_discount_node_id: string | null;
   shopify_redeem_code_id: string | null;
+  usage_mode: CouponCodeUsageMode;
   status: CouponCodeStatus;
   assigned_at: string | null;
   redeemed_at: string | null;
@@ -153,6 +174,8 @@ export interface CreateCouponCampaignInput {
   startsAt?: string;
   endsAt?: string;
   oncePerCustomer?: boolean;
+  discountTarget?: DiscountTarget;
+  distributionMode?: CouponDistributionMode;
   usageLimit?: number;
   /** 买 X 送 Y：购买数量（存 usage_limit） */
   buyQuantity?: number;
@@ -186,6 +209,12 @@ export interface IssueRealtimeSingleCouponResult {
   code: string;
   couponCodeId: string;
   alreadyAssigned: boolean;
+  /** `unique` 一人一码；`shared` 多人共用同一码 */
+  codeType: CouponCodeUsageMode;
+  distributionMode: CouponDistributionMode;
+  usageMode: CouponCodeUsageMode;
+  oncePerCustomer: boolean;
+  shopifyUsageLimit: number | null;
 }
 
 export interface ShopifyOrderDiscountApplication {
@@ -221,7 +250,8 @@ export type CouponRedemptionSyncItem =
       matched: true;
       couponCodeId: string;
       previousStatus: CouponCodeStatus;
-      status: "redeemed";
+      status: CouponCodeStatus;
+      usageMode?: CouponCodeUsageMode;
       redemptionId: string;
       alreadyRedeemed: boolean;
     };

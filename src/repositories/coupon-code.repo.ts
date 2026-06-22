@@ -1,5 +1,10 @@
 import { getSupabase } from "../clients/supabase.client.js";
-import type { CouponCodeStatus, FcCouponCode } from "../coupons/coupon.types.js";
+import type {
+  CouponCodeStatus,
+  CouponCodeUsageMode,
+  CouponDistributionMode,
+  FcCouponCode,
+} from "../coupons/coupon.types.js";
 
 const CLAIMED_STATUSES = new Set<CouponCodeStatus>(["assigned", "redeemed"]);
 
@@ -25,6 +30,7 @@ export interface CouponCodeWithCampaignRow {
   customer_id: number;
   campaign_id: string;
   code: string;
+  usage_mode: CouponCodeUsageMode;
   status: CouponCodeStatus;
   assigned_at: string | null;
   redeemed_at: string | null;
@@ -38,6 +44,9 @@ export interface CouponCodeWithCampaignRow {
   campaign_status: string;
   campaign_starts_at: string | null;
   campaign_ends_at: string | null;
+  campaign_distribution_mode: CouponDistributionMode;
+  campaign_once_per_customer: boolean;
+  campaign_shopify_usage_limit: number | null;
 }
 
 export async function findCouponWithCampaignByCode(
@@ -51,6 +60,7 @@ export async function findCouponWithCampaignByCode(
       customer_id,
       campaign_id,
       code,
+      usage_mode,
       status,
       assigned_at,
       redeemed_at,
@@ -64,7 +74,10 @@ export async function findCouponWithCampaignByCode(
         currency_code,
         status,
         starts_at,
-        ends_at
+        ends_at,
+        distribution_mode,
+        once_per_customer,
+        shopify_usage_limit
       )
     `,
     )
@@ -84,6 +97,9 @@ export async function findCouponWithCampaignByCode(
     status: string;
     starts_at: string | null;
     ends_at: string | null;
+    distribution_mode: CouponDistributionMode;
+    once_per_customer: boolean;
+    shopify_usage_limit: number | null;
   };
   if (!campaign) return null;
 
@@ -92,6 +108,7 @@ export async function findCouponWithCampaignByCode(
     customer_id: data.customer_id,
     campaign_id: data.campaign_id,
     code: data.code,
+    usage_mode: data.usage_mode as CouponCodeUsageMode,
     status: data.status as CouponCodeStatus,
     assigned_at: data.assigned_at,
     redeemed_at: data.redeemed_at,
@@ -105,6 +122,9 @@ export async function findCouponWithCampaignByCode(
     campaign_status: campaign.status,
     campaign_starts_at: campaign.starts_at,
     campaign_ends_at: campaign.ends_at,
+    campaign_distribution_mode: campaign.distribution_mode,
+    campaign_once_per_customer: campaign.once_per_customer,
+    campaign_shopify_usage_limit: campaign.shopify_usage_limit,
   };
 }
 
@@ -194,12 +214,32 @@ export async function findOldestAvailableCouponCode(
   return data as FcCouponCode | null;
 }
 
+export async function findSharedCouponCodeByCampaignId(
+  customerId: number,
+  campaignId: string,
+): Promise<FcCouponCode | null> {
+  const { data, error } = await getSupabase()
+    .from("fc_coupon_code")
+    .select("*")
+    .eq("customer_id", customerId)
+    .eq("campaign_id", campaignId)
+    .eq("usage_mode", "shared")
+    .in("status", ["available", "assigned"])
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as FcCouponCode | null;
+}
+
 export async function insertCouponCode(input: {
   customerId: number;
   campaignId: string;
   code: string;
   shopifyDiscountNodeId?: string;
   shopifyRedeemCodeId?: string;
+  usageMode?: CouponCodeUsageMode;
   status?: CouponCodeStatus;
   expiresAt?: string;
 }): Promise<FcCouponCode | null> {
@@ -211,6 +251,7 @@ export async function insertCouponCode(input: {
       code: input.code,
       shopify_discount_node_id: input.shopifyDiscountNodeId ?? null,
       shopify_redeem_code_id: input.shopifyRedeemCodeId ?? null,
+      usage_mode: input.usageMode ?? "unique",
       status: input.status ?? "available",
       expires_at: input.expiresAt ?? null,
     })
@@ -262,6 +303,18 @@ export async function markCouponCodeAssigned(
   return data as FcCouponCode;
 }
 
+export async function updateCouponCodeUsageMode(
+  couponCodeId: string,
+  usageMode: CouponCodeUsageMode,
+): Promise<void> {
+  const { error } = await getSupabase()
+    .from("fc_coupon_code")
+    .update({ usage_mode: usageMode })
+    .eq("coupon_code_id", couponCodeId);
+
+  if (error) throw error;
+}
+
 export async function markCouponCodeDisabled(couponCodeId: string): Promise<void> {
   const { error } = await getSupabase()
     .from("fc_coupon_code")
@@ -282,6 +335,23 @@ export async function markCouponCodeRedeemed(
       status: "redeemed",
       redeemed_at: redeemedAt,
     })
+    .eq("coupon_code_id", couponCodeId);
+
+  if (error) throw error;
+}
+
+export async function updateCouponCodeStatus(
+  couponCodeId: string,
+  status: CouponCodeStatus,
+  redeemedAt?: string | null,
+): Promise<void> {
+  const patch: Record<string, unknown> = { status };
+  if (status === "redeemed") {
+    patch.redeemed_at = redeemedAt ?? new Date().toISOString();
+  }
+  const { error } = await getSupabase()
+    .from("fc_coupon_code")
+    .update(patch)
     .eq("coupon_code_id", couponCodeId);
 
   if (error) throw error;

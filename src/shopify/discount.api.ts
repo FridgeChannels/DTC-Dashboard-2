@@ -1,5 +1,5 @@
 import { shopifyGraphql } from "../clients/shopify.client.js";
-import type { DiscountType } from "../coupons/coupon.types.js";
+import type { DiscountTarget, DiscountType } from "../coupons/coupon.types.js";
 
 const DISCOUNT_CODE_BASIC_CREATE = `
   mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
@@ -133,6 +133,7 @@ export interface CreateBasicDiscountInput {
   title: string;
   code: string;
   discountType: DiscountType;
+  discountTarget?: DiscountTarget | null;
   value?: number;
   startsAt?: string;
   endsAt?: string;
@@ -163,6 +164,7 @@ export interface CreateFreeShippingDiscountInput {
 export interface UpdateDiscountCodeInput {
   nodeId: string;
   discountType: DiscountType;
+  discountTarget?: DiscountTarget | null;
   title: string;
   value?: number | null;
   buyQuantity?: number | null;
@@ -177,6 +179,7 @@ export interface CreateDiscountCodeInput {
   title: string;
   code: string;
   discountType: DiscountType;
+  discountTarget?: DiscountTarget | null;
   value?: number;
   buyQuantity?: number;
   getQuantity?: number;
@@ -192,7 +195,11 @@ export interface DiscountNodeResult {
   redeemCodeId?: string;
 }
 
-function buildCustomerGets(discountType: DiscountType, value?: number | null) {
+function buildCustomerGets(
+  discountType: DiscountType,
+  value?: number | null,
+  discountTarget?: DiscountTarget | null,
+) {
   const items = { all: true };
 
   if (discountType === "percentage") {
@@ -207,7 +214,7 @@ function buildCustomerGets(discountType: DiscountType, value?: number | null) {
       value: {
         discountAmount: {
           amount: String(value ?? 0),
-          appliesOnEachItem: false,
+          appliesOnEachItem: discountTarget === "product",
         },
       },
       items,
@@ -348,7 +355,7 @@ export async function discountCodeBasicUpdate(
 ): Promise<DiscountNodeResult> {
   const basicCodeDiscount: Record<string, unknown> = {
     title: input.title,
-    customerGets: buildCustomerGets(input.discountType, input.value),
+    customerGets: buildCustomerGets(input.discountType, input.value, input.discountTarget),
     appliesOncePerCustomer: input.oncePerCustomer ?? true,
   };
   if (input.startsAt) basicCodeDiscount.startsAt = input.startsAt;
@@ -538,6 +545,7 @@ export async function createDiscountCodeNode(
     title: input.title,
     code: input.code,
     discountType: input.discountType,
+    discountTarget: input.discountTarget,
     value: input.value,
     startsAt: input.startsAt,
     endsAt: input.endsAt,
@@ -555,7 +563,7 @@ export async function discountCodeBasicCreate(
     title: input.title,
     code: input.code,
     customerSelection: { all: true },
-    customerGets: buildCustomerGets(input.discountType, input.value),
+    customerGets: buildCustomerGets(input.discountType, input.value, input.discountTarget),
     appliesOncePerCustomer: input.oncePerCustomer ?? true,
     // Shopify 要求 startsAt 必填；未指定时默认立即生效
     startsAt: input.startsAt ?? new Date().toISOString(),

@@ -66,6 +66,7 @@ export async function syncCampaignToShopify(
   const result = await updateDiscountCodeNode(shopDomain, accessToken, {
     nodeId,
     discountType: existing.discount_type,
+    discountTarget: existing.discount_target,
     title: merged.name,
     value: existing.discount_type === "buy_x_get_y" ? merged.value : merged.value,
     buyQuantity: existing.usage_limit,

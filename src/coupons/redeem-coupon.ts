@@ -39,11 +39,20 @@ export async function syncCouponRedemptionFromOrder(
       continue;
     }
 
-    const alreadyRedeemed = couponCode.status === "redeemed";
-    const assignment = await assignmentRepo.findAssignmentByCouponCodeId(
-      customerId,
-      couponCode.coupon_code_id,
-    );
+    const isSharedCode = couponCode.usage_mode === "shared";
+    const alreadyRedeemed = !isSharedCode && couponCode.status === "redeemed";
+    const shopifyCustomerId = order.customer?.id ? String(order.customer.id) : undefined;
+    const assignment = isSharedCode
+      ? await assignmentRepo.findBestAssignmentForRedemption({
+          customerId,
+          couponCodeId: couponCode.coupon_code_id,
+          shopifyCustomerId,
+          email: order.email,
+        })
+      : await assignmentRepo.findAssignmentByCouponCodeId(
+          customerId,
+          couponCode.coupon_code_id,
+        );
 
     const redemption = await redemptionRepo.upsertRedemption({
       customerId,
@@ -54,9 +63,7 @@ export async function syncCouponRedemptionFromOrder(
       shopifyOrderId,
       shopifyOrderName: order.name,
       customerEmail: order.email,
-      shopifyCustomerId: order.customer?.id
-        ? String(order.customer.id)
-        : undefined,
+      shopifyCustomerId,
       orderTotal: order.total_price ? Number(order.total_price) : undefined,
       totalDiscounts: order.total_discounts
         ? Number(order.total_discounts)
@@ -67,7 +74,7 @@ export async function syncCouponRedemptionFromOrder(
       rawOrder: order as Record<string, unknown>,
     });
 
-    if (!alreadyRedeemed) {
+    if (!isSharedCode && !alreadyRedeemed) {
       await codeRepo.markCouponCodeRedeemed(couponCode.coupon_code_id, redeemedAt);
     }
 
@@ -76,7 +83,8 @@ export async function syncCouponRedemptionFromOrder(
       matched: true,
       couponCodeId: couponCode.coupon_code_id,
       previousStatus: couponCode.status,
-      status: "redeemed",
+      status: isSharedCode ? couponCode.status : "redeemed",
+      usageMode: couponCode.usage_mode,
       redemptionId: redemption.redemption_id,
       alreadyRedeemed,
     });

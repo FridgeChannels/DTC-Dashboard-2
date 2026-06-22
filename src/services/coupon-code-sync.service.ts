@@ -1,5 +1,5 @@
 import { resolveSecret } from "../clients/secrets.client.js";
-import { generateCouponCode } from "../coupons/generate-code.js";
+import { generateCouponCode, isFcCreatedCouponCampaign } from "../coupons/generate-code.js";
 import { discountRedeemCodeBulkAdd } from "../shopify/discount.api.js";
 import { fetchShopifyRedeemCodesForDiscountNode } from "../shopify/discount-codes.api.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
@@ -12,6 +12,7 @@ export interface CampaignCodeSyncItem {
   synced: boolean;
   fcCouponCodeId: string | null;
   fcStatus: string | null;
+  fcUsageMode: string | null;
   claimLocked: boolean;
 }
 
@@ -33,6 +34,7 @@ export interface AddCampaignCodesResult {
   added: number;
   skipped: number;
   failed: Array<{ code: string; reason: string }>;
+  code?: string;
 }
 
 const SHOPIFY_BULK_ADD_BATCH_SIZE = 250;
@@ -115,7 +117,10 @@ export async function listCampaignCodesForSync(
       synced: Boolean(fc),
       fcCouponCodeId: fc?.coupon_code_id ?? null,
       fcStatus: fc?.status ?? null,
-      claimLocked: codeRepo.isCouponCodeClaimLocked(fc?.status ?? null),
+      fcUsageMode: fc?.usage_mode ?? null,
+      claimLocked:
+        fc?.usage_mode === "shared" ||
+        codeRepo.isCouponCodeClaimLocked(fc?.status ?? null),
     };
   });
 
@@ -135,6 +140,10 @@ export async function syncCampaignCodesToFc(
   const campaign = await loadCampaignForCustomer(customerId, campaignId);
   const preview = await listCampaignCodesForSync(customerId, campaignId);
   const selected = new Set(redeemCodeIds.map((id) => id.trim()).filter(Boolean));
+  const usageMode = campaign.distribution_mode === "shared_code" ? "shared" : "unique";
+  if (usageMode === "shared" && selected.size > 1) {
+    throw new Error("Shared code discounts can sync only one Shopify code");
+  }
 
   const shopifyNodeId = campaign.shopify_discount_node_id as string;
 
@@ -170,6 +179,12 @@ export async function syncCampaignCodesToFc(
     if (!isSelected) continue;
 
     if (item.synced) {
+      if (item.fcCouponCodeId && item.fcUsageMode !== usageMode) {
+        await codeRepo.updateCouponCodeUsageMode(
+          item.fcCouponCodeId,
+          usageMode,
+        );
+      }
       skipped += 1;
       continue;
     }
@@ -180,6 +195,7 @@ export async function syncCampaignCodesToFc(
       code: item.code,
       shopifyDiscountNodeId: shopifyNodeId,
       shopifyRedeemCodeId: item.redeemCodeId,
+      usageMode,
       status: "available",
       expiresAt: campaign.ends_at ?? undefined,
     });
@@ -208,9 +224,21 @@ export async function syncCampaignCodesToFc(
 export async function addCampaignCodesToFc(
   customerId: number,
   campaignId: string,
-  count: number,
+  input: { count?: number; code?: string },
 ): Promise<AddCampaignCodesResult> {
   const campaign = await loadCampaignForCustomer(customerId, campaignId);
+  const usageMode = campaign.distribution_mode === "shared_code" ? "shared" : "unique";
+
+  if (
+    usageMode === "shared"
+    && !isFcCreatedCouponCampaign(campaign.campaign_key)
+  ) {
+    throw new Error(
+      "Shopify shared-code discounts cannot have codes added manually. Sync from Shopify instead.",
+    );
+  }
+
+  const count = usageMode === "shared" ? 1 : Number(input.count);
 
   if (!Number.isFinite(count) || count <= 0) {
     throw new Error("count must be a positive number");
@@ -219,12 +247,14 @@ export async function addCampaignCodesToFc(
     throw new Error(`You can add at most ${MAX_ADD_CODES_PER_REQUEST} codes per request`);
   }
 
-  const toAdd = await generateUniqueCampaignCodes(
-    customerId,
-    campaignId,
-    campaign.campaign_key,
-    Math.floor(count),
-  );
+  const toAdd = usageMode === "shared" && input.code?.trim()
+    ? [input.code.trim()]
+    : await generateUniqueCampaignCodes(
+        customerId,
+        campaignId,
+        campaign.campaign_key,
+        Math.floor(count),
+      );
 
   const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(customerId, {
     activeOnly: true,
@@ -271,6 +301,7 @@ export async function addCampaignCodesToFc(
       code: shopifyCode.code,
       shopifyDiscountNodeId: shopifyNodeId,
       shopifyRedeemCodeId: shopifyCode.redeemCodeId,
+      usageMode,
       status: "available",
       expiresAt: campaign.ends_at ?? undefined,
     });
@@ -289,5 +320,13 @@ export async function addCampaignCodesToFc(
     failed.push({ code, reason: "Could not import code" });
   }
 
-  return { added, skipped, failed };
+  if (usageMode === "shared" && added > 0) {
+    await campaignRepo.updateCampaignDistributionMode(
+      customerId,
+      campaign.campaign_id,
+      "shared_code",
+    );
+  }
+
+  return { added, skipped, failed, code: usageMode === "shared" ? toAdd[0] : undefined };
 }

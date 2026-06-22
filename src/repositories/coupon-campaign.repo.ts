@@ -1,6 +1,7 @@
 import { getSupabase } from "../clients/supabase.client.js";
 import type {
   CampaignStatus,
+  CouponDistributionMode,
   CreateCouponCampaignInput,
   DiscountType,
   FcCouponCampaign,
@@ -13,6 +14,9 @@ export interface ShopifyCampaignSyncFields {
   value: number | null;
   minPurchaseAmount: number | null;
   usageLimit: number | null;
+  oncePerCustomer: boolean;
+  shopifyUsageLimit: number | null;
+  distributionMode: CouponDistributionMode;
   startsAt: string | null;
   endsAt: string | null;
   status: CampaignStatus;
@@ -26,6 +30,7 @@ export interface UpdateCampaignPatch {
   endsAt?: string | null;
   status?: CampaignStatus;
   shopifyDiscountTitle?: string;
+  distributionMode?: CouponDistributionMode;
 }
 
 export async function listCampaignsByCustomerId(
@@ -166,6 +171,9 @@ export async function insertCampaign(
       ends_at: input.endsAt ?? null,
       usage_limit: input.usageLimit ?? null,
       once_per_customer: input.oncePerCustomer ?? true,
+      discount_target: input.discountTarget ?? null,
+      distribution_mode: input.distributionMode ?? "unique_pool",
+      shopify_usage_limit: null,
       shopify_discount_node_id: input.shopifyDiscountNodeId,
       shopify_discount_title: input.shopifyDiscountTitle,
       status: "active",
@@ -193,6 +201,9 @@ export async function updateCampaignById(
   if (patch.startsAt !== undefined) row.starts_at = patch.startsAt;
   if (patch.endsAt !== undefined) row.ends_at = patch.endsAt;
   if (patch.status !== undefined) row.status = patch.status;
+  if (patch.distributionMode !== undefined) {
+    row.distribution_mode = patch.distributionMode;
+  }
   if (patch.shopifyDiscountTitle !== undefined) {
     row.shopify_discount_title = patch.shopifyDiscountTitle;
   }
@@ -227,6 +238,23 @@ export async function updateCampaignShopifyNode(
   if (error) throw error;
 }
 
+export async function updateCampaignDistributionMode(
+  customerId: number,
+  campaignId: string,
+  distributionMode: CouponDistributionMode,
+): Promise<void> {
+  const { error } = await getSupabase()
+    .from("fc_coupon_campaign")
+    .update({
+      distribution_mode: distributionMode,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("customer_id", customerId)
+    .eq("campaign_id", campaignId);
+
+  if (error) throw error;
+}
+
 export async function insertCampaignFromShopifySnapshot(
   customerId: number,
   campaignKey: string,
@@ -242,12 +270,14 @@ export async function insertCampaignFromShopifySnapshot(
       value: remote.value,
       min_purchase_amount: remote.minPurchaseAmount,
       usage_limit: remote.usageLimit,
+      once_per_customer: remote.oncePerCustomer,
+      shopify_usage_limit: remote.shopifyUsageLimit,
+      distribution_mode: remote.distributionMode,
       starts_at: remote.startsAt,
       ends_at: remote.endsAt,
       shopify_discount_node_id: remote.nodeId,
       shopify_discount_title: remote.title,
       status: remote.status,
-      once_per_customer: true,
     })
     .select("*")
     .single();
@@ -269,6 +299,9 @@ export async function applyShopifyCampaignSnapshot(
       value: remote.value,
       min_purchase_amount: remote.minPurchaseAmount,
       usage_limit: remote.usageLimit,
+      once_per_customer: remote.oncePerCustomer,
+      shopify_usage_limit: remote.shopifyUsageLimit,
+      distribution_mode: remote.distributionMode,
       starts_at: remote.startsAt,
       ends_at: remote.endsAt,
       status: remote.status,

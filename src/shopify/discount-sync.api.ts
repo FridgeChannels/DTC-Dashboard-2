@@ -1,5 +1,9 @@
 import { shopifyGraphql } from "../clients/shopify.client.js";
-import type { CampaignStatus, DiscountType } from "../coupons/coupon.types.js";
+import type {
+  CampaignStatus,
+  CouponDistributionMode,
+  DiscountType,
+} from "../coupons/coupon.types.js";
 
 const CODE_DISCOUNT_FIELDS = `
   __typename
@@ -8,6 +12,9 @@ const CODE_DISCOUNT_FIELDS = `
     status
     startsAt
     endsAt
+    appliesOncePerCustomer
+    usageLimit
+    codes(first: 2) { nodes { id } }
     customerGets {
       value {
         __typename
@@ -27,6 +34,9 @@ const CODE_DISCOUNT_FIELDS = `
     status
     startsAt
     endsAt
+    appliesOncePerCustomer
+    usageLimit
+    codes(first: 2) { nodes { id } }
     minimumRequirement {
       __typename
       ... on DiscountMinimumSubtotal {
@@ -39,6 +49,9 @@ const CODE_DISCOUNT_FIELDS = `
     status
     startsAt
     endsAt
+    appliesOncePerCustomer
+    usageLimit
+    codes(first: 2) { nodes { id } }
     customerBuys {
       value {
         __typename
@@ -94,6 +107,9 @@ export interface ShopifyCampaignSnapshot {
   value: number | null;
   minPurchaseAmount: number | null;
   usageLimit: number | null;
+  oncePerCustomer: boolean;
+  shopifyUsageLimit: number | null;
+  distributionMode: CouponDistributionMode;
   startsAt: string | null;
   endsAt: string | null;
   status: CampaignStatus;
@@ -124,6 +140,17 @@ function parseMinPurchase(
   return Number.isNaN(n) ? null : n;
 }
 
+function parseNullableNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isNaN(n) ? null : n;
+}
+
+function inferDistributionMode(codeDiscount: Record<string, unknown>): CouponDistributionMode {
+  const codes = codeDiscount.codes as { nodes?: unknown[] } | null | undefined;
+  return (codes?.nodes?.length ?? 0) === 1 ? "shared_code" : "unique_pool";
+}
+
 function parseCodeDiscount(
   nodeId: string,
   codeDiscount: Record<string, unknown> | null | undefined,
@@ -135,6 +162,9 @@ function parseCodeDiscount(
   const startsAt = (codeDiscount.startsAt as string | null | undefined) ?? null;
   const endsAt = (codeDiscount.endsAt as string | null | undefined) ?? null;
   const status = mapShopifyStatus(String(codeDiscount.status ?? "ACTIVE"));
+  const oncePerCustomer = Boolean(codeDiscount.appliesOncePerCustomer ?? true);
+  const shopifyUsageLimit = parseNullableNumber(codeDiscount.usageLimit);
+  const distributionMode = inferDistributionMode(codeDiscount);
 
   if (typename === "DiscountCodeBasic") {
     const customerGets = codeDiscount.customerGets as {
@@ -156,6 +186,9 @@ function parseCodeDiscount(
           codeDiscount.minimumRequirement as Parameters<typeof parseMinPurchase>[0],
         ),
         usageLimit: null,
+        oncePerCustomer,
+        shopifyUsageLimit,
+        distributionMode,
         startsAt,
         endsAt,
         status,
@@ -173,6 +206,9 @@ function parseCodeDiscount(
           codeDiscount.minimumRequirement as Parameters<typeof parseMinPurchase>[0],
         ),
         usageLimit: null,
+        oncePerCustomer,
+        shopifyUsageLimit,
+        distributionMode,
         startsAt,
         endsAt,
         status,
@@ -192,6 +228,9 @@ function parseCodeDiscount(
         codeDiscount.minimumRequirement as Parameters<typeof parseMinPurchase>[0],
       ),
       usageLimit: null,
+      oncePerCustomer,
+      shopifyUsageLimit,
+      distributionMode,
       startsAt,
       endsAt,
       status,
@@ -220,6 +259,9 @@ function parseCodeDiscount(
       value: getPercent,
       minPurchaseAmount: Number.isNaN(getQty) ? null : getQty,
       usageLimit: Number.isNaN(buyQty) ? null : buyQty,
+      oncePerCustomer,
+      shopifyUsageLimit,
+      distributionMode,
       startsAt,
       endsAt,
       status,

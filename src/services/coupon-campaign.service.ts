@@ -7,7 +7,9 @@ import {
 } from "../coupons/sync-campaigns-from-shopify.js";
 import type {
   CampaignStatus,
+  CouponDistributionMode,
   CreateCouponCampaignInput,
+  DiscountTarget,
   DiscountType,
   FcCouponCampaign,
 } from "../coupons/coupon.types.js";
@@ -25,6 +27,8 @@ export interface CreateCampaignRequest {
   startsAt?: string;
   endsAt?: string;
   oncePerCustomer?: boolean;
+  distributionMode?: CouponDistributionMode;
+  discountTarget?: DiscountTarget;
   buyQuantity?: number;
   getQuantity?: number;
 }
@@ -37,6 +41,7 @@ export interface UpdateCampaignRequest {
   startsAt?: string | null;
   endsAt?: string | null;
   status?: CampaignStatus;
+  distributionMode?: CouponDistributionMode;
 }
 
 export interface CampaignSummary {
@@ -50,9 +55,13 @@ export interface CampaignSummary {
   endsAt: string | null;
   status: string;
   mode: string;
+  distributionMode: string;
+  oncePerCustomer: boolean;
+  shopifyUsageLimit: number | null;
   shopifyDiscountNodeId: string | null;
   codeCount: number;
   fcCreated: boolean;
+  discountTarget: string | null;
 }
 
 function validateCampaignInput(input: CreateCampaignRequest): void {
@@ -111,9 +120,13 @@ async function toCampaignSummary(
     endsAt: campaign.ends_at,
     status: campaign.status,
     mode: defaultMode,
+    distributionMode: campaign.distribution_mode,
+    oncePerCustomer: campaign.once_per_customer,
+    shopifyUsageLimit: campaign.shopify_usage_limit,
     shopifyDiscountNodeId: campaign.shopify_discount_node_id,
     codeCount: counts.get(campaign.campaign_id) ?? 0,
     fcCreated: isFcCreatedCouponCampaign(campaign.campaign_key),
+    discountTarget: campaign.discount_target,
   };
 }
 
@@ -187,6 +200,8 @@ export async function createCampaignForCustomer(
     startsAt: input.startsAt,
     endsAt: input.endsAt,
     oncePerCustomer: input.oncePerCustomer ?? true,
+    discountTarget: input.discountTarget,
+    distributionMode: input.distributionMode ?? "unique_pool",
     usageLimit: input.discountType === "buy_x_get_y" ? input.buyQuantity : undefined,
     buyQuantity: input.buyQuantity,
     getQuantity: input.getQuantity,
@@ -205,8 +220,24 @@ export async function updateCampaignForCustomer(
 
   const existing = await campaignRepo.findCampaignById(customerId, campaignId);
   if (!existing) throw new Error("Campaign not found");
-  if (!isFcCreatedCouponCampaign(existing.campaign_key)) {
+  const hasShopifyPatch =
+    input.name !== undefined ||
+    input.value !== undefined ||
+    input.minPurchaseAmount !== undefined ||
+    input.startsAt !== undefined ||
+    input.endsAt !== undefined ||
+    input.status !== undefined;
+
+  if (!isFcCreatedCouponCampaign(existing.campaign_key) && hasShopifyPatch) {
     throw new Error("Shopify-synced discounts cannot be edited in FC");
+  }
+
+  if (!hasShopifyPatch) {
+    const settings = await couponSettingsRepo.getCouponSettings(customerId);
+    const campaign = await campaignRepo.updateCampaignById(customerId, campaignId, {
+      distributionMode: input.distributionMode,
+    });
+    return toCampaignSummary(customerId, campaign, settings.default_mode);
   }
 
   validateUpdateCampaignInput(existing, input);
@@ -231,6 +262,7 @@ export async function updateCampaignForCustomer(
     endsAt: merged.endsAt,
     status: merged.status,
     shopifyDiscountTitle: shopifyTitle,
+    distributionMode: input.distributionMode,
   });
 
   return toCampaignSummary(customerId, campaign, settings.default_mode);
@@ -258,9 +290,13 @@ async function listCampaignSummariesForCustomer(
     endsAt: c.ends_at,
     status: c.status,
     mode: defaultMode,
+    distributionMode: c.distribution_mode,
+    oncePerCustomer: c.once_per_customer,
+    shopifyUsageLimit: c.shopify_usage_limit,
     shopifyDiscountNodeId: c.shopify_discount_node_id,
     codeCount: codeCounts.get(c.campaign_id) ?? 0,
     fcCreated: isFcCreatedCouponCampaign(c.campaign_key),
+    discountTarget: c.discount_target,
   }));
 }
 

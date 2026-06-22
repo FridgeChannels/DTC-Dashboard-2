@@ -89,6 +89,16 @@ GET /api/coupon-campaigns/available?magnet_id={magnet_id}
    - `discount_type = percentage`
    - `value / 100` 落在分群的 `min_discount_ratio ~ max_discount_ratio` 内
    - 在有效期内（`starts_at` / `ends_at`）
+   - **当前仍可发券**（见下方「可发券过滤」）
+
+**可发券过滤**：即使分群匹配成功，以下 campaign 也不会出现在列表中：
+
+| 发券模式 | 排除条件 |
+|----------|----------|
+| `unique_pool`（一人一码） | 券池中没有 `available` 状态的券码 |
+| `shared_code`（一码多用） | 未配置共享码，或已领取次数达到 `shopifyUsageLimit` 上限 |
+
+共享码的领取次数按 `fc_coupon_assignment` 记录数统计，上限取自 Shopify 同步的 `shopify_usage_limit`（如 `50 total`）。`realtime-single` 发券接口复用同一套可用列表校验。
 
 **默认 segment 回退**：以下任一情况时，使用后台 **Segment Config** 中标记为 **Default** 的分群配置（`fc_segment_coupon_config.is_default = true` 且 `is_active = true`），按其 min/max 减免区间筛选可用 campaign：
 
@@ -108,7 +118,7 @@ GET /api/coupon-campaigns/available?magnet_id={magnet_id}
 
 ### `campaigns` 为空时
 
-表示未命中分群且品牌 **未配置默认 segment**，或默认 segment 的减免区间内没有可用 campaign。请在后台 **Segment Config** 将某个分群设为 Default，并配置 min/max 减免比例。
+表示未命中分群且品牌 **未配置默认 segment**，或默认 segment 的减免区间内没有可用 campaign，或匹配到的 campaign **当前均不可发券**（券池已空或共享码已达领取上限）。
 
 ---
 
@@ -144,11 +154,24 @@ Content-Type: application/json
   "campaignName": "test",
   "code": "876876-ABC123",
   "couponCodeId": "uuid",
-  "alreadyAssigned": false
+  "alreadyAssigned": false,
+  "codeType": "unique",
+  "distributionMode": "unique_pool",
+  "usageMode": "unique",
+  "oncePerCustomer": true,
+  "shopifyUsageLimit": null
 }
 ```
 
-每次请求都会生成一张新的唯一券码。`alreadyAssigned` 字段保留为 `false`（兼容旧客户端）。
+`codeType` 用于识别本次返回的券码类型：`unique` 表示一人一码（从券池分配的新码）；`shared` 表示共享码（多人可使用同一码）。`usageMode` 与 `codeType` 含义相同，保留用于与 lookup 接口对齐。`distributionMode` 表示活动级发券规则：`unique_pool` 一人一码券池；`shared_code` 共享码。共享码的总使用次数与每人使用限制以 Shopify 折扣配置为准，FC 只记录分配与核销归因。`alreadyAssigned` 字段保留为 `false`（兼容旧客户端）。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `codeType` | `"unique"` \| `"shared"` | 券码类型：一人一码 / 共享码 |
+| `usageMode` | `"unique"` \| `"shared"` | 同 `codeType` |
+| `distributionMode` | `"unique_pool"` \| `"shared_code"` | 活动发券模式 |
+| `oncePerCustomer` | boolean | Shopify 每位客户是否限用一次 |
+| `shopifyUsageLimit` | number \| null | Shopify 折扣总使用次数上限，`null` 表示不限 |
 
 ### 前置条件
 
@@ -160,7 +183,8 @@ Content-Type: application/json
 
 1. 根据 `magnet_id` 自动解析 `fc_user_identity` 与 `fc_user_id`
 2. 校验 `campaign_id` 在该用户可用活动列表中
-3. 每次请求创建新券码并写入 Shopify（同一 magnet / 用户可重复申请同一 campaign）
+3. 若活动为 `unique_pool`，从 `fc_coupon_code` 中领取一个 `available` 的唯一券码并标记为 `assigned`
+4. 若活动为 `shared_code`，返回已配置的共享码并写入分配记录，不消耗券码状态
 
 ### 常见错误
 
@@ -174,7 +198,16 @@ Content-Type: application/json
 
 ## 3. 查询券码信息
 
-根据券码查询折扣类型、状态、有效期。
+根据券码查询折扣类型、状态、有效期。仅支持 `usageMode=unique` 的一人一码；共享码（`shared`）返回 `400`。
+
+查询流程：
+
+1. 先在 FC 本地库查询券码与活动信息
+2. 若券码为 `shared`，直接拒绝
+3. 若本地状态为 `redeemed` / `expired` / `disabled`，直接返回本地结果
+4. 若本地状态为 `available` 或 `assigned`，调用 Shopify `codeDiscountNodeByCode` 查询该码的 `asyncUsageCount` 与折扣状态
+5. 若 Shopify 显示已使用（`asyncUsageCount > 0`），将本地券码更新为 `redeemed`；若折扣已过期/停用，更新为 `expired` / `disabled`
+6. 返回同步后的结果
 
 ### 请求
 
@@ -195,8 +228,12 @@ GET /api/coupons/lookup?code={code}
   "value": 80,
   "currencyCode": null,
   "status": "assigned",
+  "usageMode": "unique",
   "campaignName": "test",
   "campaignStatus": "active",
+  "distributionMode": "unique_pool",
+  "oncePerCustomer": true,
+  "shopifyUsageLimit": null,
   "validity": {
     "startsAt": "2026-06-10T11:27:53.993+00:00",
     "expiresAt": null,
@@ -209,6 +246,10 @@ GET /api/coupons/lookup?code={code}
 |------|------|
 | `discountType` | 券类型，见下表 |
 | `status` | 券码状态，见下表 |
+| `usageMode` | `unique` 一人一码；`shared` 多人共享同一码 |
+| `distributionMode` | `unique_pool` 一人一码券池；`shared_code` 共享码 |
+| `oncePerCustomer` | Shopify 每位客户是否限用一次 |
+| `shopifyUsageLimit` | Shopify 折扣总使用次数上限，`null` 表示不限 |
 | `validity.startsAt` | 活动开始时间 |
 | `validity.expiresAt` | 过期时间（优先取券码 `expires_at`，否则取活动 `ends_at`） |
 | `validity.isValid` | 当前是否可用（综合状态与有效期判断） |
@@ -235,8 +276,8 @@ GET /api/coupons/lookup?code={code}
 
 | HTTP | 说明 |
 |------|------|
-| 400 | `code` 为空 |
-| 404 | 券码不存在 |
+| 400 | `code` 为空，或券码为共享码（`shared`） |
+| 404 | 券码不存在，或 Shopify 中找不到该码 |
 
 ---
 

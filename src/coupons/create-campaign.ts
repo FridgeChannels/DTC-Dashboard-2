@@ -31,6 +31,7 @@ export async function createCouponCampaign(
     title: input.name,
     code: seedCode,
     discountType: input.discountType,
+    discountTarget: input.discountTarget,
     value: input.value,
     buyQuantity: input.buyQuantity ?? input.usageLimit,
     getQuantity: input.getQuantity ?? (input.discountType === "buy_x_get_y" ? input.minPurchaseAmount ?? undefined : undefined),

@@ -9,6 +9,7 @@ import type {
   IssueRealtimeSingleCouponInput,
   IssueRealtimeSingleCouponResult,
 } from "../coupons/coupon.types.js";
+import { resolveCouponCodeUsageMode } from "../coupons/coupon.types.js";
 
 export class RealtimeCouponError extends Error {
   constructor(
@@ -98,6 +99,10 @@ export async function issueRealtimeSingleCoupon(
     throw err;
   }
 
+  const codeType = resolveCouponCodeUsageMode(campaign, assigned.couponCode);
+  const distributionMode =
+    campaign.distribution_mode === "shared_code" ? "shared_code" : "unique_pool";
+
   return {
     fcUserId: prepared.fcUserId,
     campaignKey: campaign.campaign_key,
@@ -105,5 +110,10 @@ export async function issueRealtimeSingleCoupon(
     code: assigned.code,
     couponCodeId: assigned.couponCode.coupon_code_id,
     alreadyAssigned: false,
+    codeType,
+    distributionMode,
+    usageMode: codeType,
+    oncePerCustomer: campaign.once_per_customer ?? false,
+    shopifyUsageLimit: campaign.shopify_usage_limit ?? null,
   };
 }

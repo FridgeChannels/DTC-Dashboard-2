@@ -1,6 +1,6 @@
 import { resolveSecret } from "../clients/secrets.client.js";
 import type { FcCouponCampaign } from "./coupon.types.js";
-import { generateRandomSuffix } from "./generate-code.js";
+import { generateRandomSuffix, isFcCreatedCouponCampaign } from "./generate-code.js";
 import {
   fetchAllShopifyCodeDiscountSnapshots,
   type ShopifyCampaignSnapshot,
@@ -62,6 +62,9 @@ function campaignDiffers(
     || !numEqual(local.value, remote.value)
     || !numEqual(local.min_purchase_amount, remote.minPurchaseAmount)
     || !numEqual(local.usage_limit, remote.usageLimit)
+    || local.once_per_customer !== remote.oncePerCustomer
+    || !numEqual(local.shopify_usage_limit, remote.shopifyUsageLimit)
+    || local.distribution_mode !== remote.distributionMode
     || !strEqual(local.starts_at, remote.startsAt)
     || !strEqual(local.ends_at, remote.endsAt)
     || local.status !== remote.status
@@ -105,8 +108,16 @@ export async function syncCampaignsFromShopify(
       continue;
     }
 
-    if (campaignDiffers(local, remote)) {
-      await campaignRepo.applyShopifyCampaignSnapshot(customerId, local.campaign_id, remote);
+    const effectiveRemote = isFcCreatedCouponCampaign(local.campaign_key)
+      ? { ...remote, distributionMode: local.distribution_mode }
+      : remote;
+
+    if (campaignDiffers(local, effectiveRemote)) {
+      await campaignRepo.applyShopifyCampaignSnapshot(
+        customerId,
+        local.campaign_id,
+        effectiveRemote,
+      );
       updated += 1;
     } else {
       unchanged += 1;

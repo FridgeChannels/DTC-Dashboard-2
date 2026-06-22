@@ -6,8 +6,8 @@ import type { AssignCouponToUserInput, FcCouponCode } from "./coupon.types.js";
 const MAX_CLAIM_RETRIES = 5;
 
 export class NoAvailableCouponError extends Error {
-  constructor() {
-    super("No available coupon codes for this campaign");
+  constructor(message = "No available coupon codes for this campaign") {
+    super(message);
     this.name = "NoAvailableCouponError";
   }
 }
@@ -23,6 +23,40 @@ export async function assignCouponToUser(
     (await campaignRepo.findCampaignByKey(input.customerId, input.campaignKey));
   if (!campaign) {
     throw new Error(`Campaign not found: ${input.campaignKey}`);
+  }
+
+  if (campaign.distribution_mode === "shared_code") {
+    const shared = await codeRepo.findSharedCouponCodeByCampaignId(
+      input.customerId,
+      campaign.campaign_id,
+    );
+    if (!shared) {
+      throw new NoAvailableCouponError("No shared coupon code configured for this campaign");
+    }
+
+    const shopifyNodeId =
+      shared.shopify_discount_node_id ?? campaign.shopify_discount_node_id;
+    if (!shopifyNodeId) {
+      throw new Error("Campaign is not linked to Shopify discount");
+    }
+
+    const { couponCode } = await assignmentTxnRepo.finalizeSharedCouponAssignment({
+      couponCodeId: shared.coupon_code_id,
+      customerId: input.customerId,
+      campaignId: campaign.campaign_id,
+      fcUserId: input.fcUserId,
+      magnetId: input.magnetId,
+      email: input.email,
+      klaviyoProfileId: input.klaviyoProfileId,
+      shopifyCustomerId: input.shopifyCustomerId,
+      channel: input.channel,
+      assignmentReason: input.reason,
+      shopifyDiscountNodeId: shopifyNodeId,
+      shopifyRedeemCodeId: shared.shopify_redeem_code_id ?? undefined,
+      expiresAt: shared.expires_at ?? campaign.ends_at ?? undefined,
+    });
+
+    return { code: shared.code, couponCode };
   }
 
   for (let attempt = 0; attempt < MAX_CLAIM_RETRIES; attempt++) {

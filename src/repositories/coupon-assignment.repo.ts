@@ -79,3 +79,30 @@ export async function findAssignmentByCouponCodeId(
   if (error) throw error;
   return data as FcCouponAssignment | null;
 }
+
+export async function findBestAssignmentForRedemption(input: {
+  customerId: number;
+  couponCodeId: string;
+  shopifyCustomerId?: string;
+  email?: string;
+}): Promise<FcCouponAssignment | null> {
+  let query = getSupabase()
+    .from("fc_coupon_assignment")
+    .select("*")
+    .eq("customer_id", input.customerId)
+    .eq("coupon_code_id", input.couponCodeId);
+
+  if (input.shopifyCustomerId) {
+    query = query.eq("shopify_customer_id", input.shopifyCustomerId);
+  } else if (input.email) {
+    query = query.ilike("email", input.email);
+  }
+
+  const { data, error } = await query
+    .order("assigned_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as FcCouponAssignment | null;
+}

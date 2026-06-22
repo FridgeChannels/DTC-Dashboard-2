@@ -24,6 +24,11 @@ import {
   handleSyncCouponCampaigns,
 } from "./api/coupon-campaigns.js";
 import {
+  handleGetCouponCampaignCodes,
+  handleSyncCouponCampaignCodes,
+  handleAddCouponCampaignCodes,
+} from "./api/coupon-campaign-codes.js";
+import {
   handleGetSegmentCouponConfig,
   handlePutSegmentCouponConfig,
   handlePostSegmentCouponConfigDefault,
@@ -236,6 +241,21 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/coupon-campaigns/sync") {
     await handleSyncCouponCampaigns(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/coupon-campaigns/codes") {
+    await handleGetCouponCampaignCodes(req, res, url);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/coupon-campaigns/codes/sync") {
+    await handleSyncCouponCampaignCodes(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/coupon-campaigns/codes/add") {
+    await handleAddCouponCampaignCodes(req, res);
     return;
   }
 

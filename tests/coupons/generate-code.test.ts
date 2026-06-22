@@ -3,6 +3,7 @@ import {
   campaignKeyToShort,
   generateCouponCode,
   generateRandomSuffix,
+  isFcCreatedCouponCampaign,
 } from "../../src/coupons/generate-code.js";
 
 describe("generate-code", () => {
@@ -21,5 +22,10 @@ describe("generate-code", () => {
     const suffix = generateRandomSuffix(8);
     expect(suffix).toHaveLength(8);
     expect(suffix).not.toMatch(/[01OIL]/);
+  });
+
+  it("detects FC-created campaign keys", () => {
+    expect(isFcCreatedCouponCampaign("camp_ab12cd34")).toBe(true);
+    expect(isFcCreatedCouponCampaign("shopify_import_1")).toBe(false);
   });
 });

@@ -1,4 +1,7 @@
-import { assignCouponToUser } from "../coupons/assign-coupon.js";
+import {
+  assignCouponToUser,
+  NoAvailableCouponError,
+} from "../coupons/assign-coupon.js";
 import { getSupabase } from "../clients/supabase.client.js";
 import type {
   CustomerShopifyConfig,
@@ -74,26 +77,33 @@ export async function issueRealtimeSingleCoupon(
   );
   const campaign = prepared.campaign;
 
-  const { code, couponCode } = await assignCouponToUser({
-    customerId: prepared.customerId,
-    campaignKey: campaign.campaign_key,
-    campaign,
-    shopifyConfig: prepared.shopifyConfig,
-    fcUserId: prepared.fcUserId,
-    magnetId: input.magnetId,
-    klaviyoProfileId: prepared.klaviyoProfileId ?? undefined,
-    shopifyCustomerId: prepared.shopifyCustomerId ?? undefined,
-    email: prepared.email ?? undefined,
-    channel: "magnet",
-    reason: "winback",
-  });
+  let assigned: Awaited<ReturnType<typeof assignCouponToUser>>;
+  try {
+    assigned = await assignCouponToUser({
+      customerId: prepared.customerId,
+      campaignKey: campaign.campaign_key,
+      campaign,
+      fcUserId: prepared.fcUserId,
+      magnetId: input.magnetId,
+      klaviyoProfileId: prepared.klaviyoProfileId ?? undefined,
+      shopifyCustomerId: prepared.shopifyCustomerId ?? undefined,
+      email: prepared.email ?? undefined,
+      channel: "magnet",
+      reason: "winback",
+    });
+  } catch (err) {
+    if (err instanceof NoAvailableCouponError) {
+      throw new RealtimeCouponError(err.message, 404);
+    }
+    throw err;
+  }
 
   return {
     fcUserId: prepared.fcUserId,
     campaignKey: campaign.campaign_key,
     campaignName: campaign.name,
-    code,
-    couponCodeId: couponCode.coupon_code_id,
+    code: assigned.code,
+    couponCodeId: assigned.couponCode.coupon_code_id,
     alreadyAssigned: false,
   };
 }

@@ -73,6 +73,20 @@ const FETCH_CODE_DISCOUNT_NODES = `
   }
 `;
 
+const LIST_CODE_DISCOUNT_NODES = `
+  query ListCodeDiscountNodes($first: Int!, $after: String) {
+    codeDiscountNodes(first: $first, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id
+        codeDiscount {
+          ${CODE_DISCOUNT_FIELDS}
+        }
+      }
+    }
+  }
+`;
+
 export interface ShopifyCampaignSnapshot {
   nodeId: string;
   title: string;
@@ -223,6 +237,54 @@ type FetchCodeDiscountNodesResponse = {
 };
 
 const NODE_ID_BATCH_SIZE = 50;
+const LIST_PAGE_SIZE = 50;
+const MAX_LIST_NODES = 500;
+
+type ListCodeDiscountNodesResponse = {
+  codeDiscountNodes: {
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    nodes: Array<{
+      id?: string;
+      codeDiscount?: Record<string, unknown> | null;
+    } | null>;
+  };
+};
+
+export async function fetchAllShopifyCodeDiscountSnapshots(
+  shopDomain: string,
+  accessToken: string,
+): Promise<{ snapshots: Map<string, ShopifyCampaignSnapshot>; skipped: number }> {
+  const snapshots = new Map<string, ShopifyCampaignSnapshot>();
+  let skipped = 0;
+  let after: string | null = null;
+
+  while (snapshots.size + skipped < MAX_LIST_NODES) {
+    const data: ListCodeDiscountNodesResponse = await shopifyGraphql<ListCodeDiscountNodesResponse>(
+      shopDomain,
+      accessToken,
+      LIST_CODE_DISCOUNT_NODES,
+      { first: LIST_PAGE_SIZE, after },
+    );
+
+    const connection: ListCodeDiscountNodesResponse["codeDiscountNodes"] = data.codeDiscountNodes;
+    for (const node of connection.nodes) {
+      if (!node?.id) continue;
+      const parsed = parseCodeDiscount(node.id, node.codeDiscount);
+      if (!parsed) {
+        skipped += 1;
+        continue;
+      }
+      snapshots.set(node.id, parsed);
+    }
+
+    if (!connection.pageInfo.hasNextPage || !connection.pageInfo.endCursor) {
+      break;
+    }
+    after = connection.pageInfo.endCursor;
+  }
+
+  return { snapshots, skipped };
+}
 
 export async function fetchShopifyCodeDiscountSnapshotsByNodeIds(
   shopDomain: string,

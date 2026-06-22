@@ -1,6 +1,12 @@
 import { getSupabase } from "../clients/supabase.client.js";
 import type { CouponCodeStatus, FcCouponCode } from "../coupons/coupon.types.js";
 
+const CLAIMED_STATUSES = new Set<CouponCodeStatus>(["assigned", "redeemed"]);
+
+export function isCouponCodeClaimLocked(status: CouponCodeStatus | string | null): boolean {
+  return status != null && CLAIMED_STATUSES.has(status as CouponCodeStatus);
+}
+
 export async function findCouponCodeById(
   couponCodeId: string,
 ): Promise<FcCouponCode | null> {
@@ -127,6 +133,21 @@ export async function countCouponCodesByCampaignIds(
   return counts;
 }
 
+export async function listCouponCodesByCampaignId(
+  customerId: number,
+  campaignId: string,
+): Promise<FcCouponCode[]> {
+  const { data, error } = await getSupabase()
+    .from("fc_coupon_code")
+    .select("*")
+    .eq("customer_id", customerId)
+    .eq("campaign_id", campaignId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as FcCouponCode[];
+}
+
 export async function findCouponCodeByCode(
   customerId: number,
   code: string,
@@ -149,6 +170,24 @@ export async function findCouponCodeByCode(
     .select("*")
     .eq("customer_id", customerId)
     .ilike("code", normalized)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as FcCouponCode | null;
+}
+
+export async function findOldestAvailableCouponCode(
+  customerId: number,
+  campaignId: string,
+): Promise<FcCouponCode | null> {
+  const { data, error } = await getSupabase()
+    .from("fc_coupon_code")
+    .select("*")
+    .eq("customer_id", customerId)
+    .eq("campaign_id", campaignId)
+    .eq("status", "available")
+    .order("created_at", { ascending: true })
+    .limit(1)
     .maybeSingle();
 
   if (error) throw error;
@@ -246,4 +285,21 @@ export async function markCouponCodeRedeemed(
     .eq("coupon_code_id", couponCodeId);
 
   if (error) throw error;
+}
+
+export async function deleteAvailableCouponCode(
+  customerId: number,
+  couponCodeId: string,
+): Promise<boolean> {
+  const { data, error } = await getSupabase()
+    .from("fc_coupon_code")
+    .delete()
+    .eq("customer_id", customerId)
+    .eq("coupon_code_id", couponCodeId)
+    .eq("status", "available")
+    .select("coupon_code_id")
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data);
 }

@@ -16,6 +16,7 @@ import * as codeRepo from "../repositories/coupon-code.repo.js";
 import { getSupabase } from "../clients/supabase.client.js";
 import { env } from "../config/env.js";
 import { isShopifyOAuthAppConfigured } from "../lib/shopify-oauth-app.js";
+import { isFcCreatedCouponCampaign } from "../coupons/generate-code.js";
 import type { CouponModeId } from "../repositories/customer-coupon-settings.repo.js";
 
 export interface BrandConfigResponse {
@@ -54,6 +55,7 @@ export interface BrandConfigResponse {
     mode: string;
     shopifyDiscountNodeId: string | null;
     codeCount: number;
+    fcCreated: boolean;
   }>;
   shopifyConnection: {
     connected: boolean;
@@ -205,6 +207,7 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
       mode: defaultMode,
       shopifyDiscountNodeId: c.shopify_discount_node_id,
       codeCount: codeCounts.get(c.campaign_id) ?? 0,
+      fcCreated: isFcCreatedCouponCampaign(c.campaign_key),
     })),
     shopifyConnection: null,
   };

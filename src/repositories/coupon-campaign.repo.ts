@@ -116,6 +116,21 @@ export async function findCampaignById(
   return data as FcCouponCampaign | null;
 }
 
+export async function findCampaignByShopifyNodeId(
+  customerId: number,
+  shopifyDiscountNodeId: string,
+): Promise<FcCouponCampaign | null> {
+  const { data, error } = await getSupabase()
+    .from("fc_coupon_campaign")
+    .select("*")
+    .eq("customer_id", customerId)
+    .eq("shopify_discount_node_id", shopifyDiscountNodeId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as FcCouponCampaign | null;
+}
+
 export async function findCampaignByKey(
   customerId: number,
   campaignKey: string,
@@ -210,6 +225,35 @@ export async function updateCampaignShopifyNode(
     .eq("campaign_id", campaignId);
 
   if (error) throw error;
+}
+
+export async function insertCampaignFromShopifySnapshot(
+  customerId: number,
+  campaignKey: string,
+  remote: ShopifyCampaignSyncFields,
+): Promise<FcCouponCampaign> {
+  const { data, error } = await getSupabase()
+    .from("fc_coupon_campaign")
+    .insert({
+      customer_id: customerId,
+      campaign_key: campaignKey,
+      name: remote.title,
+      discount_type: remote.discountType,
+      value: remote.value,
+      min_purchase_amount: remote.minPurchaseAmount,
+      usage_limit: remote.usageLimit,
+      starts_at: remote.startsAt,
+      ends_at: remote.endsAt,
+      shopify_discount_node_id: remote.nodeId,
+      shopify_discount_title: remote.title,
+      status: remote.status,
+      once_per_customer: true,
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as FcCouponCampaign;
 }
 
 export async function applyShopifyCampaignSnapshot(

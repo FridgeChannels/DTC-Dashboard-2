@@ -1,5 +1,5 @@
 import { createCouponCampaign } from "../coupons/create-campaign.js";
-import { generateCampaignKey } from "../coupons/generate-code.js";
+import { generateCampaignKey, isFcCreatedCouponCampaign } from "../coupons/generate-code.js";
 import { mergeCampaignState, syncCampaignToShopify } from "../coupons/sync-campaign-shopify.js";
 import {
   syncCampaignsFromShopify,
@@ -52,6 +52,7 @@ export interface CampaignSummary {
   mode: string;
   shopifyDiscountNodeId: string | null;
   codeCount: number;
+  fcCreated: boolean;
 }
 
 function validateCampaignInput(input: CreateCampaignRequest): void {
@@ -61,12 +62,6 @@ function validateCampaignInput(input: CreateCampaignRequest): void {
   }
   if (!input.name.trim()) throw new Error("Campaign name is required");
 
-  if (input.discountType === "free_shipping") {
-    throw new Error("Free shipping campaigns are not available yet");
-  }
-  if (input.discountType === "buy_x_get_y") {
-    throw new Error("Buy X Get Y campaigns are not available yet");
-  }
   if (
     (input.discountType === "percentage" || input.discountType === "fixed_amount") &&
     (input.value == null || Number.isNaN(Number(input.value)))
@@ -75,6 +70,21 @@ function validateCampaignInput(input: CreateCampaignRequest): void {
   }
   if (input.discountType === "percentage" && (input.value! < 1 || input.value! > 100)) {
     throw new Error("Percentage discount must be between 1 and 100");
+  }
+  if (input.discountType === "buy_x_get_y") {
+    if (
+      input.buyQuantity == null
+      || input.getQuantity == null
+      || input.value == null
+      || Number.isNaN(Number(input.buyQuantity))
+      || Number.isNaN(Number(input.getQuantity))
+      || Number.isNaN(Number(input.value))
+    ) {
+      throw new Error("Buy X Get Y requires buy quantity, get quantity, and item discount percent");
+    }
+    if (input.value < 1 || input.value > 100) {
+      throw new Error("Buy X Get Y item discount percent must be between 1 and 100");
+    }
   }
   if (input.startsAt && input.endsAt && Date.parse(input.endsAt) < Date.parse(input.startsAt)) {
     throw new Error("End time cannot be earlier than start time");
@@ -103,6 +113,7 @@ async function toCampaignSummary(
     mode: defaultMode,
     shopifyDiscountNodeId: campaign.shopify_discount_node_id,
     codeCount: counts.get(campaign.campaign_id) ?? 0,
+    fcCreated: isFcCreatedCouponCampaign(campaign.campaign_key),
   };
 }
 
@@ -194,6 +205,9 @@ export async function updateCampaignForCustomer(
 
   const existing = await campaignRepo.findCampaignById(customerId, campaignId);
   if (!existing) throw new Error("Campaign not found");
+  if (!isFcCreatedCouponCampaign(existing.campaign_key)) {
+    throw new Error("Shopify-synced discounts cannot be edited in FC");
+  }
 
   validateUpdateCampaignInput(existing, input);
 
@@ -246,6 +260,7 @@ async function listCampaignSummariesForCustomer(
     mode: defaultMode,
     shopifyDiscountNodeId: c.shopify_discount_node_id,
     codeCount: codeCounts.get(c.campaign_id) ?? 0,
+    fcCreated: isFcCreatedCouponCampaign(c.campaign_key),
   }));
 }
 

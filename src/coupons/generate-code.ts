@@ -26,6 +26,13 @@ export function generateCampaignKey(): string {
   return `camp_${generateRandomSuffix(8).toLowerCase()}`;
 }
 
+const FC_CREATED_CAMPAIGN_KEY_PATTERN = /^camp_[a-z0-9]+$/;
+
+/** FC 后台「Create discount」创建的活动；其余视为从 Shopify 同步/导入 */
+export function isFcCreatedCouponCampaign(campaignKey: string): boolean {
+  return FC_CREATED_CAMPAIGN_KEY_PATTERN.test(campaignKey.trim());
+}
+
 export function generateCouponCode(campaignKey: string): string {
   const short = campaignKeyToShort(campaignKey);
   const random = generateRandomSuffix(6);

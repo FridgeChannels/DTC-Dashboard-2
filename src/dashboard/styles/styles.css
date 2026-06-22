@@ -1455,6 +1455,10 @@ table.data td.tag {
   margin-top: 16px;
 }
 .data .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
   text-align: right;
   white-space: nowrap;
 }
@@ -1753,6 +1757,79 @@ select.cfg-input-sm {
   padding: 24px;
   background: oklch(0.98 0.01 90 / 0.88);
   backdrop-filter: blur(6px);
+}
+.cfg-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: oklch(0.2 0.02 90 / 0.35);
+  backdrop-filter: blur(4px);
+}
+.cfg-modal {
+  width: min(720px, 100%);
+  max-height: min(80vh, 760px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-2);
+}
+.cfg-modal-head,
+.cfg-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.cfg-modal-foot {
+  border-bottom: 0;
+  border-top: 1px solid var(--line);
+}
+.cfg-modal-head h3 {
+  margin: 0;
+  font-size: 18px;
+}
+.cfg-modal-body {
+  padding: 16px 20px;
+  overflow: auto;
+}
+.sync-codes-table tr.synced td {
+  opacity: 0.92;
+}
+.sync-codes-table tr.synced.locked td {
+  opacity: 0.72;
+}
+.cfg-modal-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 20px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cfg-modal-tab {
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--ink-2);
+  font-size: 14px;
+  cursor: pointer;
+}
+.cfg-modal-tab.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-2));
+  color: var(--ink);
+}
+.cfg-modal-tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .cfg-busy-card {
   display: grid;

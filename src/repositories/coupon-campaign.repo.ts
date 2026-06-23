@@ -7,16 +7,23 @@ import type {
   FcCouponCampaign,
 } from "../coupons/coupon.types.js";
 
+import type { ShopifyCombinesWith, FreeShippingRules } from "../coupons/coupon.types.js";
+
 export interface ShopifyCampaignSyncFields {
   nodeId: string;
   title: string;
   discountType: DiscountType;
   value: number | null;
+  currencyCode: string | null;
   minPurchaseAmount: number | null;
+  minPurchaseQuantity: number | null;
   usageLimit: number | null;
   oncePerCustomer: boolean;
   shopifyUsageLimit: number | null;
   distributionMode: CouponDistributionMode;
+  discountTarget: string | null;
+  combinesWith: ShopifyCombinesWith | null;
+  freeShippingRules: FreeShippingRules | null;
   startsAt: string | null;
   endsAt: string | null;
   status: CampaignStatus;
@@ -268,11 +275,16 @@ export async function insertCampaignFromShopifySnapshot(
       name: remote.title,
       discount_type: remote.discountType,
       value: remote.value,
+      currency_code: remote.currencyCode,
       min_purchase_amount: remote.minPurchaseAmount,
+      min_purchase_quantity: remote.minPurchaseQuantity,
       usage_limit: remote.usageLimit,
       once_per_customer: remote.oncePerCustomer,
       shopify_usage_limit: remote.shopifyUsageLimit,
       distribution_mode: remote.distributionMode,
+      discount_target: remote.discountTarget,
+      shopify_combines_with: remote.combinesWith,
+      shopify_free_shipping_rules: remote.freeShippingRules,
       starts_at: remote.startsAt,
       ends_at: remote.endsAt,
       shopify_discount_node_id: remote.nodeId,
@@ -297,11 +309,16 @@ export async function applyShopifyCampaignSnapshot(
       name: remote.title,
       discount_type: remote.discountType,
       value: remote.value,
+      currency_code: remote.currencyCode,
       min_purchase_amount: remote.minPurchaseAmount,
+      min_purchase_quantity: remote.minPurchaseQuantity,
       usage_limit: remote.usageLimit,
       once_per_customer: remote.oncePerCustomer,
       shopify_usage_limit: remote.shopifyUsageLimit,
       distribution_mode: remote.distributionMode,
+      discount_target: remote.discountTarget,
+      shopify_combines_with: remote.combinesWith,
+      shopify_free_shipping_rules: remote.freeShippingRules,
       starts_at: remote.startsAt,
       ends_at: remote.endsAt,
       status: remote.status,

@@ -8,6 +8,35 @@ export type DiscountType =
 /** 金额减免作用范围：产品 / 订单（仅 percentage、fixed_amount） */
 export type DiscountTarget = "product" | "order";
 
+/** Shopify 折扣叠加规则 */
+export interface ShopifyCombinesWith {
+  productDiscounts: boolean;
+  orderDiscounts: boolean;
+  shippingDiscounts: boolean;
+}
+
+/** 免运费：国家/地区适用范围 */
+export type FreeShippingDestinationMode = "all" | "countries";
+
+export interface FreeShippingShippingDestination {
+  mode: FreeShippingDestinationMode;
+  /** `mode=countries` 时为 ISO 3166-1 alpha-2 国家码列表 */
+  countries: string[] | null;
+  /** `mode=countries` 时是否包含「其余国家/地区」 */
+  includeRestOfWorld: boolean | null;
+}
+
+export interface FreeShippingMaximumShippingPrice {
+  amount: number;
+  currencyCode: string | null;
+}
+
+export interface FreeShippingRules {
+  shippingDestination: FreeShippingShippingDestination;
+  /** `null` 表示对所有运费金额生效（不排除高额运费） */
+  maximumShippingPrice: FreeShippingMaximumShippingPrice | null;
+}
+
 /** 券活动状态 */
 export type CampaignStatus = "draft" | "active" | "paused" | "expired";
 
@@ -99,6 +128,7 @@ export interface FcCouponCampaign {
   value: number | null;
   currency_code: string | null;
   min_purchase_amount: number | null;
+  min_purchase_quantity: number | null;
   starts_at: string | null;
   ends_at: string | null;
   usage_limit: number | null;
@@ -106,6 +136,8 @@ export interface FcCouponCampaign {
   discount_target: DiscountTarget | null;
   distribution_mode: CouponDistributionMode;
   shopify_usage_limit: number | null;
+  shopify_combines_with: ShopifyCombinesWith | null;
+  shopify_free_shipping_rules: FreeShippingRules | null;
   shopify_discount_node_id: string | null;
   shopify_discount_title: string | null;
   status: CampaignStatus;
@@ -200,6 +232,15 @@ export interface AssignCouponToUserInput {
 export interface IssueRealtimeSingleCouponInput {
   magnetId: number;
   campaignId: string;
+}
+
+export interface IssueRealtimeSingleCouponsInput {
+  magnetId: number;
+  campaignIds: string[];
+}
+
+export interface IssueRealtimeSingleCouponsResult {
+  coupons: IssueRealtimeSingleCouponResult[];
 }
 
 export interface IssueRealtimeSingleCouponResult {

@@ -1,5 +1,5 @@
 import { resolveSecret } from "../clients/secrets.client.js";
-import type { FcCouponCampaign } from "./coupon.types.js";
+import type { FcCouponCampaign, FreeShippingRules, ShopifyCombinesWith } from "./coupon.types.js";
 import { generateRandomSuffix, isFcCreatedCouponCampaign } from "./generate-code.js";
 import {
   fetchAllShopifyCodeDiscountSnapshots,
@@ -26,6 +26,35 @@ function numEqual(a: number | null | undefined, b: number | null | undefined): b
 
 function strEqual(a: string | null | undefined, b: string | null | undefined): boolean {
   return (a ?? null) === (b ?? null);
+}
+
+function combinesWithEqual(
+  a: ShopifyCombinesWith | null | undefined,
+  b: ShopifyCombinesWith | null | undefined,
+): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return (
+    a.productDiscounts === b.productDiscounts
+    && a.orderDiscounts === b.orderDiscounts
+    && a.shippingDiscounts === b.shippingDiscounts
+  );
+}
+
+function freeShippingRulesEqual(
+  a: FreeShippingRules | null | undefined,
+  b: FreeShippingRules | null | undefined,
+): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  const destEqual =
+    a.shippingDestination.mode === b.shippingDestination.mode
+    && JSON.stringify(a.shippingDestination.countries ?? []) === JSON.stringify(b.shippingDestination.countries ?? [])
+    && a.shippingDestination.includeRestOfWorld === b.shippingDestination.includeRestOfWorld;
+  const maxEqual =
+    a.maximumShippingPrice?.amount === b.maximumShippingPrice?.amount
+    && (a.maximumShippingPrice?.currencyCode ?? null) === (b.maximumShippingPrice?.currencyCode ?? null);
+  return destEqual && maxEqual;
 }
 
 function campaignKeyFromShopifyNodeId(nodeId: string): string {
@@ -61,10 +90,15 @@ function campaignDiffers(
     || local.discount_type !== remote.discountType
     || !numEqual(local.value, remote.value)
     || !numEqual(local.min_purchase_amount, remote.minPurchaseAmount)
+    || !numEqual(local.min_purchase_quantity, remote.minPurchaseQuantity)
     || !numEqual(local.usage_limit, remote.usageLimit)
     || local.once_per_customer !== remote.oncePerCustomer
     || !numEqual(local.shopify_usage_limit, remote.shopifyUsageLimit)
     || local.distribution_mode !== remote.distributionMode
+    || !strEqual(local.discount_target, remote.discountTarget)
+    || !strEqual(local.currency_code, remote.currencyCode)
+    || !combinesWithEqual(local.shopify_combines_with, remote.combinesWith)
+    || !freeShippingRulesEqual(local.shopify_free_shipping_rules, remote.freeShippingRules)
     || !strEqual(local.starts_at, remote.startsAt)
     || !strEqual(local.ends_at, remote.endsAt)
     || local.status !== remote.status
@@ -109,7 +143,11 @@ export async function syncCampaignsFromShopify(
     }
 
     const effectiveRemote = isFcCreatedCouponCampaign(local.campaign_key)
-      ? { ...remote, distributionMode: local.distribution_mode }
+      ? {
+          ...remote,
+          distributionMode: local.distribution_mode,
+          discountTarget: local.discount_target ?? remote.discountTarget,
+        }
       : remote;
 
     if (campaignDiffers(local, effectiveRemote)) {

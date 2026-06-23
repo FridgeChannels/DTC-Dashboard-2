@@ -1,4 +1,12 @@
 import { getSupabase } from "../clients/supabase.client.js";
+import type {
+  CouponDistributionMode,
+  DiscountTarget,
+  DiscountType,
+  FreeShippingMaximumShippingPrice,
+  FreeShippingShippingDestination,
+  ShopifyCombinesWith,
+} from "../coupons/coupon.types.js";
 
 export class AvailableCampaignsError extends Error {
   constructor(
@@ -10,17 +18,32 @@ export class AvailableCampaignsError extends Error {
   }
 }
 
+export interface AvailableCouponCampaignRestrictions {
+  minPurchaseAmount: number | null;
+  minPurchaseQuantity: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  distributionMode: CouponDistributionMode;
+  oncePerCustomer: boolean;
+  shopifyUsageLimit: number | null;
+  discountTarget: DiscountTarget | null;
+  buyQuantity: number | null;
+  getQuantity: number | null;
+  getDiscountPercent: number | null;
+  combinesWith: ShopifyCombinesWith | null;
+  shippingDestination: FreeShippingShippingDestination | null;
+  maximumShippingPrice: FreeShippingMaximumShippingPrice | null;
+}
+
 export interface AvailableCouponCampaign {
   campaignId: string;
   campaignKey: string;
   name: string;
-  discountType: string;
+  discountType: DiscountType;
   value: number | null;
   currencyCode: string | null;
-  minPurchaseAmount: number | null;
-  startsAt: string | null;
-  endsAt: string | null;
   status: string;
+  restrictions: AvailableCouponCampaignRestrictions;
   matchedSegments: Array<{
     segmentId: string;
     name: string | null;

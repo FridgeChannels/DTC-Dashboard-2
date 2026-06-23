@@ -1,7 +1,7 @@
 import { resolveSecret } from "../clients/secrets.client.js";
 import { generateCouponCode, isFcCreatedCouponCampaign } from "../coupons/generate-code.js";
 import { discountRedeemCodeBulkAdd } from "../shopify/discount.api.js";
-import { fetchShopifyRedeemCodesForDiscountNode } from "../shopify/discount-codes.api.js";
+import { fetchShopifyRedeemCodesForDiscountNode, fetchShopifyRedeemCodesPage } from "../shopify/discount-codes.api.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
 import * as codeRepo from "../repositories/coupon-code.repo.js";
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
@@ -21,6 +21,18 @@ export interface CampaignCodesSyncPreview {
   campaignName: string;
   shopifyDiscountNodeId: string;
   codes: CampaignCodeSyncItem[];
+  pageInfo: {
+    hasNextPage: boolean;
+    endCursor: string | null;
+    hasPreviousPage: boolean;
+    startCursor: string | null;
+  };
+  pageSize: number;
+}
+
+export interface SyncCampaignCodesInput {
+  imports: Array<{ redeemCodeId: string; code: string }>;
+  removes: string[];
 }
 
 export interface SyncCampaignCodesResult {
@@ -80,6 +92,7 @@ async function loadCampaignForCustomer(customerId: number, campaignId: string) {
 export async function listCampaignCodesForSync(
   customerId: number,
   campaignId: string,
+  options: { pageSize?: number; after?: string | null } = {},
 ): Promise<CampaignCodesSyncPreview> {
   const campaign = await loadCampaignForCustomer(customerId, campaignId);
 
@@ -92,10 +105,12 @@ export async function listCampaignCodesForSync(
 
   const accessToken = await resolveSecret(config.access_token_ref);
   const shopifyNodeId = campaign.shopify_discount_node_id as string;
-  const shopifyCodes = await fetchShopifyRedeemCodesForDiscountNode(
+  const pageSize = options.pageSize ?? 25;
+  const shopifyPage = await fetchShopifyRedeemCodesPage(
     config.shop_domain,
     accessToken,
     shopifyNodeId,
+    { first: pageSize, after: options.after ?? null },
   );
 
   const fcCodes = await codeRepo.listCouponCodesByCampaignId(customerId, campaignId);
@@ -106,7 +121,7 @@ export async function listCampaignCodesForSync(
   );
   const byCode = new Map(fcCodes.map((row) => [row.code.toLowerCase(), row]));
 
-  const codes: CampaignCodeSyncItem[] = shopifyCodes.map((shopifyCode) => {
+  const codes: CampaignCodeSyncItem[] = shopifyPage.codes.map((shopifyCode) => {
     const fc =
       byRedeemId.get(shopifyCode.redeemCodeId) ??
       byCode.get(shopifyCode.code.toLowerCase()) ??
@@ -129,61 +144,80 @@ export async function listCampaignCodesForSync(
     campaignName: campaign.name,
     shopifyDiscountNodeId: shopifyNodeId,
     codes,
+    pageInfo: shopifyPage.pageInfo,
+    pageSize,
   };
 }
 
 export async function syncCampaignCodesToFc(
   customerId: number,
   campaignId: string,
-  redeemCodeIds: string[],
+  input: SyncCampaignCodesInput,
 ): Promise<SyncCampaignCodesResult> {
   const campaign = await loadCampaignForCustomer(customerId, campaignId);
-  const preview = await listCampaignCodesForSync(customerId, campaignId);
-  const selected = new Set(redeemCodeIds.map((id) => id.trim()).filter(Boolean));
   const usageMode = campaign.distribution_mode === "shared_code" ? "shared" : "unique";
-  if (usageMode === "shared" && selected.size > 1) {
+  const shopifyNodeId = campaign.shopify_discount_node_id as string;
+
+  const imports = input.imports
+    .map((item) => ({
+      redeemCodeId: item.redeemCodeId.trim(),
+      code: item.code.trim(),
+    }))
+    .filter((item) => item.redeemCodeId && item.code);
+  const removeIds = [...new Set(input.removes.map((id) => id.trim()).filter(Boolean))];
+
+  if (usageMode === "shared" && imports.length > 1) {
     throw new Error("Shared code discounts can sync only one Shopify code");
   }
 
-  const shopifyNodeId = campaign.shopify_discount_node_id as string;
+  const fcCodes = await codeRepo.listCouponCodesByCampaignId(customerId, campaignId);
+  const byRedeemId = new Map(
+    fcCodes
+      .filter((row) => row.shopify_redeem_code_id)
+      .map((row) => [row.shopify_redeem_code_id as string, row]),
+  );
 
   let imported = 0;
   let removed = 0;
   let skipped = 0;
   const failed: SyncCampaignCodesResult["failed"] = [];
 
-  for (const item of preview.codes) {
-    const isSelected = selected.has(item.redeemCodeId);
-
-    if (!isSelected && item.synced && item.fcCouponCodeId) {
-      if (item.claimLocked) {
-        skipped += 1;
-        continue;
-      }
-      const deleted = await codeRepo.deleteAvailableCouponCode(
-        customerId,
-        item.fcCouponCodeId,
-      );
-      if (deleted) {
-        removed += 1;
-      } else {
-        failed.push({
-          redeemCodeId: item.redeemCodeId,
-          code: item.code,
-          reason: "Could not remove code from FC",
-        });
-      }
+  for (const redeemCodeId of removeIds) {
+    const fc = byRedeemId.get(redeemCodeId);
+    if (!fc) {
+      skipped += 1;
       continue;
     }
 
-    if (!isSelected) continue;
+    const claimLocked =
+      fc.usage_mode === "shared" ||
+      codeRepo.isCouponCodeClaimLocked(fc.status);
+    if (claimLocked) {
+      skipped += 1;
+      continue;
+    }
 
-    if (item.synced) {
-      if (item.fcCouponCodeId && item.fcUsageMode !== usageMode) {
-        await codeRepo.updateCouponCodeUsageMode(
-          item.fcCouponCodeId,
-          usageMode,
-        );
+    const deleted = await codeRepo.deleteAvailableCouponCode(
+      customerId,
+      fc.coupon_code_id,
+    );
+    if (deleted) {
+      removed += 1;
+      continue;
+    }
+
+    failed.push({
+      redeemCodeId,
+      code: fc.code,
+      reason: "Could not remove code from FC",
+    });
+  }
+
+  for (const item of imports) {
+    const existing = byRedeemId.get(item.redeemCodeId);
+    if (existing) {
+      if (existing.usage_mode !== usageMode) {
+        await codeRepo.updateCouponCodeUsageMode(existing.coupon_code_id, usageMode);
       }
       skipped += 1;
       continue;
@@ -205,8 +239,8 @@ export async function syncCampaignCodesToFc(
       continue;
     }
 
-    const existing = await codeRepo.findCouponCodeByCode(customerId, item.code);
-    if (existing) {
+    const byCode = await codeRepo.findCouponCodeByCode(customerId, item.code);
+    if (byCode) {
       skipped += 1;
       continue;
     }

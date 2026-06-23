@@ -20,8 +20,17 @@ export async function handleGetCouponCampaignCodes(
       return;
     }
 
+    const pageSize = Math.min(
+      Math.max(Number(url.searchParams.get("limit") ?? "25"), 1),
+      100,
+    );
+    const after = url.searchParams.get("after")?.trim() || null;
+
     const customerId = await getRequestCustomerId(req, res);
-    const data = await listCampaignCodesForSync(customerId, campaignId);
+    const data = await listCampaignCodesForSync(customerId, campaignId, {
+      pageSize,
+      after,
+    });
     json(res, 200, data);
   } catch (err) {
     const status = err instanceof AuthError ? 401 : 400;
@@ -36,23 +45,33 @@ export async function handleSyncCouponCampaignCodes(
   try {
     const body = await readJsonBody<{
       campaign_id?: string;
-      redeem_code_ids?: string[];
+      imports?: Array<{ redeem_code_id?: string; code?: string }>;
+      removes?: string[];
     }>(req);
 
     const campaignId = body.campaign_id?.trim() ?? "";
-    const redeemCodeIds = Array.isArray(body.redeem_code_ids) ? body.redeem_code_ids : [];
+    const imports = Array.isArray(body.imports)
+      ? body.imports.map((item) => ({
+          redeemCodeId: item?.redeem_code_id?.trim() ?? "",
+          code: item?.code?.trim() ?? "",
+        }))
+      : [];
+    const removes = Array.isArray(body.removes) ? body.removes : [];
 
     if (!campaignId) {
       errorJson(res, 400, "campaign_id is required");
       return;
     }
-    if (!Array.isArray(body.redeem_code_ids)) {
-      errorJson(res, 400, "redeem_code_ids must be an array");
+    if (!Array.isArray(body.imports) || !Array.isArray(body.removes)) {
+      errorJson(res, 400, "imports and removes must be arrays");
       return;
     }
 
     const customerId = await getRequestCustomerId(req, res);
-    const summary = await syncCampaignCodesToFc(customerId, campaignId, redeemCodeIds);
+    const summary = await syncCampaignCodesToFc(customerId, campaignId, {
+      imports,
+      removes,
+    });
     json(res, 200, { summary });
   } catch (err) {
     const status = err instanceof AuthError ? 401 : 400;

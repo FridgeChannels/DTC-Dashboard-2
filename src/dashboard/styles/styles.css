@@ -1800,6 +1800,27 @@ select.cfg-input-sm {
   padding: 16px 20px;
   overflow: auto;
 }
+.sync-codes-table td {
+  vertical-align: middle;
+}
+.sync-codes-table td input[type="checkbox"] {
+  display: block;
+  margin: 0 auto;
+}
+.table-wrap.is-loading {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.cfg-table-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+.cfg-table-pager-label {
+  font-size: 13px;
+}
 .sync-codes-table tr.synced td {
   opacity: 0.92;
 }
@@ -1808,18 +1829,25 @@ select.cfg-input-sm {
 }
 .cfg-modal-tabs {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 0 20px 12px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--line);
 }
 .cfg-modal-tab {
-  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--bg-2);
   color: var(--ink-2);
   font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
 }
 .cfg-modal-tab.active {

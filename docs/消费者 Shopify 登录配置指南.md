@@ -379,7 +379,7 @@ GET /api/consumer/me
 
 登录成功并拿到 `shopify_customer_id` 后，可继续接入：
 
-- Magnet 发券：`GET /api/coupon-campaigns/available`、`POST /api/coupons/realtime-single`
+- Magnet 发券：`GET /api/coupon-campaigns/available`、`POST /api/coupons/realtime-single`（支持 `campaign_id` 单张或 `campaign_ids` 批量）
 - 订单核销 Webhook
 - 复购任务
 

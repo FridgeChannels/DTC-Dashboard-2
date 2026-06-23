@@ -2,9 +2,27 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, json, errorJson } from "../http.js";
 import {
   issueRealtimeSingleCoupon,
+  issueRealtimeSingleCoupons,
   RealtimeCouponError,
 } from "../../services/realtime-single-coupon.service.js";
-import type { IssueRealtimeSingleCouponInput } from "../../coupons/coupon.types.js";
+
+function normalizeCampaignIds(body: {
+  campaign_id?: string;
+  campaign_ids?: unknown;
+}): { campaignIds: string[]; useBatchResponse: boolean } {
+  if (Array.isArray(body.campaign_ids)) {
+    const campaignIds = body.campaign_ids
+      .map((id) => (typeof id === "string" ? id.trim() : String(id).trim()))
+      .filter(Boolean);
+    return { campaignIds, useBatchResponse: true };
+  }
+
+  const campaignId = body.campaign_id?.trim() ?? "";
+  return {
+    campaignIds: campaignId ? [campaignId] : [],
+    useBatchResponse: false,
+  };
+}
 
 export async function handleIssueRealtimeSingleCoupon(
   req: IncomingMessage,
@@ -14,14 +32,25 @@ export async function handleIssueRealtimeSingleCoupon(
     const body = await readJsonBody<{
       magnet_id?: number;
       campaign_id?: string;
+      campaign_ids?: unknown;
     }>(req);
 
-    const input: IssueRealtimeSingleCouponInput = {
-      magnetId: Number(body.magnet_id),
-      campaignId: body.campaign_id?.trim() ?? "",
-    };
+    const magnetId = Number(body.magnet_id);
+    const { campaignIds, useBatchResponse } = normalizeCampaignIds(body);
 
-    const result = await issueRealtimeSingleCoupon(input);
+    if (useBatchResponse) {
+      const coupons = await issueRealtimeSingleCoupons({
+        magnetId,
+        campaignIds,
+      });
+      json(res, 201, { coupons });
+      return;
+    }
+
+    const result = await issueRealtimeSingleCoupon({
+      magnetId,
+      campaignId: campaignIds[0] ?? "",
+    });
     json(res, 201, result);
   } catch (err) {
     if (err instanceof RealtimeCouponError) {

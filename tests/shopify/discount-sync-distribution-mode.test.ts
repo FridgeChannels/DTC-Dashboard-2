@@ -1,31 +1,58 @@
 import { describe, expect, it } from "vitest";
-import { inferDistributionModeFromShopify } from "../../src/shopify/discount-sync.api.js";
+import {
+  inferDistributionModeFromShopifyUsageLimit,
+  isShopifyMultiUsePerCodeDiscount,
+} from "../../src/coupons/coupon.types.js";
+import { mergeShopifySnapshotWithLocalCampaign } from "../../src/coupons/sync-campaigns-from-shopify.js";
+import type { FcCouponCampaign } from "../../src/coupons/coupon.types.js";
+import type { ShopifyCampaignSnapshot } from "../../src/shopify/discount-sync.api.js";
 
-describe("inferDistributionModeFromShopify", () => {
-  it("treats single-code discounts as shared_code (multi-use, total usageLimit)", () => {
-    expect(
-      inferDistributionModeFromShopify({
-        codesCount: { count: 1 },
-        usageLimit: 50,
-      }),
-    ).toBe("shared_code");
+describe("Shopify usage limit distribution mode", () => {
+  it("treats usage limit > 1 as multi-use (shared_code)", () => {
+    expect(isShopifyMultiUsePerCodeDiscount(2)).toBe(true);
+    expect(inferDistributionModeFromShopifyUsageLimit(50)).toBe("shared_code");
   });
 
-  it("treats multi-code discounts as unique_pool (per-code usageLimit)", () => {
-    expect(
-      inferDistributionModeFromShopify({
-        codesCount: { count: 100 },
-        usageLimit: 1,
-      }),
-    ).toBe("unique_pool");
+  it("treats usage limit 1 or null as unique_pool", () => {
+    expect(isShopifyMultiUsePerCodeDiscount(1)).toBe(false);
+    expect(isShopifyMultiUsePerCodeDiscount(null)).toBe(false);
+    expect(inferDistributionModeFromShopifyUsageLimit(1)).toBe("unique_pool");
+    expect(inferDistributionModeFromShopifyUsageLimit(null)).toBe("unique_pool");
   });
 
-  it("defaults to unique_pool when codesCount is missing or zero", () => {
-    expect(inferDistributionModeFromShopify({})).toBe("unique_pool");
-    expect(
-      inferDistributionModeFromShopify({
-        codesCount: { count: 0 },
-      }),
-    ).toBe("unique_pool");
+  it("derives distribution_mode from Shopify usage limit when syncing shopify-imported campaigns", () => {
+    const local = {
+      campaign_key: "shopify_123",
+      distribution_mode: "shared_code",
+      discount_target: null,
+    } as FcCouponCampaign;
+
+    const remote = {
+      nodeId: "gid://shopify/DiscountCodeNode/123",
+      title: "Order $5 - 1 per code",
+      shopifyUsageLimit: 1,
+      distributionMode: "unique_pool",
+    } as ShopifyCampaignSnapshot;
+
+    expect(mergeShopifySnapshotWithLocalCampaign(local, remote).distributionMode).toBe(
+      "unique_pool",
+    );
+  });
+
+  it("preserves FC-created campaign distribution_mode on sync", () => {
+    const local = {
+      campaign_key: "camp_ab12cd34",
+      distribution_mode: "shared_code",
+      discount_target: null,
+    } as FcCouponCampaign;
+
+    const remote = {
+      shopifyUsageLimit: 1,
+      distributionMode: "unique_pool",
+    } as ShopifyCampaignSnapshot;
+
+    expect(mergeShopifySnapshotWithLocalCampaign(local, remote).distributionMode).toBe(
+      "shared_code",
+    );
   });
 });

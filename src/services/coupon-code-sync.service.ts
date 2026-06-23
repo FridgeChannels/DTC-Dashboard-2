@@ -1,4 +1,5 @@
 import { resolveSecret } from "../clients/secrets.client.js";
+import { isShopifyMultiUsePerCodeDiscount } from "../coupons/coupon.types.js";
 import { generateCouponCode, isFcCreatedCouponCampaign } from "../coupons/generate-code.js";
 import { discountRedeemCodeBulkAdd } from "../shopify/discount.api.js";
 import { fetchShopifyRedeemCodesForDiscountNode, fetchShopifyRedeemCodesPage } from "../shopify/discount-codes.api.js";
@@ -16,6 +17,8 @@ export interface CampaignCodeSyncItem {
   claimLocked: boolean;
 }
 
+export type CampaignCodeSyncStatusFilter = "all" | "unsynced" | "synced";
+
 export interface CampaignCodesSyncPreview {
   campaignId: string;
   campaignName: string;
@@ -26,8 +29,17 @@ export interface CampaignCodesSyncPreview {
     endCursor: string | null;
     hasPreviousPage: boolean;
     startCursor: string | null;
+    resumeAfter: string | null;
   };
   pageSize: number;
+  syncStatus: CampaignCodeSyncStatusFilter;
+}
+
+export interface ListCampaignCodesOptions {
+  pageSize?: number;
+  after?: string | null;
+  resumeAfter?: string | null;
+  syncStatus?: CampaignCodeSyncStatusFilter;
 }
 
 export interface SyncCampaignCodesInput {
@@ -46,11 +58,55 @@ export interface AddCampaignCodesResult {
   added: number;
   skipped: number;
   failed: Array<{ code: string; reason: string }>;
-  code?: string;
 }
 
 const SHOPIFY_BULK_ADD_BATCH_SIZE = 250;
 const MAX_ADD_CODES_PER_REQUEST = 500;
+const FILTER_SCAN_BATCH_SIZE = 100;
+const MAX_FILTER_SCAN_BATCHES = 100;
+
+function parseSyncStatusFilter(value: string | undefined): CampaignCodeSyncStatusFilter {
+  if (value === "unsynced" || value === "synced") return value;
+  return "all";
+}
+
+function matchesSyncStatusFilter(
+  item: CampaignCodeSyncItem,
+  filter: CampaignCodeSyncStatusFilter,
+): boolean {
+  if (filter === "unsynced") return !item.synced;
+  if (filter === "synced") return item.synced;
+  return true;
+}
+
+function buildFcCodeLookups(fcCodes: Awaited<ReturnType<typeof codeRepo.listCouponCodesByCampaignId>>) {
+  const byRedeemId = new Map(
+    fcCodes
+      .filter((row) => row.shopify_redeem_code_id)
+      .map((row) => [row.shopify_redeem_code_id as string, row]),
+  );
+  const byCode = new Map(fcCodes.map((row) => [row.code.toLowerCase(), row]));
+  return { byRedeemId, byCode };
+}
+
+function mapShopifyCodeToSyncItem(
+  shopifyCode: { redeemCodeId: string; code: string },
+  lookups: ReturnType<typeof buildFcCodeLookups>,
+): CampaignCodeSyncItem {
+  const fc =
+    lookups.byRedeemId.get(shopifyCode.redeemCodeId) ??
+    lookups.byCode.get(shopifyCode.code.toLowerCase()) ??
+    null;
+  return {
+    redeemCodeId: shopifyCode.redeemCodeId,
+    code: shopifyCode.code,
+    synced: Boolean(fc),
+    fcCouponCodeId: fc?.coupon_code_id ?? null,
+    fcStatus: fc?.status ?? null,
+    fcUsageMode: fc?.usage_mode ?? null,
+      claimLocked: codeRepo.isCouponCodeSyncRemovalLocked(fc?.status ?? null),
+  };
+}
 
 async function generateUniqueCampaignCodes(
   customerId: number,
@@ -92,7 +148,7 @@ async function loadCampaignForCustomer(customerId: number, campaignId: string) {
 export async function listCampaignCodesForSync(
   customerId: number,
   campaignId: string,
-  options: { pageSize?: number; after?: string | null } = {},
+  options: ListCampaignCodesOptions = {},
 ): Promise<CampaignCodesSyncPreview> {
   const campaign = await loadCampaignForCustomer(customerId, campaignId);
 
@@ -106,46 +162,113 @@ export async function listCampaignCodesForSync(
   const accessToken = await resolveSecret(config.access_token_ref);
   const shopifyNodeId = campaign.shopify_discount_node_id as string;
   const pageSize = options.pageSize ?? 25;
-  const shopifyPage = await fetchShopifyRedeemCodesPage(
-    config.shop_domain,
-    accessToken,
-    shopifyNodeId,
-    { first: pageSize, after: options.after ?? null },
-  );
+  const syncStatus = parseSyncStatusFilter(options.syncStatus);
 
   const fcCodes = await codeRepo.listCouponCodesByCampaignId(customerId, campaignId);
-  const byRedeemId = new Map(
-    fcCodes
-      .filter((row) => row.shopify_redeem_code_id)
-      .map((row) => [row.shopify_redeem_code_id as string, row]),
-  );
-  const byCode = new Map(fcCodes.map((row) => [row.code.toLowerCase(), row]));
+  const lookups = buildFcCodeLookups(fcCodes);
 
-  const codes: CampaignCodeSyncItem[] = shopifyPage.codes.map((shopifyCode) => {
-    const fc =
-      byRedeemId.get(shopifyCode.redeemCodeId) ??
-      byCode.get(shopifyCode.code.toLowerCase()) ??
-      null;
+  if (syncStatus === "all") {
+    const shopifyPage = await fetchShopifyRedeemCodesPage(
+      config.shop_domain,
+      accessToken,
+      shopifyNodeId,
+      { first: pageSize, after: options.after ?? null },
+    );
+
+    const codes = shopifyPage.codes.map((shopifyCode) =>
+      mapShopifyCodeToSyncItem(shopifyCode, lookups),
+    );
+
     return {
-      redeemCodeId: shopifyCode.redeemCodeId,
-      code: shopifyCode.code,
-      synced: Boolean(fc),
-      fcCouponCodeId: fc?.coupon_code_id ?? null,
-      fcStatus: fc?.status ?? null,
-      fcUsageMode: fc?.usage_mode ?? null,
-      claimLocked:
-        fc?.usage_mode === "shared" ||
-        codeRepo.isCouponCodeClaimLocked(fc?.status ?? null),
+      campaignId: campaign.campaign_id,
+      campaignName: campaign.name,
+      shopifyDiscountNodeId: shopifyNodeId,
+      codes,
+      pageInfo: {
+        ...shopifyPage.pageInfo,
+        resumeAfter: null,
+      },
+      pageSize,
+      syncStatus,
     };
-  });
+  }
+
+  const codes: CampaignCodeSyncItem[] = [];
+  let shopifyAfter = options.after ?? null;
+  let resumeAfter = options.resumeAfter ?? null;
+  let skipping = Boolean(resumeAfter);
+
+  for (let batch = 0; batch < MAX_FILTER_SCAN_BATCHES && codes.length < pageSize; batch++) {
+    const shopifyPage = await fetchShopifyRedeemCodesPage(
+      config.shop_domain,
+      accessToken,
+      shopifyNodeId,
+      { first: FILTER_SCAN_BATCH_SIZE, after: shopifyAfter },
+    );
+
+    if (!shopifyPage.codes.length) {
+      break;
+    }
+
+    const batchStartAfter = shopifyAfter;
+
+    for (let index = 0; index < shopifyPage.codes.length; index++) {
+      const shopifyCode = shopifyPage.codes[index];
+      if (skipping) {
+        if (shopifyCode.redeemCodeId === resumeAfter) {
+          skipping = false;
+        }
+        continue;
+      }
+
+      const item = mapShopifyCodeToSyncItem(shopifyCode, lookups);
+      if (!matchesSyncStatusFilter(item, syncStatus)) continue;
+
+      codes.push(item);
+      if (codes.length >= pageSize) {
+        const hasMoreInBatch = index < shopifyPage.codes.length - 1;
+        const hasNextPage = hasMoreInBatch || shopifyPage.pageInfo.hasNextPage;
+        return {
+          campaignId: campaign.campaign_id,
+          campaignName: campaign.name,
+          shopifyDiscountNodeId: shopifyNodeId,
+          codes,
+          pageInfo: {
+            hasNextPage,
+            endCursor: batchStartAfter,
+            hasPreviousPage: Boolean(options.after || options.resumeAfter),
+            startCursor: options.after ?? null,
+            resumeAfter: item.redeemCodeId,
+          },
+          pageSize,
+          syncStatus,
+        };
+      }
+    }
+
+    if (!shopifyPage.pageInfo.hasNextPage) {
+      break;
+    }
+
+    shopifyAfter = shopifyPage.pageInfo.endCursor;
+    resumeAfter = null;
+    skipping = false;
+  }
 
   return {
     campaignId: campaign.campaign_id,
     campaignName: campaign.name,
     shopifyDiscountNodeId: shopifyNodeId,
     codes,
-    pageInfo: shopifyPage.pageInfo,
+    pageInfo: {
+      hasNextPage: false,
+      endCursor: null,
+      hasPreviousPage: Boolean(options.after || options.resumeAfter),
+      startCursor: options.after ?? null,
+      resumeAfter: null,
+    },
     pageSize,
+    syncStatus,
   };
 }
 
@@ -189,15 +312,12 @@ export async function syncCampaignCodesToFc(
       continue;
     }
 
-    const claimLocked =
-      fc.usage_mode === "shared" ||
-      codeRepo.isCouponCodeClaimLocked(fc.status);
-    if (claimLocked) {
+    if (codeRepo.isCouponCodeSyncRemovalLocked(fc.status)) {
       skipped += 1;
       continue;
     }
 
-    const deleted = await codeRepo.deleteAvailableCouponCode(
+    const deleted = await codeRepo.deleteUnredeemedCouponCode(
       customerId,
       fc.coupon_code_id,
     );
@@ -258,21 +378,20 @@ export async function syncCampaignCodesToFc(
 export async function addCampaignCodesToFc(
   customerId: number,
   campaignId: string,
-  input: { count?: number; code?: string },
+  input: { count?: number },
 ): Promise<AddCampaignCodesResult> {
   const campaign = await loadCampaignForCustomer(customerId, campaignId);
-  const usageMode = campaign.distribution_mode === "shared_code" ? "shared" : "unique";
 
   if (
-    usageMode === "shared"
-    && !isFcCreatedCouponCampaign(campaign.campaign_key)
+    !isFcCreatedCouponCampaign(campaign.campaign_key)
+    && isShopifyMultiUsePerCodeDiscount(campaign.shopify_usage_limit)
   ) {
     throw new Error(
-      "Shopify shared-code discounts cannot have codes added manually. Sync from Shopify instead.",
+      "Shopify multi-use discounts (usage limit > 1 per code) cannot have codes added manually. Sync from Shopify instead.",
     );
   }
 
-  const count = usageMode === "shared" ? 1 : Number(input.count);
+  const count = Math.floor(Number(input.count));
 
   if (!Number.isFinite(count) || count <= 0) {
     throw new Error("count must be a positive number");
@@ -281,14 +400,12 @@ export async function addCampaignCodesToFc(
     throw new Error(`You can add at most ${MAX_ADD_CODES_PER_REQUEST} codes per request`);
   }
 
-  const toAdd = usageMode === "shared" && input.code?.trim()
-    ? [input.code.trim()]
-    : await generateUniqueCampaignCodes(
-        customerId,
-        campaignId,
-        campaign.campaign_key,
-        Math.floor(count),
-      );
+  const toAdd = await generateUniqueCampaignCodes(
+    customerId,
+    campaignId,
+    campaign.campaign_key,
+    count,
+  );
 
   const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(customerId, {
     activeOnly: true,
@@ -335,7 +452,7 @@ export async function addCampaignCodesToFc(
       code: shopifyCode.code,
       shopifyDiscountNodeId: shopifyNodeId,
       shopifyRedeemCodeId: shopifyCode.redeemCodeId,
-      usageMode,
+      usageMode: "unique",
       status: "available",
       expiresAt: campaign.ends_at ?? undefined,
     });
@@ -354,13 +471,5 @@ export async function addCampaignCodesToFc(
     failed.push({ code, reason: "Could not import code" });
   }
 
-  if (usageMode === "shared" && added > 0) {
-    await campaignRepo.updateCampaignDistributionMode(
-      customerId,
-      campaign.campaign_id,
-      "shared_code",
-    );
-  }
-
-  return { added, skipped, failed, code: usageMode === "shared" ? toAdd[0] : undefined };
+  return { added, skipped, failed };
 }

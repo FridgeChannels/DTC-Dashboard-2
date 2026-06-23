@@ -50,6 +50,22 @@ export type CouponCodeStatus =
 
 export type CouponDistributionMode = "unique_pool" | "shared_code";
 
+/** Shopify usageLimit：每个折扣码可使用的总次数；> 1 表示一码多用 */
+export function isShopifyMultiUsePerCodeDiscount(
+  shopifyUsageLimit: number | null | undefined,
+): boolean {
+  return shopifyUsageLimit != null && shopifyUsageLimit > 1;
+}
+
+/** 根据 Shopify 每码使用次数上限推断 FC 发券模式 */
+export function inferDistributionModeFromShopifyUsageLimit(
+  shopifyUsageLimit: number | null | undefined,
+): CouponDistributionMode {
+  return isShopifyMultiUsePerCodeDiscount(shopifyUsageLimit)
+    ? "shared_code"
+    : "unique_pool";
+}
+
 export type CouponCodeUsageMode = "unique" | "shared";
 
 export function resolveCouponCodeUsageMode(

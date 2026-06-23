@@ -6,7 +6,13 @@ import {
   listCampaignCodesForSync,
   syncCampaignCodesToFc,
   addCampaignCodesToFc,
+  type CampaignCodeSyncStatusFilter,
 } from "../services/coupon-code-sync.service.js";
+
+function parseSyncStatusQuery(value: string | null): CampaignCodeSyncStatusFilter {
+  if (value === "unsynced" || value === "synced") return value;
+  return "all";
+}
 
 export async function handleGetCouponCampaignCodes(
   req: IncomingMessage,
@@ -25,11 +31,15 @@ export async function handleGetCouponCampaignCodes(
       100,
     );
     const after = url.searchParams.get("after")?.trim() || null;
+    const resumeAfter = url.searchParams.get("resume_after")?.trim() || null;
+    const syncStatus = parseSyncStatusQuery(url.searchParams.get("sync_status"));
 
     const customerId = await getRequestCustomerId(req, res);
     const data = await listCampaignCodesForSync(customerId, campaignId, {
       pageSize,
       after,
+      resumeAfter,
+      syncStatus,
     });
     json(res, 200, data);
   } catch (err) {
@@ -87,7 +97,6 @@ export async function handleAddCouponCampaignCodes(
     const body = await readJsonBody<{
       campaign_id?: string;
       count?: number;
-      code?: string;
     }>(req);
 
     const campaignId = body.campaign_id?.trim() ?? "";
@@ -97,16 +106,13 @@ export async function handleAddCouponCampaignCodes(
       errorJson(res, 400, "campaign_id is required");
       return;
     }
-    if (body.count !== undefined && (!Number.isFinite(count) || count <= 0)) {
+    if (!Number.isFinite(count) || count <= 0) {
       errorJson(res, 400, "count must be a positive number");
       return;
     }
 
     const customerId = await getRequestCustomerId(req, res);
-    const summary = await addCampaignCodesToFc(customerId, campaignId, {
-      count,
-      code: body.code,
-    });
+    const summary = await addCampaignCodesToFc(customerId, campaignId, { count });
     json(res, 200, { summary });
   } catch (err) {
     const status = err instanceof AuthError ? 401 : 400;

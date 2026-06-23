@@ -61,12 +61,19 @@ const API = {
     if (!res.ok) throw new Error(data.error || "Failed to sync campaigns");
     return data;
   },
-  async listCampaignCodes(campaignId, { limit = 25, after = null } = {}) {
+  async listCampaignCodes(campaignId, {
+    limit = 25,
+    after = null,
+    resumeAfter = null,
+    syncStatus = "all",
+  } = {}) {
     const params = new URLSearchParams({
       campaign_id: campaignId,
       limit: String(limit),
     });
     if (after) params.set("after", after);
+    if (resumeAfter) params.set("resume_after", resumeAfter);
+    if (syncStatus && syncStatus !== "all") params.set("sync_status", syncStatus);
     const res = await fetch(`/api/coupon-campaigns/codes?${params.toString()}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to load codes");
@@ -338,10 +345,10 @@ const CAMPAIGN_KIND_OPTIONS = [
 function formatDiscountKindLabel(campaign) {
   const { discountType, discountTarget } = campaign;
   if (discountType === "percentage" || discountType === "fixed_amount") {
-    return discountTarget === "product" ? "产品金额减免" : "订单金额减免";
+    return discountTarget === "product" ? "Amount off products" : "Amount off order";
   }
-  if (discountType === "buy_x_get_y") return "买 X 送 Y";
-  if (discountType === "free_shipping") return "免运费";
+  if (discountType === "buy_x_get_y") return "Buy X get Y";
+  if (discountType === "free_shipping") return "Free shipping";
   return discountType || "—";
 }
 
@@ -639,18 +646,26 @@ function formatDistributionMode(campaign) {
   return campaign.distributionMode === "shared_code" ? "Shared code" : "Unique codes";
 }
 
-function isShopifySyncedSharedCode(campaign) {
-  return campaign?.distributionMode === "shared_code" && !campaign?.fcCreated;
+function isShopifyMultiUseSyncOnly(campaign) {
+  if (campaign?.fcCreated) return false;
+  const limit = campaign?.shopifyUsageLimit;
+  return limit != null && limit > 1;
+}
+
+/** 仅当 Shopify 侧确实只有一个共享码时，同步面板才使用单选模式 */
+function isSingleSharedCodeSyncSelection(campaign, codes, codeCache, pageInfo) {
+  if (campaign?.distributionMode !== "shared_code") return false;
+  if ((codes?.length ?? 0) !== 1) return false;
+  if (codeCache.size > 1) return false;
+  if (pageInfo?.hasNextPage || pageInfo?.hasPreviousPage) return false;
+  return true;
 }
 
 function formatUsageLimit(campaign) {
-  const isShared = campaign.distributionMode === "shared_code";
   if (campaign.shopifyUsageLimit == null) {
-    return isShared ? "Unlimited" : "Unlimited per code";
+    return "Unlimited per code";
   }
-  return isShared
-    ? `${campaign.shopifyUsageLimit} total`
-    : `${campaign.shopifyUsageLimit} per code`;
+  return `${campaign.shopifyUsageLimit} per code`;
 }
 
 
@@ -768,7 +783,26 @@ function CampaignEditForm({ form, saving, error, onChange, onSubmit }) {
   );
 }
 
+const DISCOUNTS_PAGE_SIZE = 10;
+
 function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady }) {
+  const [pageIndex, setPageIndex] = useStateBC(0);
+
+  const totalPages = Math.max(1, Math.ceil(campaigns.length / DISCOUNTS_PAGE_SIZE));
+  const safePageIndex = Math.min(pageIndex, totalPages - 1);
+  const pageStart = safePageIndex * DISCOUNTS_PAGE_SIZE;
+  const pageCampaigns = campaigns.slice(pageStart, pageStart + DISCOUNTS_PAGE_SIZE);
+
+  useEffectBC(() => {
+    setPageIndex(0);
+  }, [campaigns.length]);
+
+  useEffectBC(() => {
+    if (pageIndex > totalPages - 1) {
+      setPageIndex(Math.max(0, totalPages - 1));
+    }
+  }, [pageIndex, totalPages]);
+
   if (!campaigns.length) {
     return (
       <EmptyState
@@ -780,63 +814,89 @@ function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady }) {
   }
 
   return (
-    <div className="table-wrap">
-      <table className="data">
-        <thead>
-          <tr>
-            <th>Discount</th>
-            <th>Type</th>
-            <th>Value</th>
-            <th>Usage limit</th>
-            <th>Codes</th>
-            <th>Shopify</th>
-            <th>Status</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {campaigns.map((c) => {
-            const syncOnly = isShopifySyncedSharedCode(c);
-            return (
-            <tr key={c.id || c.key}>
-              <td><strong>{c.name}</strong></td>
-              <td>{formatDiscountKindLabel(c)}</td>
-              <td className="mono">{formatDiscountValue(c)}</td>
-              <td className="mono">{formatUsageLimit(c)}</td>
-              <td className="mono">{c.codeCount ?? 0}</td>
-              <td className="mono muted">{c.shopifyDiscountNodeId ? "✓" : "—"}</td>
-              <td><StatusPill status={c.status} /></td>
-              <td className="row-actions">
-                {EDIT_DISCOUNT_ENABLED && c.fcCreated && (
-                  <button type="button" className="btn" onClick={() => onEdit(c)}>Edit</button>
-                )}
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={!shopifyReady || !c.shopifyDiscountNodeId}
-                  title={
-                    !c.shopifyDiscountNodeId
-                      ? "Link this discount to Shopify first"
-                      : syncOnly
-                        ? "Sync coupon code from Shopify"
-                        : "Add or sync coupon codes"
-                  }
-                  onClick={() => onAddCodes(c)}
-                >
-                  {syncOnly ? "Sync Codes" : "Add Codes"}
-                </button>
-              </td>
+    <>
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            <tr>
+              <th>Discount</th>
+              <th>Type</th>
+              <th>Value</th>
+              <th>Usage limit</th>
+              <th>Codes</th>
+              <th>Shopify</th>
+              <th>Status</th>
+              <th />
             </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {pageCampaigns.map((c) => (
+              <tr key={c.id || c.key}>
+                <td><strong>{c.name}</strong></td>
+                <td>{formatDiscountKindLabel(c)}</td>
+                <td className="mono">{formatDiscountValue(c)}</td>
+                <td className="mono">{formatUsageLimit(c)}</td>
+                <td className="mono">{c.codeCount ?? 0}</td>
+                <td className="mono muted">{c.shopifyDiscountNodeId ? "✓" : "—"}</td>
+                <td><StatusPill status={c.status} /></td>
+                <td className="row-actions">
+                  {EDIT_DISCOUNT_ENABLED && c.fcCreated && (
+                    <button type="button" className="btn" onClick={() => onEdit(c)}>Edit</button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={!shopifyReady || !c.shopifyDiscountNodeId}
+                    title={
+                      !c.shopifyDiscountNodeId
+                        ? "Link this discount to Shopify first"
+                        : "Sync coupon codes from Shopify"
+                    }
+                    onClick={() => onAddCodes(c)}
+                  >
+                    Sync Codes
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="cfg-table-pager">
+        <button
+          type="button"
+          className="btn"
+          disabled={safePageIndex <= 0}
+          onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+        >
+          Previous
+        </button>
+        <span className="muted cfg-table-pager-label">
+          Page {safePageIndex + 1} of {totalPages}
+          {" · "}
+          {campaigns.length} discount{campaigns.length === 1 ? "" : "s"}
+        </span>
+        <button
+          type="button"
+          className="btn"
+          disabled={safePageIndex >= totalPages - 1}
+          onClick={() => setPageIndex((current) => Math.min(totalPages - 1, current + 1))}
+        >
+          Next
+        </button>
+      </div>
+    </>
   );
 }
 
 function isSyncCodeToggleLocked(item) {
   return Boolean(item.synced && item.claimLocked);
+}
+
+function formatSyncRemovalHint(item) {
+  if (!item.synced || !item.claimLocked) return null;
+  if (item.fcStatus === "redeemed") return "Redeemed codes cannot be removed from FC.";
+  return "This code can no longer be removed from FC.";
 }
 
 function formatShopifyCodeSyncStatus(item, isSelected) {
@@ -865,6 +925,10 @@ function formatFcCouponCodeStatus(item) {
   return { label: item.fcStatus || "—", cls: "neutral" };
 }
 
+function createSyncCodesCursor(after = null, resumeAfter = null) {
+  return { after, resumeAfter };
+}
+
 function ShopifySyncCodesPanel({ campaign, onUpdated }) {
   const SYNC_CODES_PAGE_SIZE = 25;
   const [loading, setLoading] = useStateBC(true);
@@ -873,13 +937,25 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
   const [error, setError] = useStateBC(null);
   const [notice, setNotice] = useStateBC(null);
   const [preview, setPreview] = useStateBC(null);
+  const [syncFilter, setSyncFilter] = useStateBC("all");
   const [selectionOverrides, setSelectionOverrides] = useStateBC(() => new Map());
   const [sharedSelectedId, setSharedSelectedId] = useStateBC(null);
   const [pageIndex, setPageIndex] = useStateBC(0);
-  const [cursors, setCursors] = useStateBC([null]);
+  const [cursors, setCursors] = useStateBC([createSyncCodesCursor()]);
   const [codeCache, setCodeCache] = useStateBC(() => new Map());
 
-  const isSharedCampaign = campaign?.distributionMode === "shared_code";
+  const codes = preview?.codes ?? [];
+  const isSharedCampaign = isSingleSharedCodeSyncSelection(
+    campaign,
+    codes,
+    codeCache,
+    preview?.pageInfo,
+  );
+
+  const getDefaultSelected = useCallbackBC((item) => {
+    if (syncFilter === "unsynced") return true;
+    return item.synced;
+  }, [syncFilter]);
 
   const isCodeSelected = useCallbackBC((item) => {
     if (isSharedCampaign) {
@@ -888,11 +964,11 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
     if (selectionOverrides.has(item.redeemCodeId)) {
       return selectionOverrides.get(item.redeemCodeId);
     }
-    return item.synced;
-  }, [isSharedCampaign, sharedSelectedId, selectionOverrides]);
+    return getDefaultSelected(item);
+  }, [getDefaultSelected, isSharedCampaign, sharedSelectedId, selectionOverrides]);
 
   const loadCodes = useCallbackBC(async (
-    after = null,
+    cursor = createSyncCodesCursor(),
     { reset = false, nextPageIndex = 0, showFullLoading = false } = {},
   ) => {
     if (!campaign?.id) return;
@@ -903,7 +979,9 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
     try {
       const data = await API.listCampaignCodes(campaign.id, {
         limit: SYNC_CODES_PAGE_SIZE,
-        after,
+        after: cursor.after,
+        resumeAfter: cursor.resumeAfter,
+        syncStatus: syncFilter,
       });
       setPreview(data);
       setPageIndex(nextPageIndex);
@@ -933,18 +1011,24 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
       setLoading(false);
       setPaging(false);
     }
-  }, [campaign?.id, isSharedCampaign]);
+  }, [campaign?.id, isSharedCampaign, syncFilter]);
 
   useEffectBC(() => {
-    setCursors([null]);
+    if (!isSharedCampaign) {
+      setSharedSelectedId(null);
+    }
+  }, [isSharedCampaign]);
+
+  useEffectBC(() => {
+    setCursors([createSyncCodesCursor()]);
     setSelectionOverrides(new Map());
     setSharedSelectedId(null);
     setCodeCache(new Map());
     setPreview(null);
-    loadCodes(null, { reset: true, nextPageIndex: 0, showFullLoading: true });
-  }, [campaign?.id, loadCodes]);
+    setPageIndex(0);
+    loadCodes(createSyncCodesCursor(), { reset: true, nextPageIndex: 0, showFullLoading: true });
+  }, [campaign?.id, syncFilter, loadCodes]);
 
-  const codes = preview?.codes ?? [];
   const toggleableCodes = codes.filter((item) => !isSyncCodeToggleLocked(item));
   const allToggleableSelected =
     toggleableCodes.length > 0
@@ -966,18 +1050,21 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
       return { imports, removes };
     }
 
-    for (const [id, selected] of selectionOverrides) {
-      const item = codeCache.get(id);
-      if (!item || selected === item.synced) continue;
+    for (const item of codeCache.values()) {
+      const defaultSelected = getDefaultSelected(item);
+      const selected = selectionOverrides.has(item.redeemCodeId)
+        ? selectionOverrides.get(item.redeemCodeId)
+        : defaultSelected;
+      if (selected === item.synced) continue;
       if (selected && !item.synced) {
-        imports.push({ redeem_code_id: id, code: item.code });
+        imports.push({ redeem_code_id: item.redeemCodeId, code: item.code });
       }
       if (!selected && item.synced && !item.claimLocked) {
-        removes.push(id);
+        removes.push(item.redeemCodeId);
       }
     }
     return { imports, removes };
-  }, [codeCache, isSharedCampaign, selectionOverrides, sharedSelectedId]);
+  }, [codeCache, getDefaultSelected, isSharedCampaign, selectionOverrides, sharedSelectedId]);
 
   const hasPendingChanges = () => {
     const { imports, removes } = buildSyncPayload();
@@ -999,7 +1086,8 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
     setSelectionOverrides((prev) => {
       const next = new Map(prev);
       const newSelected = !currentlySelected;
-      if (newSelected === item.synced) next.delete(item.redeemCodeId);
+      const defaultSelected = getDefaultSelected(item);
+      if (newSelected === defaultSelected) next.delete(item.redeemCodeId);
       else next.set(item.redeemCodeId, newSelected);
       return next;
     });
@@ -1012,20 +1100,24 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
       const next = new Map(prev);
       for (const item of toggleableCodes) {
         const newSelected = !allSelected;
-        if (newSelected === item.synced) next.delete(item.redeemCodeId);
+        const defaultSelected = getDefaultSelected(item);
+        if (newSelected === defaultSelected) next.delete(item.redeemCodeId);
         else next.set(item.redeemCodeId, newSelected);
       }
       return next;
     });
   };
 
-  const goToPage = (nextIndex, after = null) => {
-    loadCodes(after, { nextPageIndex: nextIndex });
+  const goToPage = (nextIndex, cursor = createSyncCodesCursor()) => {
+    loadCodes(cursor, { nextPageIndex: nextIndex });
   };
 
   const goNextPage = () => {
     if (!preview?.pageInfo?.hasNextPage || paging) return;
-    const nextCursor = preview.pageInfo.endCursor;
+    const nextCursor = createSyncCodesCursor(
+      preview.pageInfo.endCursor,
+      preview.pageInfo.resumeAfter ?? null,
+    );
     const nextIndex = pageIndex + 1;
     setCursors((prev) => {
       const next = [...prev];
@@ -1038,16 +1130,21 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
   const goPrevPage = () => {
     if (pageIndex <= 0 || paging) return;
     const prevIndex = pageIndex - 1;
-    goToPage(prevIndex, cursors[prevIndex] ?? null);
+    goToPage(prevIndex, cursors[prevIndex] ?? createSyncCodesCursor());
   };
 
   const handleRefresh = () => {
-    setCursors([null]);
+    setCursors([createSyncCodesCursor()]);
     setSelectionOverrides(new Map());
     setSharedSelectedId(null);
     setCodeCache(new Map());
     setPreview(null);
-    loadCodes(null, { reset: true, nextPageIndex: 0, showFullLoading: true });
+    loadCodes(createSyncCodesCursor(), { reset: true, nextPageIndex: 0, showFullLoading: true });
+  };
+
+  const handleSyncFilterChange = (nextFilter) => {
+    if (nextFilter === syncFilter) return;
+    setSyncFilter(nextFilter);
   };
 
   const handleSync = async () => {
@@ -1066,7 +1163,7 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
       setNotice(parts.length ? `Sync complete: ${parts.join(", ")}` : "Sync complete.");
       setSelectionOverrides(new Map());
       setSharedSelectedId(null);
-      await loadCodes(cursors[pageIndex] ?? null, {
+      await loadCodes(cursors[pageIndex] ?? createSyncCodesCursor(), {
         reset: true,
         nextPageIndex: pageIndex,
       });
@@ -1091,32 +1188,64 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
 
   return (
     <>
-      {error && (
-        <div className="cfg-alert warn cfg-modal-body">
-          <I.info /> {error}
+      <div className="cfg-modal-body cfg-sync-codes-body">
+        <div className="cfg-sync-toolbar">
+          <div className="cfg-sync-copy">
+            <h4>Shopify code sync</h4>
+            <p className="cfg-hint">
+              {syncFilter === "unsynced"
+                ? "Showing Shopify codes not yet in FC. Selected codes will be imported when you sync."
+                : "Synced codes stay in FC by default. Check unsynced codes to import, or uncheck synced codes that are still available or assigned to remove them from FC."}
+              {" "}
+              When Shopify has multiple codes, each row can be synced or removed independently.
+              Only single-code shared discounts use one-at-a-time selection.
+            </p>
+          </div>
+          <div className="cfg-sync-filter" role="group" aria-label="Filter by sync status">
+            <span className="muted cfg-sync-filter-label">Sync status</span>
+            <button
+              type="button"
+              className={`cfg-filter-chip${syncFilter === "all" ? " active" : ""}`}
+              disabled={syncing || paging}
+              onClick={() => handleSyncFilterChange("all")}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className={`cfg-filter-chip${syncFilter === "unsynced" ? " active" : ""}`}
+              disabled={syncing || paging}
+              onClick={() => handleSyncFilterChange("unsynced")}
+            >
+              Not synced
+            </button>
+          </div>
         </div>
-      )}
-      {notice && (
-        <div className="cfg-alert pos cfg-modal-body">
-          <I.info /> {notice}
-        </div>
-      )}
-      <div className="cfg-modal-body">
-        <p className="cfg-hint" style={{ marginBottom: 12 }}>
-          Synced codes are kept in FC by default. Check unsynced codes to import, or uncheck
-          unclaimed synced codes to remove them from FC.
-          If Shopify has exactly one redeem code for this discount, FC will sync it as a
-          shared code automatically. Multiple Shopify codes sync as unique code pool.
-        </p>
+
+        {error && (
+          <div className="cfg-alert warn">
+            <I.info /> {error}
+          </div>
+        )}
+        {notice && (
+          <div className="cfg-alert pos">
+            <I.info /> {notice}
+          </div>
+        )}
+
         {!codes.length ? (
           <EmptyState
-            title="No codes in Shopify"
-            note="This discount has no redeem codes in Shopify yet."
+            title={syncFilter === "unsynced" ? "No unsynced codes" : "No codes in Shopify"}
+            note={
+              syncFilter === "unsynced"
+                ? "All Shopify codes for this discount are already in FC."
+                : "This discount has no redeem codes in Shopify yet."
+            }
             compact
           />
         ) : (
           <>
-            <div className={`table-wrap${paging ? " is-loading" : ""}`}>
+            <div className={`table-wrap cfg-sync-table-wrap${paging ? " is-loading" : ""}`}>
               <table className="data sync-codes-table">
                 <thead>
                   <tr>
@@ -1139,10 +1268,12 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
                     const selected = isCodeSelected(item);
                     const syncStatus = formatShopifyCodeSyncStatus(item, selected);
                     const fcStatus = formatFcCouponCodeStatus(item);
+                    const removalHint = formatSyncRemovalHint(item);
                     return (
                     <tr
                       key={item.redeemCodeId}
                       className={item.synced ? (item.claimLocked ? "synced locked" : "synced") : ""}
+                      title={removalHint ?? undefined}
                     >
                       <td>
                         <input
@@ -1150,7 +1281,12 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
                           checked={selected}
                           disabled={isSyncCodeToggleLocked(item) || syncing || paging}
                           onChange={() => toggleCode(item)}
-                          aria-label={`Select ${item.code}`}
+                          aria-label={
+                            removalHint
+                              ? `${item.code} (${removalHint})`
+                              : `Select ${item.code}`
+                          }
+                          title={removalHint ?? undefined}
                         />
                       </td>
                       <td className="mono"><strong>{item.code}</strong></td>
@@ -1202,12 +1338,12 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
         )}
       </div>
       <div className="cfg-modal-foot">
-        <span className="muted" style={{ fontSize: 12.5 }}>
-          {selectedOnPage} selected on this page
-          {toggleableCodes.length ? ` · ${toggleableCodes.length} editable` : ""}
-          {pendingCount ? ` · ${pendingCount} pending change(s)` : ""}
-        </span>
-        <div className="row" style={{ gap: 8 }}>
+        <div className="cfg-modal-foot-meta">
+          <strong>{selectedOnPage}</strong> selected on this page
+          {toggleableCodes.length ? <span>{toggleableCodes.length} editable</span> : null}
+          {pendingCount ? <span>{pendingCount} pending change(s)</span> : null}
+        </div>
+        <div className="cfg-modal-foot-actions">
           <button type="button" className="btn" disabled={syncing || paging} onClick={handleRefresh}>
             Refresh
           </button>
@@ -1217,7 +1353,7 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
             disabled={syncing || paging || !hasPendingChanges()}
             onClick={handleSync}
           >
-            {syncing ? "Syncing…" : "Sync to FC"}
+            {syncing ? "Syncing…" : "Sync"}
           </button>
         </div>
       </div>
@@ -1227,7 +1363,6 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
 
 function ManualAddCodesPanel({ campaign, onUpdated }) {
   const [quantity, setQuantity] = useStateBC("10");
-  const [sharedCode, setSharedCode] = useStateBC("");
   const [adding, setAdding] = useStateBC(false);
   const [error, setError] = useStateBC(null);
   const [notice, setNotice] = useStateBC(null);
@@ -1238,11 +1373,10 @@ function ManualAddCodesPanel({ campaign, onUpdated }) {
     && parsedQuantity > 0
     && parsedQuantity <= 500
     && Number.isInteger(parsedQuantity);
-  const isShared = campaign?.distributionMode === "shared_code";
 
   const handleAdd = async () => {
     if (!campaign?.id) return;
-    if (!isShared && !isValidQuantity) {
+    if (!isValidQuantity) {
       setError("Enter a whole number between 1 and 500");
       return;
     }
@@ -1251,17 +1385,12 @@ function ManualAddCodesPanel({ campaign, onUpdated }) {
     setError(null);
     setNotice(null);
     try {
-      const payload = isShared
-        ? { code: sharedCode.trim() || undefined }
-        : { count: parsedQuantity };
-      const { summary } = await API.addCampaignCodes(campaign.id, payload);
+      const { summary } = await API.addCampaignCodes(campaign.id, { count: parsedQuantity });
       const parts = [];
       if (summary.added) parts.push(`${summary.added} added`);
       if (summary.skipped) parts.push(`${summary.skipped} skipped`);
       if (summary.failed?.length) parts.push(`${summary.failed.length} failed`);
-      if (summary.code) parts.push(`code ${summary.code}`);
       setNotice(parts.length ? `Add complete: ${parts.join(", ")}` : "Add complete.");
-      if (isShared && summary.code) setSharedCode(summary.code);
       onUpdated?.();
     } catch (err) {
       setError(err.message);
@@ -1283,48 +1412,31 @@ function ManualAddCodesPanel({ campaign, onUpdated }) {
         </div>
       )}
       <div className="cfg-modal-body">
-        <p className="cfg-hint" style={{ marginBottom: 12 }}>
-          This discount is configured as <strong>{formatDistributionMode(campaign)}</strong>.
-          Change the coupon mode in the Discounts list if you need a different issuing rule.
-        </p>
-        {isShared ? (
-          <ConfigField label="Shared code" hint="Leave blank to auto-generate one code.">
-            <input
-              className="cfg-input mono"
-              value={sharedCode}
-              onChange={(e) => setSharedCode(e.target.value)}
-              placeholder="Auto-generate"
-            />
-          </ConfigField>
-        ) : (
-          <ConfigField label="Quantity" hint="Up to 500 codes per request.">
-            <input
-              className="cfg-input mono"
-              type="number"
-              min="1"
-              max="500"
-              step="1"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-            />
-          </ConfigField>
-        )}
+        <ConfigField label="Quantity" hint="Up to 500 codes per request.">
+          <input
+            className="cfg-input mono"
+            type="number"
+            min="1"
+            max="500"
+            step="1"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+          />
+        </ConfigField>
       </div>
       <div className="cfg-modal-foot">
         <span className="muted" style={{ fontSize: 12.5 }}>
-          {isShared
-            ? "One shared code will be created"
-            : isValidQuantity
-              ? `${parsedQuantity} code(s) will be generated`
-              : "Enter a valid quantity"}
+          {isValidQuantity
+            ? `${parsedQuantity} code(s) will be generated`
+            : "Enter a valid quantity"}
         </span>
         <button
           type="button"
           className="btn primary"
-          disabled={adding || (!isShared && !isValidQuantity)}
+          disabled={adding || !isValidQuantity}
           onClick={handleAdd}
         >
-          {adding ? "Adding…" : "Add to FC"}
+          {adding ? "Adding…" : "Add"}
         </button>
       </div>
     </>
@@ -1332,7 +1444,7 @@ function ManualAddCodesPanel({ campaign, onUpdated }) {
 }
 
 function AddCodesModal({ campaign, onClose, onUpdated }) {
-  const syncOnly = isShopifySyncedSharedCode(campaign);
+  const syncOnly = isShopifyMultiUseSyncOnly(campaign);
   const [tab, setTab] = useStateBC("shopify");
 
   if (!campaign) return null;
@@ -1347,9 +1459,12 @@ function AddCodesModal({ campaign, onClose, onUpdated }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="cfg-modal-head">
-          <div>
-            <h3 id="add-codes-title">{syncOnly ? "Sync Codes" : "Add Codes"}</h3>
-            <p className="muted">{campaign.name}</p>
+          <div className="cfg-modal-title-block">
+            <span className="cfg-modal-eyebrow">{syncOnly ? "Sync codes" : "Manage codes"}</span>
+            <h3 id="add-codes-title">{campaign.name}</h3>
+            <p className="muted cfg-modal-subtitle">
+              {syncOnly ? "Sync Shopify codes into FC" : "Sync Shopify codes or generate codes"}
+            </p>
           </div>
           <button type="button" className="btn" onClick={onClose}>Close</button>
         </div>
@@ -1363,7 +1478,7 @@ function AddCodesModal({ campaign, onClose, onUpdated }) {
               aria-selected={tab === "shopify"}
               onClick={() => setTab("shopify")}
             >
-              Sync Shopify Codes
+              Sync Shopify
             </button>
             <button
               type="button"
@@ -1372,7 +1487,7 @@ function AddCodesModal({ campaign, onClose, onUpdated }) {
               aria-selected={tab === "add"}
               onClick={() => setTab("add")}
             >
-              Add Codes
+              Generate Codes
             </button>
           </div>
         )}

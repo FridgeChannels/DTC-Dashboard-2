@@ -7,9 +7,21 @@ import type {
 } from "../coupons/coupon.types.js";
 
 const CLAIMED_STATUSES = new Set<CouponCodeStatus>(["assigned", "redeemed"]);
+const SYNC_REMOVAL_LOCKED_STATUSES = new Set<CouponCodeStatus>([
+  "redeemed",
+  "expired",
+  "disabled",
+]);
 
 export function isCouponCodeClaimLocked(status: CouponCodeStatus | string | null): boolean {
   return status != null && CLAIMED_STATUSES.has(status as CouponCodeStatus);
+}
+
+/** True when a synced Shopify code must stay in FC (already used or no longer valid). */
+export function isCouponCodeSyncRemovalLocked(
+  status: CouponCodeStatus | string | null,
+): boolean {
+  return status != null && SYNC_REMOVAL_LOCKED_STATUSES.has(status as CouponCodeStatus);
 }
 
 export async function findCouponCodeById(
@@ -361,12 +373,20 @@ export async function deleteAvailableCouponCode(
   customerId: number,
   couponCodeId: string,
 ): Promise<boolean> {
+  return deleteUnredeemedCouponCode(customerId, couponCodeId);
+}
+
+/** Remove a synced code from FC when it has not been redeemed yet. */
+export async function deleteUnredeemedCouponCode(
+  customerId: number,
+  couponCodeId: string,
+): Promise<boolean> {
   const { data, error } = await getSupabase()
     .from("fc_coupon_code")
     .delete()
     .eq("customer_id", customerId)
     .eq("coupon_code_id", couponCodeId)
-    .eq("status", "available")
+    .in("status", ["available", "assigned"])
     .select("coupon_code_id")
     .maybeSingle();
 

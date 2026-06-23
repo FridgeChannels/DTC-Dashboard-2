@@ -1,11 +1,12 @@
 import { shopifyGraphql } from "../clients/shopify.client.js";
-import type {
-  CampaignStatus,
-  CouponDistributionMode,
-  DiscountTarget,
-  DiscountType,
-  FreeShippingRules,
-  ShopifyCombinesWith,
+import {
+  inferDistributionModeFromShopifyUsageLimit,
+  type CampaignStatus,
+  type CouponDistributionMode,
+  type DiscountTarget,
+  type DiscountType,
+  type FreeShippingRules,
+  type ShopifyCombinesWith,
 } from "../coupons/coupon.types.js";
 
 const COMBINES_WITH_FIELDS = `
@@ -25,7 +26,6 @@ const CODE_DISCOUNT_FIELDS = `
     endsAt
     appliesOncePerCustomer
     usageLimit
-    codesCount { count }
     ${COMBINES_WITH_FIELDS}
     customerGets {
       items {
@@ -57,7 +57,6 @@ const CODE_DISCOUNT_FIELDS = `
     endsAt
     appliesOncePerCustomer
     usageLimit
-    codesCount { count }
     ${COMBINES_WITH_FIELDS}
     destinationSelection {
       __typename
@@ -90,7 +89,6 @@ const CODE_DISCOUNT_FIELDS = `
     endsAt
     appliesOncePerCustomer
     usageLimit
-    codesCount { count }
     ${COMBINES_WITH_FIELDS}
     customerBuys {
       value {
@@ -342,7 +340,6 @@ function buildSnapshotBase(
   const status = mapShopifyStatus(String(codeDiscount.status ?? "ACTIVE"));
   const oncePerCustomer = Boolean(codeDiscount.appliesOncePerCustomer ?? true);
   const shopifyUsageLimit = parseNullableNumber(codeDiscount.usageLimit);
-  const distributionMode = inferDistributionModeFromShopify(codeDiscount);
 
   return {
     nodeId,
@@ -352,7 +349,7 @@ function buildSnapshotBase(
     status,
     oncePerCustomer,
     shopifyUsageLimit,
-    distributionMode,
+    distributionMode: inferDistributionModeFromShopifyUsageLimit(shopifyUsageLimit),
     combinesWith: parseCombinesWithFromShopify(codeDiscount),
     ...fields,
   };
@@ -362,22 +359,6 @@ function parseNullableNumber(value: unknown): number | null {
   if (value == null || value === "") return null;
   const n = Number(value);
   return Number.isNaN(n) ? null : n;
-}
-
-/**
- * Shopify usageLimit 语义取决于折扣码数量（codesCount）：
- * - codesCount = 1（Multi-use code）：usageLimit 为折扣总使用次数上限
- * - codesCount > 1（Single-use codes）：usageLimit 为每个折扣码各自的使用次数上限
- */
-export function inferDistributionModeFromShopify(
-  codeDiscount: Record<string, unknown>,
-): CouponDistributionMode {
-  const codesCount = codeDiscount.codesCount as { count?: number } | null | undefined;
-  const count = codesCount?.count;
-  if (typeof count === "number" && count === 1) {
-    return "shared_code";
-  }
-  return "unique_pool";
 }
 
 function parseCodeDiscount(

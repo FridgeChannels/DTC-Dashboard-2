@@ -735,6 +735,7 @@ table.data th, table.data td {
   text-align: left;
   padding: 11px 14px;
   border-bottom: 1px solid var(--line);
+  vertical-align: middle;
 }
 table.data th {
   font-weight: 500;
@@ -1454,13 +1455,12 @@ table.data td.tag {
 .module > .card + .card {
   margin-top: 16px;
 }
-.data .row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
+.data td.row-actions {
   text-align: right;
   white-space: nowrap;
+}
+.data td.row-actions .btn + .btn {
+  margin-left: 8px;
 }
 .cfg-input {
   width: 100%;
@@ -1765,13 +1765,13 @@ select.cfg-input-sm {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 16px;
   background: oklch(0.2 0.02 90 / 0.35);
   backdrop-filter: blur(4px);
 }
 .cfg-modal {
-  width: min(720px, 100%);
-  max-height: min(80vh, 760px);
+  width: min(880px, 100%);
+  max-height: min(94vh, 980px);
   display: flex;
   flex-direction: column;
   border-radius: var(--radius);
@@ -1785,23 +1785,98 @@ select.cfg-input-sm {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 20px;
+  padding: 18px 22px;
   border-bottom: 1px solid var(--line);
 }
 .cfg-modal-foot {
   border-bottom: 0;
   border-top: 1px solid var(--line);
+  background: var(--bg-elev);
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 .cfg-modal-head h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
+  line-height: 1.2;
+}
+.cfg-modal-title-block {
+  min-width: 0;
+}
+.cfg-modal-eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cfg-modal-subtitle {
+  margin: 4px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cfg-modal-body {
   padding: 16px 20px;
   overflow: auto;
 }
+.cfg-sync-codes-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 22px;
+  min-height: 0;
+}
+.cfg-sync-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+.cfg-sync-copy {
+  min-width: 0;
+}
+.cfg-sync-copy h4 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+.cfg-sync-copy .cfg-hint {
+  max-width: 560px;
+}
+.cfg-sync-codes-body .cfg-alert {
+  margin: 0;
+}
+.cfg-sync-table-wrap {
+  flex: 1 1 auto;
+  min-height: 520px;
+  max-height: min(64vh, 680px);
+  overflow: auto;
+}
+.sync-codes-table {
+  min-width: 620px;
+}
+.sync-codes-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.sync-codes-table th:first-child,
+.sync-codes-table td:first-child {
+  width: 44px;
+  padding-left: 12px;
+  padding-right: 8px;
+  text-align: center;
+}
 .sync-codes-table td {
   vertical-align: middle;
+}
+.sync-codes-table td.mono strong {
+  font-weight: 600;
 }
 .sync-codes-table td input[type="checkbox"] {
   display: block;
@@ -1821,6 +1896,65 @@ select.cfg-input-sm {
 .cfg-table-pager-label {
   font-size: 13px;
 }
+.cfg-sync-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+.cfg-sync-filter-label {
+  width: 100%;
+  font-size: 13px;
+  text-align: right;
+}
+.cfg-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+}
+.cfg-filter-chip.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-2));
+  color: var(--ink);
+}
+.cfg-filter-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.cfg-modal-foot-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.cfg-modal-foot-meta strong {
+  color: var(--ink);
+}
+.cfg-modal-foot-meta span::before {
+  content: "·";
+  margin-right: 8px;
+  color: var(--ink-3);
+}
+.cfg-modal-foot-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
 .sync-codes-table tr.synced td {
   opacity: 0.92;
 }
@@ -1832,7 +1966,8 @@ select.cfg-input-sm {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 12px 20px;
+  padding: 12px 22px;
+  background: var(--bg-2);
   border-bottom: 1px solid var(--line);
 }
 .cfg-modal-tab {

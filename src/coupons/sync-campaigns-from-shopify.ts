@@ -1,5 +1,10 @@
 import { resolveSecret } from "../clients/secrets.client.js";
-import type { FcCouponCampaign, FreeShippingRules, ShopifyCombinesWith } from "./coupon.types.js";
+import {
+  inferDistributionModeFromShopifyUsageLimit,
+  type FcCouponCampaign,
+  type FreeShippingRules,
+  type ShopifyCombinesWith,
+} from "./coupon.types.js";
 import { generateRandomSuffix, isFcCreatedCouponCampaign } from "./generate-code.js";
 import {
   fetchAllShopifyCodeDiscountSnapshots,
@@ -81,6 +86,23 @@ async function resolveImportCampaignKey(
   throw new Error(`Could not generate unique campaign key for Shopify discount ${nodeId}`);
 }
 
+export function mergeShopifySnapshotWithLocalCampaign(
+  local: FcCouponCampaign,
+  remote: ShopifyCampaignSnapshot,
+): ShopifyCampaignSnapshot {
+  const distributionMode = isFcCreatedCouponCampaign(local.campaign_key)
+    ? local.distribution_mode
+    : inferDistributionModeFromShopifyUsageLimit(remote.shopifyUsageLimit);
+
+  return {
+    ...remote,
+    distributionMode,
+    ...(isFcCreatedCouponCampaign(local.campaign_key)
+      ? { discountTarget: local.discount_target ?? remote.discountTarget }
+      : {}),
+  };
+}
+
 function campaignDiffers(
   local: FcCouponCampaign,
   remote: ShopifyCampaignSnapshot,
@@ -142,13 +164,7 @@ export async function syncCampaignsFromShopify(
       continue;
     }
 
-    const effectiveRemote = isFcCreatedCouponCampaign(local.campaign_key)
-      ? {
-          ...remote,
-          distributionMode: local.distribution_mode,
-          discountTarget: local.discount_target ?? remote.discountTarget,
-        }
-      : remote;
+    const effectiveRemote = mergeShopifySnapshotWithLocalCampaign(local, remote);
 
     if (campaignDiffers(local, effectiveRemote)) {
       await campaignRepo.applyShopifyCampaignSnapshot(

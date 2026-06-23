@@ -2,6 +2,7 @@ import * as klaviyoSegmentRepo from "../repositories/klaviyo-segment.repo.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
 import * as campaignSegmentRepo from "../repositories/coupon-campaign-segment.repo.js";
 import * as segmentConfigRepo from "../repositories/segment-coupon-config.repo.js";
+import type { FcCouponCampaign } from "../coupons/coupon.types.js";
 import type { SegmentDiscountType } from "../repositories/segment-coupon-config.repo.js";
 
 export interface SegmentCouponCampaignOption {
@@ -89,6 +90,45 @@ function uniqueTrimmed(values: string[] | undefined): string[] {
   return [...new Set((values ?? []).map((v) => v.trim()).filter(Boolean))];
 }
 
+function isSelectableSegmentDiscountCampaign(
+  campaign: Pick<FcCouponCampaign, "status">,
+): boolean {
+  return campaign.status === "active";
+}
+
+function toSegmentCouponCampaignOption(
+  campaign: FcCouponCampaign,
+): SegmentCouponCampaignOption {
+  return {
+    id: campaign.campaign_id,
+    key: campaign.campaign_key,
+    name: campaign.name,
+    discountType: campaign.discount_type,
+    value: campaign.value,
+    minPurchaseAmount: campaign.min_purchase_amount,
+    startsAt: campaign.starts_at,
+    endsAt: campaign.ends_at,
+    status: campaign.status,
+  };
+}
+
+function segmentStatusSortOrder(segmentActive: boolean, isProcessing: boolean): number {
+  if (isProcessing) return 1;
+  if (segmentActive) return 0;
+  return 2;
+}
+
+function compareSegmentCouponConfigItems(
+  a: SegmentCouponConfigItem,
+  b: SegmentCouponConfigItem,
+): number {
+  const statusDiff =
+    segmentStatusSortOrder(a.segmentActive, a.isProcessing) -
+    segmentStatusSortOrder(b.segmentActive, b.isProcessing);
+  if (statusDiff !== 0) return statusDiff;
+  return (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" });
+}
+
 /** 有已保存配置时保证恰好有一个默认 segment（按 created_at 最早者优先） */
 async function ensureDefaultSegmentConfig(
   customerId: number,
@@ -129,9 +169,14 @@ export async function listSegmentCouponConfig(
   ]);
 
   const configBySegment = new Map(configs.map((c) => [c.segment_id, c]));
+  const selectableCampaigns = campaigns.filter(isSelectableSegmentDiscountCampaign);
+  const selectableCampaignIds = new Set(
+    selectableCampaigns.map((campaign) => campaign.campaign_id),
+  );
   const campaignIdsBySegment = new Map<string, string[]>();
   for (const binding of bindings) {
     if (binding.status !== "active") continue;
+    if (!selectableCampaignIds.has(binding.campaign_id)) continue;
     const next = campaignIdsBySegment.get(binding.klaviyo_segment_id) ?? [];
     next.push(binding.campaign_id);
     campaignIdsBySegment.set(binding.klaviyo_segment_id, next);
@@ -158,20 +203,12 @@ export async function listSegmentCouponConfig(
     };
   });
 
+  items.sort(compareSegmentCouponConfigItems);
+
   return {
     customerId,
     discountType,
-    campaigns: campaigns.map((campaign) => ({
-      id: campaign.campaign_id,
-      key: campaign.campaign_key,
-      name: campaign.name,
-      discountType: campaign.discount_type,
-      value: campaign.value,
-      minPurchaseAmount: campaign.min_purchase_amount,
-      startsAt: campaign.starts_at,
-      endsAt: campaign.ends_at,
-      status: campaign.status,
-    })),
+    campaigns: selectableCampaigns.map(toSegmentCouponCampaignOption),
     items,
   };
 }
@@ -186,7 +223,11 @@ export async function saveSegmentCouponConfig(
   ]);
   const ownedSegmentIds = new Set(segments.map((s) => s.segment_id));
   const segmentNameById = new Map(segments.map((s) => [s.segment_id, s.name]));
-  const ownedCampaignIds = new Set(campaigns.map((c) => c.campaign_id));
+  const selectableCampaignIds = new Set(
+    campaigns
+      .filter(isSelectableSegmentDiscountCampaign)
+      .map((campaign) => campaign.campaign_id),
+  );
 
   for (const item of input.items) {
     if (!ownedSegmentIds.has(item.segmentId)) {
@@ -194,8 +235,10 @@ export async function saveSegmentCouponConfig(
     }
     const campaignIds = uniqueTrimmed(item.campaignIds);
     for (const campaignId of campaignIds) {
-      if (!ownedCampaignIds.has(campaignId)) {
-        throw new Error(`Campaign ${campaignId} does not belong to this brand. Refresh and try again.`);
+      if (!selectableCampaignIds.has(campaignId)) {
+        throw new Error(
+          `Campaign ${campaignId} is not available for segment binding. Refresh and try again.`,
+        );
       }
     }
     validateRatios(item);

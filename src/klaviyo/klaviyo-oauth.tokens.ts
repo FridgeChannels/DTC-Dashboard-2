@@ -10,7 +10,7 @@ import * as klaviyoConfigRepo from "../repositories/customer-klaviyo-config.repo
 import type { CustomerKlaviyoConfig } from "../coupons/coupon.types.js";
 
 const KLAVIYO_TOKEN_URL = "https://a.klaviyo.com/oauth/token";
-export const KLAVIYO_DEFAULT_SCOPES = "accounts:read segments:read events:read";
+export const KLAVIYO_DEFAULT_SCOPES = "accounts:read segments:read events:read metrics:read";
 
 const TOKEN_EXPIRY_BUFFER_MS = 60_000;
 

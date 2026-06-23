@@ -69,6 +69,29 @@ function buildTapUnlinkUrl({ sn, magnetId, redirectedFrom }) {
   return `${base}?${q.toString()}`;
 }
 
+function parsePositiveInt(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function sessionMatchesTargetMagnet(me, targetMagnetId) {
+  return targetMagnetId != null && me?.magnetId === targetMagnetId;
+}
+
+function sessionOwnsBoundMagnet(me, contextData) {
+  return (
+    contextData?.shopifyBound &&
+    contextData.boundShopifyCustomerId &&
+    me?.shopifyCustomerId === contextData.boundShopifyCustomerId
+  );
+}
+
+function redirectConsumerLoginSuccess(redirectedFrom) {
+  const target = buildConsumerReturnUrl(redirectedFrom, "success");
+  if (target) window.location.replace(target);
+  return Boolean(target);
+}
+
 function TapPage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const sn = useMemo(() => parseTapSn(), []);
@@ -189,9 +212,16 @@ function TapPage() {
           throw new Error("Missing magnet SN");
         }
 
+        const targetMagnetId = contextData?.magnetId ?? parsePositiveInt(magnetId);
+
+        let me = null;
         const meRes = await fetch("/api/consumer/me", { credentials: "include" });
         if (meRes.ok) {
-          if (action === "unlink") {
+          me = await meRes.json();
+        }
+
+        if (me && action === "unlink") {
+          if (sessionMatchesTargetMagnet(me, targetMagnetId)) {
             window.location.replace(
               buildShopifyUnlinkUrl({
                 sn,
@@ -201,19 +231,22 @@ function TapPage() {
             );
             return;
           }
-
-          if (redirectedFrom) {
-            const target = buildConsumerReturnUrl(redirectedFrom, "success");
-            if (target) {
-              window.location.replace(target);
+        } else if (me) {
+          if (
+            sessionMatchesTargetMagnet(me, targetMagnetId) ||
+            sessionOwnsBoundMagnet(me, contextData)
+          ) {
+            if (redirectedFrom && redirectConsumerLoginSuccess(redirectedFrom)) {
               return;
             }
+            throw new Error("Signed in, but no return URL was provided");
           }
-          throw new Error("Signed in, but no return URL was provided");
         }
 
         if (contextData?.shopifyBound && action !== "unlink") {
-          throw new Error(formatOAuthError("magnet_already_bound"));
+          if (!sessionOwnsBoundMagnet(me, contextData)) {
+            throw new Error(formatOAuthError("magnet_already_bound"));
+          }
         }
 
         if (cancelled) return;

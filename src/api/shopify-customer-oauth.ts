@@ -137,6 +137,16 @@ async function assertMagnetAvailableForBinding(
   const fcUserId = readConsumerSessionFcUserId(req);
   if (fcUserId && identity.fc_user_id === fcUserId) return;
 
+  if (fcUserId) {
+    const sessionIdentity = await fcUserIdentityRepo.findIdentityByFcUserId(fcUserId);
+    if (
+      sessionIdentity?.shopify_customer_id &&
+      sessionIdentity.shopify_customer_id === identity.shopify_customer_id
+    ) {
+      return;
+    }
+  }
+
   throw new MagnetAlreadyBoundError();
 }
 

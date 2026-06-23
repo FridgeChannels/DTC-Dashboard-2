@@ -18,6 +18,7 @@ export interface TapContext {
   customerId: number;
   shopDomain: string;
   shopifyBound: boolean;
+  boundShopifyCustomerId: string | null;
 }
 
 export async function resolveTapContextBySn(sn: string): Promise<TapContext> {
@@ -39,7 +40,8 @@ export async function resolveTapContextBySn(sn: string): Promise<TapContext> {
     );
   }
 
-  const shopifyBound = await fcUserIdentityRepo.isMagnetBoundToShopify(magnet.id);
+  const identity = await fcUserIdentityRepo.findLatestIdentityByMagnetId(magnet.id);
+  const shopifyBound = Boolean(identity?.shopify_customer_id);
 
   return {
     sn: normalizedSn,
@@ -47,5 +49,6 @@ export async function resolveTapContextBySn(sn: string): Promise<TapContext> {
     customerId: magnet.customer_id,
     shopDomain: config.shop_domain,
     shopifyBound,
+    boundShopifyCustomerId: identity?.shopify_customer_id ?? null,
   };
 }

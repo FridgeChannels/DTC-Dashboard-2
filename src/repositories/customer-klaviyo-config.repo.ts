@@ -2,7 +2,7 @@ import { getSupabase } from "../clients/supabase.client.js";
 import type { CustomerKlaviyoConfig } from "../coupons/coupon.types.js";
 
 const DEFAULT_API_REVISION = "2026-04-15";
-const DEFAULT_SCOPES = "accounts:read segments:read events:read metrics:read";
+const DEFAULT_SCOPES = "accounts:read segments:read events:read metrics:read profiles:read";
 
 export async function getKlaviyoConfigByCustomerId(
   customerId: number,

@@ -10,8 +10,7 @@ import * as klaviyoConfigRepo from "../repositories/customer-klaviyo-config.repo
 import type { CustomerKlaviyoConfig } from "../coupons/coupon.types.js";
 
 const KLAVIYO_TOKEN_URL = "https://a.klaviyo.com/oauth/token";
-export const KLAVIYO_DEFAULT_SCOPES =
-  "accounts:read profiles:read segments:read events:read metrics:read";
+export const KLAVIYO_DEFAULT_SCOPES = "accounts:read segments:read events:read";
 
 const TOKEN_EXPIRY_BUFFER_MS = 60_000;
 
@@ -38,10 +37,8 @@ function getKlaviyoOAuthAppCredentials(): { clientId: string; clientSecret: stri
   };
 }
 
-export function resolveOAuthScopes(config: CustomerKlaviyoConfig | null): string {
-  const defaults = KLAVIYO_DEFAULT_SCOPES.split(/\s+/);
-  const existing = (config?.scopes?.trim() || "").split(/\s+/).filter(Boolean);
-  return [...new Set([...defaults, ...existing])].join(" ");
+export function resolveOAuthScopes(_config: CustomerKlaviyoConfig | null): string {
+  return KLAVIYO_DEFAULT_SCOPES;
 }
 
 export function hasKlaviyoAccountsReadScope(scopes: string | null | undefined): boolean {

@@ -2070,7 +2070,7 @@ function BrandConfigPage({ section = "shopify" }) {
       <div className="cfg-page">
         <CfgSection
           title="Step 1 Authorization"
-          desc="Connect your store via Admin OAuth. FridgeChannel uses this to read orders and manage discounts."
+          desc="Connect your store via Admin OAuth. FridgeChannel uses this to manage discounts."
         >
           {shopify.hasAccessToken && (
             <div className="cfg-alert pos" style={{ marginBottom: 16 }}>
@@ -2192,7 +2192,7 @@ function BrandConfigPage({ section = "shopify" }) {
       <div className="cfg-page">
         <CfgSection
           title="Klaviyo OAuth"
-          desc="Connect Klaviyo so FridgeChannel can read profiles and segments for coupon targeting."
+          desc="Authorize FridgeChannel to access: View account details, View events, and View segments and segment memberships."
         >
           {klaviyo.hasOAuthToken && (
             <div className={`cfg-alert ${klaviyo.tokenExpired ? "warn" : "pos"}`} style={{ marginBottom: 16 }}>
@@ -2200,11 +2200,6 @@ function BrandConfigPage({ section = "shopify" }) {
                 <span className="d" />
                 {klaviyo.tokenExpired ? "Token expired" : "Authorized"}
               </span>
-              {klaviyo.tokenExpiresAt && (
-                <span className="mono muted">
-                  Token expires: {new Date(klaviyo.tokenExpiresAt).toLocaleString()}
-                </span>
-              )}
             </div>
           )}
 

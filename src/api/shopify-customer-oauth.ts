@@ -34,6 +34,14 @@ import {
 
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000;
 const CUSTOMER_CALLBACK_PATH = "/shopify/customer/callback";
+const MAGNET_ALREADY_BOUND_ERROR = "magnet_already_bound";
+
+export class MagnetAlreadyBoundError extends Error {
+  constructor() {
+    super(MAGNET_ALREADY_BOUND_ERROR);
+    this.name = "MagnetAlreadyBoundError";
+  }
+}
 
 interface CustomerOAuthSession {
   shopDomain: string;
@@ -103,6 +111,33 @@ function buildTapRedirect(input: {
 
   if (input.shop) params.set("shop", input.shop);
   return `/tap?${params.toString()}`;
+}
+
+function isUnlinkOAuthFlow(redirectedFrom: string | null): boolean {
+  if (!redirectedFrom) return false;
+
+  try {
+    const parsed = new URL(redirectedFrom);
+    return parsed.searchParams.get("action") === "unlink";
+  } catch {
+    return redirectedFrom.includes("action=unlink");
+  }
+}
+
+async function assertMagnetAvailableForBinding(
+  req: IncomingMessage,
+  magnetId: number | null,
+  redirectedFrom: string | null,
+): Promise<void> {
+  if (magnetId == null || isUnlinkOAuthFlow(redirectedFrom)) return;
+
+  const identity = await fcUserIdentityRepo.findLatestIdentityByMagnetId(magnetId);
+  if (!identity?.shopify_customer_id) return;
+
+  const fcUserId = readConsumerSessionFcUserId(req);
+  if (fcUserId && identity.fc_user_id === fcUserId) return;
+
+  throw new MagnetAlreadyBoundError();
 }
 
 function buildPostAuthRedirect(input: {
@@ -212,7 +247,7 @@ async function getCustomerOAuthAppConfig(shop: string): Promise<{
 }
 
 export async function handleShopifyCustomerOAuthStart(
-  _req: IncomingMessage,
+  req: IncomingMessage,
   res: ServerResponse,
   url: URL,
 ): Promise<void> {
@@ -228,6 +263,7 @@ export async function handleShopifyCustomerOAuthStart(
       tagId,
       magnetIdParam,
     });
+    await assertMagnetAvailableForBinding(req, entry.magnetId, redirectedFrom);
     const shop = entry.shop;
     const oauthApp = await getCustomerOAuthAppConfig(shop);
 
@@ -370,6 +406,16 @@ export async function handleShopifyCustomerOAuthCallback(
 
     if (session.magnetId == null) {
       throw new Error("magnet_id is required to bind fc_user_identity");
+    }
+
+    const existingIdentity = await fcUserIdentityRepo.findLatestIdentityByMagnetId(
+      session.magnetId,
+    );
+    if (
+      existingIdentity?.shopify_customer_id &&
+      existingIdentity.shopify_customer_id !== profile.id
+    ) {
+      throw new MagnetAlreadyBoundError();
     }
 
     const tokenExpiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();

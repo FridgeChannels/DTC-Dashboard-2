@@ -11,6 +11,13 @@ function parseTapSn() {
   return params.get("sn")?.trim().toUpperCase() ?? "";
 }
 
+function formatOAuthError(message) {
+  if (message === "magnet_already_bound") {
+    return "This magnet is already linked to another Shopify account.";
+  }
+  return message;
+}
+
 function buildConsumerReturnUrl(redirectedFrom, login, error) {
   try {
     const target = new URL(redirectedFrom);
@@ -115,7 +122,7 @@ function TapPage() {
       const target = buildConsumerReturnUrl(
         redirectedFrom,
         "error",
-        decodeURIComponent(loginError),
+        formatOAuthError(decodeURIComponent(loginError)),
       );
       if (target) window.location.replace(target);
     }
@@ -154,7 +161,9 @@ function TapPage() {
 
       try {
         if (loginStatus === "error") {
-          throw new Error(decodeURIComponent(loginError || "Shopify sign-in failed"));
+          throw new Error(
+            formatOAuthError(decodeURIComponent(loginError || "Shopify sign-in failed")),
+          );
         }
         if (unlinkStatus === "error") {
           throw new Error(decodeURIComponent(unlinkError || "Shopify unlink failed"));
@@ -162,10 +171,11 @@ function TapPage() {
 
         let resolvedShop = shop;
         let resolvedAppHost = shopifyAppHost;
+        let contextData = null;
 
         if (sn) {
           const contextRes = await fetch(`/api/tap/context?sn=${encodeURIComponent(sn)}`);
-          const contextData = await contextRes.json();
+          contextData = await contextRes.json();
           if (!contextRes.ok) {
             throw new Error(contextData.error || "Magnet not found");
           }
@@ -200,6 +210,10 @@ function TapPage() {
             }
           }
           throw new Error("Signed in, but no return URL was provided");
+        }
+
+        if (contextData?.shopifyBound && action !== "unlink") {
+          throw new Error(formatOAuthError("magnet_already_bound"));
         }
 
         if (cancelled) return;
@@ -241,13 +255,15 @@ function TapPage() {
       <div className="tap-card">
         <div className="tap-alert error">{error || "Could not start Shopify sign-in"}</div>
         <div className="tap-actions">
-          <button
-            type="button"
-            className="tap-btn shopify"
-            onClick={() => startOAuth(shopDomain)}
-          >
-            Sign in with Shopify
-          </button>
+          {action !== "unlink" && !error?.includes("already linked") ? (
+            <button
+              type="button"
+              className="tap-btn shopify"
+              onClick={() => startOAuth(shopDomain)}
+            >
+              Sign in with Shopify
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

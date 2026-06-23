@@ -31,6 +31,11 @@ export async function findLatestIdentityByMagnetId(
   return data as FcUserIdentityRow | null;
 }
 
+export async function isMagnetBoundToShopify(magnetId: number): Promise<boolean> {
+  const identity = await findLatestIdentityByMagnetId(magnetId);
+  return Boolean(identity?.shopify_customer_id);
+}
+
 export async function bindMagnetToIdentity(
   fcUserId: string,
   magnetId: number,

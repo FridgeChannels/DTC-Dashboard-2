@@ -22,6 +22,7 @@ export async function handleGetTapContext(
       magnetId: context.magnetId,
       customerId: context.customerId,
       shopDomain: context.shopDomain,
+      shopifyBound: context.shopifyBound,
       shopifyAppHost: env.shopifyAppHost,
     });
   } catch (err) {

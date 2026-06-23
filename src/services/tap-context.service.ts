@@ -1,3 +1,4 @@
+import * as fcUserIdentityRepo from "../repositories/fc-user-identity.repo.js";
 import * as magnetRepo from "../repositories/magnet.repo.js";
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
 
@@ -16,6 +17,7 @@ export interface TapContext {
   magnetId: number;
   customerId: number;
   shopDomain: string;
+  shopifyBound: boolean;
 }
 
 export async function resolveTapContextBySn(sn: string): Promise<TapContext> {
@@ -37,10 +39,13 @@ export async function resolveTapContextBySn(sn: string): Promise<TapContext> {
     );
   }
 
+  const shopifyBound = await fcUserIdentityRepo.isMagnetBoundToShopify(magnet.id);
+
   return {
     sn: normalizedSn,
     magnetId: magnet.id,
     customerId: magnet.customer_id,
     shopDomain: config.shop_domain,
+    shopifyBound,
   };
 }

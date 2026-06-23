@@ -37,6 +37,73 @@ const I = {
       />
     </svg>
   ),
+  shopify: ({ size = 16 } = {}) => (
+    <img
+      src="assets/shopify-icon.png"
+      alt=""
+      width={size}
+      height={size}
+      aria-hidden="true"
+      className="shopify-brand-icon"
+    />
+  ),
+  klaviyo: ({ height = 14 } = {}) => (
+    <img
+      src="assets/klaviyo-logo.png"
+      alt=""
+      height={height}
+      aria-hidden="true"
+      className="klaviyo-brand-icon"
+    />
+  ),
+  // ---- 侧边导航图标（统一 16 视框、线性风格）----
+  navDashboard: ({ size = 16 } = {}) => (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+      <rect x="2" y="2" width="5" height="5" rx="1" />
+      <rect x="9" y="2" width="5" height="5" rx="1" />
+      <rect x="2" y="9" width="5" height="5" rx="1" />
+      <rect x="9" y="9" width="5" height="5" rx="1" />
+    </svg>
+  ),
+  navBrand: ({ size = 16 } = {}) => (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">
+      <path d="M8.5 2 H13 a1 1 0 0 1 1 1 V7.5 L8 13.5 a1 1 0 0 1-1.4 0 L2.5 9.4 a1 1 0 0 1 0-1.4 L8.5 2 Z" />
+      <circle cx="10.7" cy="5.3" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  navProduct: ({ size = 16 } = {}) => (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">
+      <path d="M8 2 L13.5 5 V11 L8 14 L2.5 11 V5 Z" />
+      <path d="M2.5 5 L8 8 L13.5 5 M8 8 V14" />
+    </svg>
+  ),
+  navCoupons: ({ size = 16 } = {}) => (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+      <path d="M2 5.2 H14 V7 a1.3 1.3 0 0 0 0 2 V11 H2 V9 a1.3 1.3 0 0 0 0-2 Z" />
+      <path d="M7 5.2 V11" strokeDasharray="1.4 1.4" />
+    </svg>
+  ),
+  navSegments: ({ size = 16 } = {}) => (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">
+      <circle cx="6" cy="6" r="2.2" />
+      <path d="M2.3 13 C2.3 10.4 4 9.3 6 9.3 C8 9.3 9.7 10.4 9.7 13" />
+      <path d="M10.5 4.2 a2.1 2.1 0 0 1 0 3.9" />
+      <path d="M11 9.5 c1.7 0.2 2.8 1.4 2.8 3.5" />
+    </svg>
+  ),
+  navSurveys: ({ size = 16 } = {}) => (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">
+      <rect x="3" y="3" width="10" height="11" rx="1.4" />
+      <path d="M6 2.3 H10 V4.3 H6 Z" />
+      <path d="M5.6 7.2 H10.4 M5.6 9.6 H10.4 M5.6 12 H8.6" />
+    </svg>
+  ),
+  navAccounts: ({ size = 16 } = {}) => (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">
+      <circle cx="8" cy="5.6" r="2.5" />
+      <path d="M3 13.6 C3 10.7 5.2 9.3 8 9.3 C10.8 9.3 13 10.7 13 13.6" />
+    </svg>
+  ),
 };
 window.I = I;
 
@@ -356,10 +423,10 @@ function CfgSection({ title, sub, desc, action, children }) {
         <header className="cfg-section-head">
           <div className="cfg-section-titles">
             {title && <h2 className="cfg-section-title">{title}</h2>}
-            {sub && <div className="cfg-section-sub">{sub}</div>}
-            {desc && <div className="cfg-section-desc">{desc}</div>}
           </div>
           {action && <div className="cfg-section-action">{action}</div>}
+          {sub && <div className="cfg-section-sub">{sub}</div>}
+          {desc && <div className="cfg-section-desc">{desc}</div>}
         </header>
       )}
       {children}

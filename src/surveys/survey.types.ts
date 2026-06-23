@@ -1,40 +1,73 @@
-export type SurveyCampaignStatus =
+// =====================================================================
+// Survey 模块类型定义 — 对齐 docs/survey模块的说明文档
+// =====================================================================
+
+/** Survey 状态机：§11 */
+export type SurveyStatus =
   | "draft"
-  | "review"
-  | "ready_to_publish"
   | "scheduled"
-  | "active"
-  | "paused"
-  | "ended"
-  | "archived";
+  | "open"
+  | "closed";
 
-export type SurveyFrequencyCap =
-  | "once_per_user"
-  | "once_per_day"
-  | "once_per_round";
+/** Survey purpose 选项：§7.2 */
+export type SurveyPurpose =
+  | "preference"
+  | "reward_preference"
+  | "product_discovery"
+  | "feedback"
+  | "vote"
+  | "other";
 
-export type SurveyScopeType = "all_users" | "selected_segments";
+/** Audience 类型：§8.1 */
+export type SurveyAudienceType =
+  | "all_users"
+  | "logged_in_users"
+  | "not_logged_in_users"
+  | "klaviyo_segment";
 
-export type SurveyQuestionOrderPolicy = "fixed_order" | "random";
+/** Schedule start / end 类型：§9 */
+export type SurveyStartType = "start_now" | "start_later";
+export type SurveyEndType = "no_end_date" | "end_at_specific_time";
 
+/** 问题类型：§5.2 MVP */
 export type SurveyQuestionType =
   | "single_choice"
   | "multiple_choice"
-  | "rating"
-  | "yes_no"
-  | "short_text";
+  | "text_input"
+  | "rating";
 
+/** 选项 / 问题启用状态 */
 export type SurveyEntityStatus = "active" | "inactive";
 
+/** survey_events.event_type：§21.7 */
+export type SurveyEventType = "viewed" | "started" | "submitted" | "exited";
+
+/** survey_responses.completion_status */
+export type SurveyResponseStatus = "in_progress" | "submitted" | "abandoned";
+
+// ---------- 旧字段兼容（保留用于迁移期） ----------
+export type SurveyFrequencyCap = "once_per_user" | "once_per_day" | "once_per_round";
+export type SurveyQuestionOrderPolicy = "fixed_order" | "random";
+
+// ---------- DB 行类型 ----------
 export interface QSurveyCampaignRow {
   id: string;
   customer_id: number;
+  // 新字段
+  survey_name: string | null;
+  survey_purpose: string | null;
+  internal_note: string | null;
+  one_response_per_user: boolean;
+  audience_type: SurveyAudienceType;
+  start_type: SurveyStartType;
+  end_type: SurveyEndType;
+  status: SurveyStatus;
+  // 旧字段（保留兼容）
   name: string;
   description: string | null;
   intro_text: string | null;
   campaign_goal: string;
-  scope_type: SurveyScopeType;
-  status: SurveyCampaignStatus;
+  scope_type: "all_users" | "selected_segments";
   start_at: string | null;
   end_at: string | null;
   priority: number;
@@ -87,4 +120,24 @@ export interface QSurveyQuestionOptionRow {
   status: SurveyEntityStatus;
   created_at: string;
   updated_at: string;
+}
+
+export interface QSurveyResponseRow {
+  id: string;
+  survey_id: string;
+  user_id: string | null;
+  answers_json: Record<string, unknown>;
+  started_at: string | null;
+  submitted_at: string | null;
+  completion_status: SurveyResponseStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QSurveyEventRow {
+  id: string;
+  survey_id: string;
+  user_id: string | null;
+  event_type: SurveyEventType;
+  created_at: string;
 }

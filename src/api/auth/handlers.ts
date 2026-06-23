@@ -17,17 +17,22 @@ function sleep(ms: number): Promise<void> {
 }
 
 function redirect(res: ServerResponse, location: string): void {
-  res.writeHead(302, { Location: location });
+  const headers: Record<string, string | string[]> = { Location: location };
+  const setCookie = res.getHeader("Set-Cookie");
+  if (setCookie) headers["Set-Cookie"] = setCookie as string | string[];
+  res.writeHead(302, headers);
   res.end();
 }
 
 function siteOrigin(req: IncomingMessage): string {
+  const host = req.headers["x-forwarded-host"] ?? req.headers.host;
+  if (host) {
+    const proto = req.headers["x-forwarded-proto"] ?? "http";
+    return `${proto}://${host}`;
+  }
   const configured = env.publicSiteUrl;
   if (configured) return configured.replace(/\/$/, "");
-
-  const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? `localhost:${env.port}`;
-  const proto = req.headers["x-forwarded-proto"] ?? "http";
-  return `${proto}://${host}`;
+  return `http://localhost:${env.port}`;
 }
 
 function clearPostLoginRedirectCookie(res: ServerResponse): void {
@@ -253,6 +258,7 @@ export async function handleAuthOAuthStart(
       provider: provider as "google",
       options: {
         redirectTo: `${origin}/api/auth/callback`,
+        skipBrowserRedirect: true,
       },
     });
 
@@ -260,6 +266,9 @@ export async function handleAuthOAuthStart(
       errorJson(res, 400, error?.message ?? "Failed to start OAuth sign-in");
       return;
     }
+
+    console.log("[auth/oauth-start] redirecting to:", data.url);
+    console.log("[auth/oauth-start] Set-Cookie headers:", JSON.stringify(res.getHeader("Set-Cookie")));
 
     redirect(res, data.url);
   } catch (err) {
@@ -303,12 +312,16 @@ export async function handleAuthCallback(
     const otpType = url.searchParams.get("type");
     const code = url.searchParams.get("code");
 
+    console.log("[auth/callback] query:", { tokenHash: !!tokenHash, otpType, code: !!code });
+    console.log("[auth/callback] cookies:", req.headers.cookie || "(none)");
+
     if (tokenHash && otpType && EMAIL_OTP_TYPES.has(otpType)) {
       const { error } = await supabase.auth.verifyOtp({
         token_hash: tokenHash,
         type: otpType as "signup" | "invite" | "magiclink" | "recovery" | "email_change" | "email",
       });
       if (error) {
+        console.log("[auth/callback] verifyOtp error:", error.message);
         redirect(res, `/login?error=${encodeURIComponent(error.message)}`);
         return;
       }
@@ -319,6 +332,7 @@ export async function handleAuthCallback(
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) {
+        console.log("[auth/callback] exchangeCodeForSession error:", error.message);
         redirect(res, `/login?error=${encodeURIComponent(error.message)}`);
         return;
       }
@@ -329,6 +343,7 @@ export async function handleAuthCallback(
     redirect(res, "/login?error=invalid_callback");
   } catch (err) {
     const message = err instanceof Error ? err.message : "callback_failed";
+    console.log("[auth/callback] exception:", message);
     redirect(res, `/login?error=${encodeURIComponent(message)}`);
   }
 }

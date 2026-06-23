@@ -9,15 +9,21 @@ import {
   updateSurveyCampaignForCustomer,
   publishSurveyCampaignForCustomer,
   transitionSurveyCampaignForCustomer,
-  type SurveyCampaignTransition,
+  duplicateSurveyCampaignForCustomer,
   createSurveyQuestionForCustomer,
+  replaceSurveyQuestionsForCustomer,
   updateSurveyQuestionForCustomer,
+  deleteSurveyQuestionForCustomer,
   createSurveyOptionForCustomer,
   updateSurveyOptionForCustomer,
   listKlaviyoSegmentOptions,
+  isKlaviyoConnected,
+  runPublishCheck,
+  type SurveyCampaignTransition,
   type CreateSurveyCampaignRequest,
   type UpdateSurveyCampaignRequest,
   type CreateSurveyQuestionRequest,
+  type ReplaceSurveyQuestionInput,
   type UpdateSurveyQuestionRequest,
   type CreateSurveyOptionRequest,
   type UpdateSurveyOptionRequest,
@@ -28,11 +34,19 @@ import {
 } from "../services/survey-dashboard.service.js";
 
 function parseDashboardDateQuery(url: URL) {
-  const startAt = url.searchParams.get("start_at")?.trim() || null;
-  const endAt = url.searchParams.get("end_at")?.trim() || null;
-  return { startAt, endAt };
+  return {
+    startAt: url.searchParams.get("start_at")?.trim() || null,
+    endAt: url.searchParams.get("end_at")?.trim() || null,
+  };
 }
 
+function authStatus(err: unknown): number {
+  return err instanceof AuthError ? 401 : 400;
+}
+
+// =====================================================================
+// List
+// =====================================================================
 export async function handleListSurveyCampaigns(
   req: IncomingMessage,
   res: ServerResponse,
@@ -42,11 +56,13 @@ export async function handleListSurveyCampaigns(
     const campaigns = await listSurveyCampaignsForCustomer(customerId);
     json(res, 200, { campaigns });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to load survey campaigns"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to load surveys"));
   }
 }
 
+// =====================================================================
+// Detail
+// =====================================================================
 export async function handleGetSurveyCampaignDetail(
   req: IncomingMessage,
   res: ServerResponse,
@@ -55,49 +71,70 @@ export async function handleGetSurveyCampaignDetail(
   try {
     const campaignId = url.searchParams.get("id")?.trim();
     if (!campaignId) throw new Error("id is required");
-
     const customerId = await getRequestCustomerId(req, res);
     const campaign = await getSurveyCampaignDetailForCustomer(customerId, campaignId);
     json(res, 200, { campaign });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to load survey campaign"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to load survey"));
   }
 }
 
+// =====================================================================
+// Publish check
+// =====================================================================
+export async function handleGetSurveyPublishCheck(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+): Promise<void> {
+  try {
+    const campaignId = url.searchParams.get("id")?.trim();
+    if (!campaignId) throw new Error("id is required");
+    const customerId = await getRequestCustomerId(req, res);
+    const result = await runPublishCheck(customerId, campaignId);
+    json(res, 200, result);
+  } catch (err) {
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to run publish check"));
+  }
+}
+
+// =====================================================================
+// Klaviyo segments + connection
+// =====================================================================
 export async function handleListSurveyKlaviyoSegments(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
   try {
     const customerId = await getRequestCustomerId(req, res);
-    const segments = await listKlaviyoSegmentOptions(customerId);
-    json(res, 200, { segments });
+    const [segments, connected] = await Promise.all([
+      listKlaviyoSegmentOptions(customerId),
+      isKlaviyoConnected(customerId),
+    ]);
+    json(res, 200, { segments, klaviyoConnected: connected });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to load Klaviyo segments"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to load Klaviyo segments"));
   }
 }
 
+// =====================================================================
+// Create
+// =====================================================================
 export async function handleCreateSurveyCampaign(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
   try {
     const body = await readJsonBody<{
-      name?: string;
-      description?: string | null;
-      intro_text?: string | null;
-      campaign_goal?: string;
-      scope_type?: CreateSurveyCampaignRequest["scopeType"];
+      survey_name?: string;
+      survey_purpose?: string;
+      internal_note?: string | null;
+      one_response_per_user?: boolean;
+      audience_type?: CreateSurveyCampaignRequest["audienceType"];
+      start_type?: CreateSurveyCampaignRequest["startType"];
       start_at?: string | null;
+      end_type?: CreateSurveyCampaignRequest["endType"];
       end_at?: string | null;
-      priority?: number;
-      question_order_policy?: CreateSurveyCampaignRequest["questionOrderPolicy"];
-      max_questions_per_user?: number | null;
-      allow_skip?: boolean;
-      frequency_cap?: CreateSurveyCampaignRequest["frequencyCap"];
-      timezone?: string | null;
       segments?: Array<{
         klaviyo_segment_id: string;
         klaviyo_segment_name?: string | null;
@@ -106,19 +143,15 @@ export async function handleCreateSurveyCampaign(
     }>(req);
 
     const input: CreateSurveyCampaignRequest = {
-      name: body.name ?? "",
-      description: body.description,
-      introText: body.intro_text,
-      campaignGoal: body.campaign_goal ?? "",
-      scopeType: body.scope_type,
+      surveyName: body.survey_name,
+      surveyPurpose: body.survey_purpose as CreateSurveyCampaignRequest["surveyPurpose"],
+      internalNote: body.internal_note,
+      oneResponsePerUser: body.one_response_per_user,
+      audienceType: body.audience_type,
+      startType: body.start_type,
       startAt: body.start_at,
+      endType: body.end_type,
       endAt: body.end_at,
-      priority: body.priority,
-      questionOrderPolicy: body.question_order_policy,
-      maxQuestionsPerUser: body.max_questions_per_user,
-      allowSkip: body.allow_skip,
-      frequencyCap: body.frequency_cap,
-      timezone: body.timezone,
       segments: body.segments?.map((s) => ({
         klaviyoSegmentId: s.klaviyo_segment_id,
         klaviyoSegmentName: s.klaviyo_segment_name,
@@ -130,11 +163,13 @@ export async function handleCreateSurveyCampaign(
     const campaign = await createSurveyCampaignForCustomer(customerId, input);
     json(res, 201, { campaign });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to create survey campaign"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to create survey"));
   }
 }
 
+// =====================================================================
+// Update (configure)
+// =====================================================================
 export async function handleUpdateSurveyCampaign(
   req: IncomingMessage,
   res: ServerResponse,
@@ -142,20 +177,15 @@ export async function handleUpdateSurveyCampaign(
   try {
     const body = await readJsonBody<{
       campaign_id?: string;
-      name?: string;
-      description?: string | null;
-      intro_text?: string | null;
-      campaign_goal?: string;
-      scope_type?: UpdateSurveyCampaignRequest["scopeType"];
-      status?: UpdateSurveyCampaignRequest["status"];
+      survey_name?: string;
+      survey_purpose?: string;
+      internal_note?: string | null;
+      one_response_per_user?: boolean;
+      audience_type?: UpdateSurveyCampaignRequest["audienceType"];
+      start_type?: UpdateSurveyCampaignRequest["startType"];
       start_at?: string | null;
+      end_type?: UpdateSurveyCampaignRequest["endType"];
       end_at?: string | null;
-      priority?: number;
-      question_order_policy?: UpdateSurveyCampaignRequest["questionOrderPolicy"];
-      max_questions_per_user?: number | null;
-      allow_skip?: boolean;
-      frequency_cap?: UpdateSurveyCampaignRequest["frequencyCap"];
-      timezone?: string | null;
       segments?: Array<{
         klaviyo_segment_id: string;
         klaviyo_segment_name?: string | null;
@@ -165,20 +195,15 @@ export async function handleUpdateSurveyCampaign(
 
     const input: UpdateSurveyCampaignRequest = {
       campaignId: body.campaign_id ?? "",
-      name: body.name,
-      description: body.description,
-      introText: body.intro_text,
-      campaignGoal: body.campaign_goal,
-      scopeType: body.scope_type,
-      status: body.status,
+      surveyName: body.survey_name,
+      surveyPurpose: body.survey_purpose as UpdateSurveyCampaignRequest["surveyPurpose"],
+      internalNote: body.internal_note,
+      oneResponsePerUser: body.one_response_per_user,
+      audienceType: body.audience_type,
+      startType: body.start_type,
       startAt: body.start_at,
+      endType: body.end_type,
       endAt: body.end_at,
-      priority: body.priority,
-      questionOrderPolicy: body.question_order_policy,
-      maxQuestionsPerUser: body.max_questions_per_user,
-      allowSkip: body.allow_skip,
-      frequencyCap: body.frequency_cap,
-      timezone: body.timezone,
       segments: body.segments?.map((s) => ({
         klaviyoSegmentId: s.klaviyo_segment_id,
         klaviyoSegmentName: s.klaviyo_segment_name,
@@ -190,11 +215,13 @@ export async function handleUpdateSurveyCampaign(
     const campaign = await updateSurveyCampaignForCustomer(customerId, input);
     json(res, 200, { campaign });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to update survey campaign"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to update survey"));
   }
 }
 
+// =====================================================================
+// Publish
+// =====================================================================
 export async function handlePublishSurveyCampaign(
   req: IncomingMessage,
   res: ServerResponse,
@@ -202,24 +229,22 @@ export async function handlePublishSurveyCampaign(
   try {
     const body = await readJsonBody<{ campaign_id?: string }>(req);
     const customerId = await getRequestCustomerId(req, res);
-    const campaign = await publishSurveyCampaignForCustomer(
-      customerId,
-      body.campaign_id ?? "",
-    );
+    const campaign = await publishSurveyCampaignForCustomer(customerId, body.campaign_id ?? "");
     json(res, 200, { campaign });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to publish survey campaign"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to publish survey"));
   }
 }
 
+// =====================================================================
+// Transition (close / reopen / unschedule / duplicate / delete)
+// =====================================================================
 const VALID_TRANSITIONS: SurveyCampaignTransition[] = [
-  "submit_review",
-  "mark_ready",
-  "pause",
-  "resume",
-  "end",
-  "archive",
+  "close",
+  "reopen",
+  "unschedule",
+  "duplicate",
+  "delete",
 ];
 
 export async function handleTransitionSurveyCampaign(
@@ -233,18 +258,41 @@ export async function handleTransitionSurveyCampaign(
       throw new Error(`action must be one of: ${VALID_TRANSITIONS.join(", ")}`);
     }
     const customerId = await getRequestCustomerId(req, res);
-    const campaign = await transitionSurveyCampaignForCustomer(
+    const result = await transitionSurveyCampaignForCustomer(
       customerId,
       body.campaign_id ?? "",
       action,
     );
-    json(res, 200, { campaign });
+    if ("deleted" in result) {
+      json(res, 200, { deleted: true });
+    } else {
+      json(res, 200, { campaign: result });
+    }
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to update campaign status"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to update survey status"));
   }
 }
 
+// =====================================================================
+// Duplicate (dedicated endpoint)
+// =====================================================================
+export async function handleDuplicateSurveyCampaign(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const body = await readJsonBody<{ campaign_id?: string }>(req);
+    const customerId = await getRequestCustomerId(req, res);
+    const campaign = await duplicateSurveyCampaignForCustomer(customerId, body.campaign_id ?? "");
+    json(res, 201, { campaign });
+  } catch (err) {
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to duplicate survey"));
+  }
+}
+
+// =====================================================================
+// Questions
+// =====================================================================
 export async function handleCreateSurveyQuestion(
   req: IncomingMessage,
   res: ServerResponse,
@@ -258,6 +306,15 @@ export async function handleCreateSurveyQuestion(
       display_order?: number;
       is_required?: boolean;
       allow_skip?: boolean;
+      options?: Array<{
+        label: string;
+        value?: string;
+        is_other_option?: boolean;
+        allow_text_input?: boolean;
+        other_text_required?: boolean;
+        text_input_placeholder?: string | null;
+        max_text_length?: number;
+      }>;
     }>(req);
 
     const input: CreateSurveyQuestionRequest = {
@@ -268,14 +325,79 @@ export async function handleCreateSurveyQuestion(
       displayOrder: body.display_order,
       isRequired: body.is_required,
       allowSkip: body.allow_skip,
+      options: body.options?.map((o) => ({
+        label: o.label,
+        value: o.value,
+        isOtherOption: o.is_other_option,
+        allowTextInput: o.allow_text_input,
+        otherTextRequired: o.other_text_required,
+        textInputPlaceholder: o.text_input_placeholder,
+        maxTextLength: o.max_text_length,
+      })),
     };
 
     const customerId = await getRequestCustomerId(req, res);
     const campaign = await createSurveyQuestionForCustomer(customerId, input);
     json(res, 201, { campaign });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to create question"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to create question"));
+  }
+}
+
+export async function handleReplaceSurveyQuestions(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const body = await readJsonBody<{
+      campaign_id?: string;
+      questions?: Array<{
+        id?: string;
+        question_text?: string;
+        question_type?: ReplaceSurveyQuestionInput["questionType"];
+        rating_scale?: number | null;
+        is_required?: boolean;
+        allow_skip?: boolean;
+        options?: Array<{
+          id?: string;
+          label?: string;
+          value?: string;
+          is_other_option?: boolean;
+          allow_text_input?: boolean;
+          other_text_required?: boolean;
+          text_input_placeholder?: string | null;
+          max_text_length?: number;
+        }>;
+      }>;
+    }>(req);
+
+    const questions: ReplaceSurveyQuestionInput[] = (body.questions ?? []).map((q) => ({
+      id: q.id,
+      questionText: q.question_text ?? "",
+      questionType: q.question_type,
+      ratingScale: q.rating_scale,
+      isRequired: q.is_required,
+      allowSkip: q.allow_skip,
+      options: (q.options ?? []).map((o) => ({
+        label: o.label ?? "",
+        value: o.value,
+        isOtherOption: o.is_other_option,
+        allowTextInput: o.allow_text_input,
+        otherTextRequired: o.other_text_required,
+        textInputPlaceholder: o.text_input_placeholder,
+        maxTextLength: o.max_text_length,
+      })),
+    }));
+
+    const customerId = await getRequestCustomerId(req, res);
+    const campaign = await replaceSurveyQuestionsForCustomer(
+      customerId,
+      body.campaign_id ?? "",
+      questions,
+    );
+    json(res, 200, { campaign });
+  } catch (err) {
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to save questions"));
   }
 }
 
@@ -310,11 +432,27 @@ export async function handleUpdateSurveyQuestion(
     const campaign = await updateSurveyQuestionForCustomer(customerId, input);
     json(res, 200, { campaign });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to update question"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to update question"));
   }
 }
 
+export async function handleDeleteSurveyQuestion(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const body = await readJsonBody<{ question_id?: string }>(req);
+    const customerId = await getRequestCustomerId(req, res);
+    const campaign = await deleteSurveyQuestionForCustomer(customerId, body.question_id ?? "");
+    json(res, 200, { campaign });
+  } catch (err) {
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to delete question"));
+  }
+}
+
+// =====================================================================
+// Options
+// =====================================================================
 export async function handleCreateSurveyOption(
   req: IncomingMessage,
   res: ServerResponse,
@@ -348,8 +486,7 @@ export async function handleCreateSurveyOption(
     const campaign = await createSurveyOptionForCustomer(customerId, input);
     json(res, 201, { campaign });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to create option"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to create option"));
   }
 }
 
@@ -388,11 +525,13 @@ export async function handleUpdateSurveyOption(
     const campaign = await updateSurveyOptionForCustomer(customerId, input);
     json(res, 200, { campaign });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to update option"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to update option"));
   }
 }
 
+// =====================================================================
+// Dashboard + Other review
+// =====================================================================
 export async function handleGetSurveyCampaignDashboard(
   req: IncomingMessage,
   res: ServerResponse,
@@ -401,7 +540,6 @@ export async function handleGetSurveyCampaignDashboard(
   try {
     const campaignId = url.searchParams.get("campaign_id")?.trim();
     if (!campaignId) throw new Error("campaign_id is required");
-
     const customerId = await getRequestCustomerId(req, res);
     const dashboard = await getSurveyCampaignDashboardForCustomer(
       customerId,
@@ -410,8 +548,7 @@ export async function handleGetSurveyCampaignDashboard(
     );
     json(res, 200, { dashboard });
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to load survey dashboard"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to load survey dashboard"));
   }
 }
 
@@ -423,7 +560,6 @@ export async function handleGetSurveyCampaignOtherReview(
   try {
     const campaignId = url.searchParams.get("campaign_id")?.trim();
     if (!campaignId) throw new Error("campaign_id is required");
-
     const customerId = await getRequestCustomerId(req, res);
     const review = await getSurveyCampaignOtherReviewForCustomer(
       customerId,
@@ -432,7 +568,6 @@ export async function handleGetSurveyCampaignOtherReview(
     );
     json(res, 200, review);
   } catch (err) {
-    const status = err instanceof AuthError ? 401 : 400;
-    errorJson(res, status, toErrorMessage(err, "Failed to load Other review"));
+    errorJson(res, authStatus(err), toErrorMessage(err, "Failed to load Other review"));
   }
 }

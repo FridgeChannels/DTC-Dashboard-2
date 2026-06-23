@@ -97,6 +97,47 @@ export async function insertOption(
   return data as QSurveyQuestionOptionRow;
 }
 
+/** 删除某个问题下的全部选项（用于"批量替换问卷"时清空旧选项后重建）。 */
+export async function deleteOptionsByQuestionId(questionId: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from("q_survey_question_options")
+    .delete()
+    .eq("survey_question_id", questionId);
+  if (error) throw error;
+}
+
+/** 一次性批量插入多个选项（单次往返），用于创建问题时内联建选项。 */
+export async function insertOptions(
+  inputs: CreateSurveyOptionInput[],
+): Promise<QSurveyQuestionOptionRow[]> {
+  if (inputs.length === 0) return [];
+
+  const rows = inputs.map((input, i) => {
+    const isOther = input.isOtherOption ?? false;
+    const allowText = input.allowTextInput ?? false;
+    return {
+      survey_question_id: input.surveyQuestionId,
+      label: input.label,
+      value: input.value,
+      display_order: input.displayOrder ?? i + 1,
+      is_other_option: isOther,
+      allow_text_input: isOther ? allowText : false,
+      other_text_required: isOther ? (input.otherTextRequired ?? false) : false,
+      text_input_placeholder: isOther ? (input.textInputPlaceholder ?? null) : null,
+      max_text_length: input.maxTextLength ?? 100,
+      status: "active" as const,
+    };
+  });
+
+  const { data, error } = await getSupabase()
+    .from("q_survey_question_options")
+    .insert(rows)
+    .select("*");
+
+  if (error) throw error;
+  return (data ?? []) as QSurveyQuestionOptionRow[];
+}
+
 export async function updateOptionById(
   optionId: string,
   patch: UpdateSurveyOptionPatch,

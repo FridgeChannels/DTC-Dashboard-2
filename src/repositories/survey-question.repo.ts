@@ -33,7 +33,6 @@ export async function listQuestionsByCampaignId(
     .select("*")
     .eq("survey_campaign_id", campaignId)
     .order("display_order", { ascending: true });
-
   if (error) throw error;
   return (data ?? []) as QSurveyQuestionRow[];
 }
@@ -47,28 +46,8 @@ export async function listActiveQuestionsByCampaignId(
     .eq("survey_campaign_id", campaignId)
     .eq("status", "active")
     .order("display_order", { ascending: true });
-
   if (error) throw error;
   return (data ?? []) as QSurveyQuestionRow[];
-}
-
-export interface ActiveSurveyQuestionRef {
-  id: string;
-  display_order: number;
-}
-
-export async function listActiveQuestionRefsByCampaignId(
-  campaignId: string,
-): Promise<ActiveSurveyQuestionRef[]> {
-  const { data, error } = await getSupabase()
-    .from("q_survey_questions")
-    .select("id, display_order")
-    .eq("survey_campaign_id", campaignId)
-    .eq("status", "active")
-    .order("display_order", { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as ActiveSurveyQuestionRef[];
 }
 
 export async function countActiveQuestionsByCampaignId(
@@ -79,7 +58,6 @@ export async function countActiveQuestionsByCampaignId(
     .select("id", { count: "exact", head: true })
     .eq("survey_campaign_id", campaignId)
     .eq("status", "active");
-
   if (error) throw error;
   return count ?? 0;
 }
@@ -92,7 +70,6 @@ export async function findQuestionById(
     .select("*")
     .eq("id", questionId)
     .maybeSingle();
-
   if (error) throw error;
   return data as QSurveyQuestionRow | null;
 }
@@ -114,7 +91,6 @@ export async function insertQuestion(
     })
     .select("*")
     .single();
-
   if (error) throw error;
   return data as QSurveyQuestionRow;
 }
@@ -123,9 +99,7 @@ export async function updateQuestionById(
   questionId: string,
   patch: UpdateSurveyQuestionPatch,
 ): Promise<QSurveyQuestionRow> {
-  const row: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  };
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.questionText !== undefined) row.question_text = patch.questionText;
   if (patch.questionType !== undefined) row.question_type = patch.questionType;
   if (patch.ratingScale !== undefined) row.rating_scale = patch.ratingScale;
@@ -140,9 +114,16 @@ export async function updateQuestionById(
     .eq("id", questionId)
     .select("*")
     .single();
-
   if (error) throw error;
   return data as QSurveyQuestionRow;
+}
+
+export async function deleteQuestionById(questionId: string): Promise<void> {
+  const { error } = await getSupabase()
+    .from("q_survey_questions")
+    .delete()
+    .eq("id", questionId);
+  if (error) throw error;
 }
 
 export async function getNextQuestionDisplayOrder(
@@ -155,7 +136,6 @@ export async function getNextQuestionDisplayOrder(
     .order("display_order", { ascending: false })
     .limit(1)
     .maybeSingle();
-
   if (error) throw error;
   return data ? (data.display_order as number) + 1 : 1;
 }

@@ -9,6 +9,14 @@ const SegmentAPI = {
     if (!res.ok) throw new Error((await res.json()).error || "Failed to load");
     return res.json();
   },
+  async getKlaviyoConnection() {
+    const res = await fetch("/api/brand-config");
+    if (!res.ok) throw new Error((await res.json()).error || "Failed to load integration status");
+    const data = await res.json();
+    return {
+      connected: Boolean(data.klaviyo?.hasOAuthToken),
+    };
+  },
   async save(payload) {
     const res = await fetch("/api/segment-coupon-config", {
       method: "PUT",
@@ -127,11 +135,65 @@ function SegmentStatusBadge({ active, processing }) {
     : <span className="cfg-pill neutral"><span className="d" />Inactive</span>;
 }
 
-function SegmentConfigTable({ rows, campaigns, onChange, onSetDefault, settingDefaultId, disabled }) {
+function SegmentConfigTable({
+  rows,
+  campaigns,
+  klaviyoConnected,
+  refreshing,
+  onRefresh,
+  onChange,
+  onSetDefault,
+  settingDefaultId,
+  disabled,
+}) {
   const [openCampaignSegmentId, setOpenCampaignSegmentId] = useStateSC(null);
 
   if (!rows.length) {
-    return <EmptyState title="No segments yet" note="Wait for segment data to sync before configuring." compact />;
+    if (!klaviyoConnected) {
+      return (
+        <div className="segment-empty-state integration-required">
+          <div className="segment-empty-icon" aria-hidden="true">
+            <I.klaviyo height={18} />
+          </div>
+          <div className="segment-empty-copy">
+            <div className="segment-empty-kicker">Klaviyo connection required</div>
+            <h3>Connect Klaviyo to load segments</h3>
+            <p>
+              Segment information comes from Klaviyo. Authorize your account before
+              configuring which discounts each segment can receive.
+            </p>
+          </div>
+          <a className="btn primary" href="/brand-config?section=klaviyo">
+            <I.klaviyo />
+            Connect Klaviyo
+          </a>
+        </div>
+      );
+    }
+
+    return (
+      <div className="segment-empty-state sync-required">
+        <div className="segment-empty-icon" aria-hidden="true">
+          <I.settings />
+        </div>
+        <div className="segment-empty-copy">
+          <div className="segment-empty-kicker">Klaviyo connected</div>
+          <h3>No segments synced yet</h3>
+          <p>
+            Your Klaviyo account is authorized, but no segment data is available yet.
+            Refresh to check for newly synced segments.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={refreshing}
+          onClick={onRefresh}
+        >
+          {refreshing ? "Refreshing…" : "Refresh segments"}
+        </button>
+      </div>
+    );
   }
 
   const updateRow = (segmentId, patch) => {
@@ -214,14 +276,19 @@ function SegmentConfigPage() {
   const [settingDefaultId, setSettingDefaultId] = useStateSC(null);
   const [error, setError] = useStateSC(null);
   const [saved, setSaved] = useStateSC(false);
+  const [klaviyoConnected, setKlaviyoConnected] = useStateSC(false);
 
   const load = useCallbackSC(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await SegmentAPI.list("percentage");
+      const [data, klaviyoConnection] = await Promise.all([
+        SegmentAPI.list("percentage"),
+        SegmentAPI.getKlaviyoConnection(),
+      ]);
       setRows(apiToLocalRows(data.items));
       setCampaigns(data.campaigns ?? []);
+      setKlaviyoConnected(klaviyoConnection.connected);
       setSaved(false);
     } catch (err) {
       setError(err.message);
@@ -305,29 +372,34 @@ function SegmentConfigPage() {
         <SegmentConfigTable
           rows={rows}
           campaigns={campaigns}
+          klaviyoConnected={klaviyoConnected}
+          refreshing={loading}
+          onRefresh={load}
           onChange={setRows}
           onSetDefault={handleSetDefault}
           settingDefaultId={settingDefaultId}
           disabled={saving || settingDefaultId != null}
         />
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>
-          <span className="muted" style={{ fontSize: 12.5 }}>
-            {savableRows.length > 0
-              ? `${savableRows.length} segment(s) ready to save · explicit discount bindings take priority`
-              : "Choose discounts before saving"}
-          </span>
-          <div className="row" style={{ gap: 8 }}>
-            <button type="button" className="btn" disabled={saving} onClick={load}>Refresh</button>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={saving}
-              onClick={handleSaveAll}
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </button>
+        {rows.length > 0 && (
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>
+            <span className="muted" style={{ fontSize: 12.5 }}>
+              {savableRows.length > 0
+                ? `${savableRows.length} segment(s) ready to save · explicit discount bindings take priority`
+                : "Choose discounts before saving"}
+            </span>
+            <div className="row" style={{ gap: 8 }}>
+              <button type="button" className="btn" disabled={saving} onClick={load}>Refresh</button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={saving}
+                onClick={handleSaveAll}
+              >
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </CfgSection>
     </div>
   );

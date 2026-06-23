@@ -6,7 +6,11 @@ import {
   SurveyTapError,
   type SurveyTapUserParams,
 } from "../services/survey-resolver.service.js";
-import { submitSurveyAnswers } from "../services/survey-answer.service.js";
+import {
+  submitSurveyAnswers,
+  submitFullSurvey,
+  recordSurveyEvent,
+} from "../services/survey-answer.service.js";
 
 function parseUserParams(url: URL): SurveyTapUserParams {
   return {
@@ -24,6 +28,7 @@ function toAvailabilityJson(result: Awaited<ReturnType<typeof getSurveyAvailabil
       ? {
           id: result.surveyCampaign.id,
           name: result.surveyCampaign.name,
+          survey_purpose: result.surveyCampaign.surveyPurpose,
           campaign_goal: result.surveyCampaign.campaignGoal,
           question_order_policy: result.surveyCampaign.questionOrderPolicy,
           allow_skip: result.surveyCampaign.allowSkip,
@@ -41,6 +46,7 @@ function toQuestionsJson(result: Awaited<ReturnType<typeof getSurveyQuestionsByM
       ? {
           id: result.surveyCampaign.id,
           name: result.surveyCampaign.name,
+          survey_purpose: result.surveyCampaign.surveyPurpose,
           campaign_goal: result.surveyCampaign.campaignGoal,
           question_order_policy: result.surveyCampaign.questionOrderPolicy,
           allow_skip: result.surveyCampaign.allowSkip,
@@ -50,9 +56,14 @@ function toQuestionsJson(result: Awaited<ReturnType<typeof getSurveyQuestionsByM
     questions: result.questions.map((q) => ({
       id: q.id,
       text: q.text,
+      title: q.title,
       type: q.type,
       display_order: q.displayOrder,
+      sort_order: q.sortOrder,
       allow_skip: q.allowSkip,
+      is_required: q.isRequired,
+      required: q.required,
+      rating_scale: q.ratingScale,
       options: q.options.map((o) => ({
         id: o.id,
         label: o.label,
@@ -158,5 +169,97 @@ export async function handlePostSurveyAnswers(
   } catch (err) {
     const status = err instanceof SurveyTapError ? err.statusCode : 500;
     errorJson(res, status, toErrorMessage(err, "Failed to save survey answers"));
+  }
+}
+
+// =====================================================================
+// Full survey submission (§19) + survey_completed event (§20)
+// =====================================================================
+export async function handlePostSurveySubmit(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const body = await readJsonBody<{
+      magnet_id?: unknown;
+      survey_id?: string;
+      fc_user_id?: string | null;
+      anonymous_id?: string | null;
+      session_id?: string | null;
+      source_system?: string | null;
+      answers?: Array<{
+        question_id: string;
+        option_id?: string | null;
+        value?: string | null;
+        text?: string | null;
+        skipped?: boolean;
+      }>;
+    }>(req);
+
+    const result = await submitFullSurvey({
+      magnetId: body.magnet_id,
+      surveyId: body.survey_id ?? "",
+      fcUserId: body.fc_user_id,
+      anonymousId: body.anonymous_id,
+      sessionId: body.session_id,
+      sourceSystem: body.source_system,
+      answers: (body.answers ?? []).map((a) => ({
+        questionId: a.question_id,
+        optionId: a.option_id,
+        value: a.value,
+        text: a.text,
+        skipped: a.skipped,
+      })),
+    });
+
+    json(res, 201, {
+      response_id: result.responseId,
+      survey_completed: result.surveyCompleted,
+    });
+  } catch (err) {
+    const status = err instanceof SurveyTapError ? err.statusCode : 500;
+    errorJson(res, status, toErrorMessage(err, "Failed to submit survey"));
+  }
+}
+
+// =====================================================================
+// Event recording: viewed / started / exited (§21.7)
+// =====================================================================
+export async function handlePostSurveyEvent(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const body = await readJsonBody<{
+      magnet_id?: unknown;
+      survey_id?: string;
+      event_type?: "viewed" | "started" | "exited";
+      fc_user_id?: string | null;
+      anonymous_id?: string | null;
+      session_id?: string | null;
+      source_system?: string | null;
+    }>(req);
+
+    const eventType = body.event_type;
+    if (eventType !== "viewed" && eventType !== "started" && eventType !== "exited") {
+      throw new SurveyTapError("event_type must be viewed/started/exited", 400);
+    }
+
+    await recordSurveyEvent(
+      body.magnet_id,
+      body.survey_id ?? "",
+      eventType,
+      {
+        fcUserId: body.fc_user_id,
+        anonymousId: body.anonymous_id,
+        sessionId: body.session_id,
+        sourceSystem: body.source_system,
+      },
+    );
+
+    json(res, 201, { recorded: true });
+  } catch (err) {
+    const status = err instanceof SurveyTapError ? err.statusCode : 500;
+    errorJson(res, status, toErrorMessage(err, "Failed to record survey event"));
   }
 }

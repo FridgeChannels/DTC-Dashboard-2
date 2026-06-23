@@ -6,6 +6,7 @@ export interface SurveyAvailabilityRpcResult {
   surveyCampaign: {
     id: string;
     name: string;
+    surveyPurpose: string | null;
     campaignGoal: string;
     questionOrderPolicy: string;
     allowSkip: boolean;
@@ -25,7 +26,6 @@ export async function getSurveyAvailabilityByMagnetRpc(input: {
     p_fc_user_id: input.fcUserId,
     p_anonymous_id: input.anonymousId,
   });
-
   if (error) throw error;
   return data as SurveyAvailabilityRpcResult;
 }

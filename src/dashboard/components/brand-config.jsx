@@ -654,7 +654,7 @@ function StepDiscountDetails({ shopifyReady, form, onChange, error }) {
       </ConfigField>
       {!shopifyReady && (
         <div className="cfg-alert warn" style={{ gridColumn: "1 / -1" }}>
-          <I.info /> Complete Shopify authorization before creating discounts.
+          <I.shopify /> Complete Shopify authorization before creating discounts.
         </div>
       )}
       {error && (
@@ -891,11 +891,36 @@ function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady }) {
     }
   }, [pageIndex, totalPages]);
 
+  if (!shopifyReady) {
+    return (
+      <div className="discount-connection-state">
+        <div className="discount-connection-icon" aria-hidden="true">
+          <I.shopify size={28} />
+        </div>
+        <div className="discount-connection-copy">
+          <div className="discount-connection-kicker">Shopify connection required</div>
+          <h3>Connect Shopify to view discounts</h3>
+          <p>
+            Discount information is imported from your Shopify store. Connect the
+            store first, then return here to sync its discounts.
+          </p>
+        </div>
+        <a
+          className="btn primary"
+          href="/brand-config?section=shopify"
+        >
+          <I.shopify />
+          Connect Shopify
+        </a>
+      </div>
+    );
+  }
+
   if (!campaigns.length) {
     return (
       <EmptyState
         title="No discounts yet"
-        note="No discounts yet. Create a discount or sync from Shopify."
+        note="Your Shopify store is connected. Sync now to import its discounts."
         compact
       />
     );
@@ -2114,6 +2139,7 @@ function BrandConfigPage({ section = "shopify" }) {
               disabled={saving || connecting || disconnecting}
               onClick={shopify.hasAccessToken ? () => setShowDisconnectConfirm(true) : handleConnectShopify}
             >
+              <I.shopify />
               {disconnecting
                 ? "Disconnecting…"
                 : connecting
@@ -2238,6 +2264,7 @@ function BrandConfigPage({ section = "shopify" }) {
               disabled={saving || klaviyoConnecting}
               onClick={handleConnectKlaviyo}
             >
+              <I.klaviyo />
               {klaviyoConnecting ? "Redirecting…" : "Connect Klaviyo"}
             </button>
           </CfgActions>
@@ -2282,6 +2309,7 @@ function BrandConfigPage({ section = "shopify" }) {
                     type="button"
                     className="btn"
                     disabled={!shopifyReady || campaignSyncing}
+                    title={!shopifyReady ? "Connect Shopify before syncing discounts" : undefined}
                     onClick={handleSyncCampaigns}
                   >
                     {campaignSyncing ? "Syncing…" : "Sync Shopify Discounts"}
@@ -2324,6 +2352,7 @@ function BrandConfigPage({ section = "shopify" }) {
                     type="button"
                     className="btn"
                     disabled={!shopifyReady || campaignSyncing}
+                    title={!shopifyReady ? "Connect Shopify before syncing discounts" : undefined}
                     onClick={handleSyncCampaigns}
                   >
                     {campaignSyncing ? "Syncing…" : "Sync Shopify Discounts"}

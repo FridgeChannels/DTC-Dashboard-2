@@ -2,8 +2,11 @@ import * as campaignRepo from "../repositories/survey-campaign.repo.js";
 import * as questionRepo from "../repositories/survey-question.repo.js";
 import * as optionRepo from "../repositories/survey-question-option.repo.js";
 import * as dashboardRepo from "../repositories/survey-dashboard.repo.js";
+import * as responseRepo from "../repositories/survey-response.repo.js";
+import * as eventRepo from "../repositories/survey-event.repo.js";
 import { getMagnetById } from "../repositories/magnet.repo.js";
-import type { QSurveyAnswerEventRow } from "../repositories/survey-answer-event.repo.js";
+import { getKlaviyoConfigByCustomerId } from "../repositories/customer-klaviyo-config.repo.js";
+import { listKlaviyoSegmentsByCustomerId } from "../repositories/klaviyo-segment.repo.js";
 
 export interface SurveyDashboardQuery {
   startAt?: string | null;
@@ -12,12 +15,13 @@ export interface SurveyDashboardQuery {
 
 export interface SurveyDashboardOverview {
   impressions: number;
-  answered: number;
-  skipped: number;
-  answerRate: number | null;
-  skipRate: number | null;
-  completedUsers: number;
+  starts: number;
+  responses: number;
+  completionRate: number | null;
+  dropOffRate: number | null;
+  averageCompletionTimeMs: number | null;
   otherAnswers: number;
+  klaviyoSyncStatus: "not_connected" | "connected" | "not_applicable";
 }
 
 export interface SurveyDashboardOptionStat {
@@ -32,6 +36,9 @@ export interface SurveyDashboardOptionStat {
 export interface SurveyDashboardQuestionStat {
   id: string;
   questionText: string;
+  questionType: string;
+  ratingScale: number | null;
+  isRequired: boolean;
   displayOrder: number;
   impressions: number;
   answered: number;
@@ -41,6 +48,14 @@ export interface SurveyDashboardQuestionStat {
   avgResponseTimeMs: number | null;
   otherRate: number | null;
   options: SurveyDashboardOptionStat[];
+}
+
+export interface SurveyDashboardIndividualResponse {
+  id: string;
+  userId: string | null;
+  submittedAt: string | null;
+  completionStatus: string;
+  answers: Record<string, unknown>;
 }
 
 export interface SurveyDashboardMagnetStat {
@@ -56,15 +71,13 @@ export interface SurveyCampaignDashboard {
     id: string;
     name: string;
     status: string;
-    campaignGoal: string;
+    surveyPurpose: string | null;
   };
-  dateRange: {
-    startAt: string | null;
-    endAt: string | null;
-  };
+  dateRange: { startAt: string | null; endAt: string | null };
   overview: SurveyDashboardOverview;
   questions: SurveyDashboardQuestionStat[];
   magnetBreakdown: SurveyDashboardMagnetStat[];
+  individualResponses: SurveyDashboardIndividualResponse[];
 }
 
 export interface SurveyOtherReviewEntry {
@@ -84,20 +97,15 @@ function safeRate(numerator: number, denominator: number): number | null {
   return numerator / denominator;
 }
 
-function userKey(event: Pick<QSurveyAnswerEventRow, "fc_user_id" | "anonymous_id">): string | null {
-  if (event.fc_user_id) return `fc:${event.fc_user_id}`;
-  if (event.anonymous_id) return `anon:${event.anonymous_id}`;
-  return null;
-}
-
-function countUniqueCompletedUsers(events: QSurveyAnswerEventRow[]): number {
-  const users = new Set<string>();
-  for (const event of events) {
-    if (event.action !== "answered") continue;
-    const key = userKey(event);
-    if (key) users.add(key);
-  }
-  return users.size;
+/**
+ * Completion / drop-off 用不同写入模型推导(responses 来自 q_survey_responses,
+ * starts 来自 q_survey_events),口径不完全对齐,比值可能越界 [0,1]。
+ * 概览展示前 clamp,避免出现 >100% 或负数这类明显失真的占比。
+ */
+function clampedRate(numerator: number, denominator: number): number | null {
+  const rate = safeRate(numerator, denominator);
+  if (rate == null) return null;
+  return Math.min(1, Math.max(0, rate));
 }
 
 async function loadMagnetSnMap(magnetIds: number[]): Promise<Map<number, string | null>> {
@@ -120,15 +128,14 @@ export async function getSurveyCampaignDashboardForCustomer(
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, campaignId);
   if (!campaign) throw new Error("Survey campaign not found");
 
-  const dateFilter = {
-    startAt: query.startAt ?? null,
-    endAt: query.endAt ?? null,
-  };
+  const dateFilter = { startAt: query.startAt ?? null, endAt: query.endAt ?? null };
 
-  const [impressions, answerEvents, questions] = await Promise.all([
+  const [impressions, answerEvents, questions, responses, startsCount] = await Promise.all([
     dashboardRepo.listImpressionsForCampaign(campaignId, dateFilter),
     dashboardRepo.listAnswerEventsForCampaign(campaignId, dateFilter),
     questionRepo.listQuestionsByCampaignId(campaignId),
+    responseRepo.listResponsesByCampaignId(campaignId, dateFilter),
+    dashboardRepo.countStartedEventsByCampaignId(campaignId, dateFilter),
   ]);
 
   const questionIds = questions.map((q) => q.id);
@@ -138,7 +145,9 @@ export async function getSurveyCampaignDashboardForCustomer(
 
   const answeredEvents = answerEvents.filter((e) => e.action === "answered");
   const skippedEvents = answerEvents.filter((e) => e.action === "skipped");
-  const otherAnswers = answeredEvents.filter((e) => e.other_text != null && e.other_text.trim() !== "").length;
+  const otherAnswers = answeredEvents.filter(
+    (e) => e.other_text != null && e.other_text.trim() !== "",
+  ).length;
 
   const impressionsByQuestion = new Map<string, number>();
   for (const row of impressions) {
@@ -153,6 +162,7 @@ export async function getSurveyCampaignDashboardForCustomer(
   const responseTimesByQuestion = new Map<string, number[]>();
   const otherByQuestion = new Map<string, number>();
   const optionCounts = new Map<string, number>();
+  const valueCountsByQuestion = new Map<string, Map<string, number>>();
 
   for (const event of answeredEvents) {
     answeredByQuestion.set(
@@ -164,6 +174,11 @@ export async function getSurveyCampaignDashboardForCustomer(
         event.survey_option_id,
         (optionCounts.get(event.survey_option_id) ?? 0) + 1,
       );
+    }
+    if (event.selected_value != null && event.selected_value !== "") {
+      const counts = valueCountsByQuestion.get(event.survey_question_id) ?? new Map<string, number>();
+      counts.set(event.selected_value, (counts.get(event.selected_value) ?? 0) + 1);
+      valueCountsByQuestion.set(event.survey_question_id, counts);
     }
     if (event.other_text?.trim()) {
       otherByQuestion.set(
@@ -177,7 +192,6 @@ export async function getSurveyCampaignDashboardForCustomer(
       responseTimesByQuestion.set(event.survey_question_id, list);
     }
   }
-
   for (const event of skippedEvents) {
     skippedByQuestion.set(
       event.survey_question_id,
@@ -185,8 +199,38 @@ export async function getSurveyCampaignDashboardForCustomer(
     );
   }
 
+  const submittedResponses = responses.filter((r) => r.completion_status === "submitted");
+
+  // Average completion time
+  const completionTimes: number[] = [];
+  for (const r of submittedResponses) {
+    if (r.started_at && r.submitted_at) {
+      const ms = Date.parse(r.submitted_at) - Date.parse(r.started_at);
+      if (Number.isFinite(ms) && ms >= 0) completionTimes.push(ms);
+    }
+  }
+  const averageCompletionTimeMs = completionTimes.length
+    ? Math.round(completionTimes.reduce((a, b) => a + b, 0) / completionTimes.length)
+    : null;
+
+  // Klaviyo sync status
+  let klaviyoSyncStatus: SurveyDashboardOverview["klaviyoSyncStatus"] = "not_applicable";
+  if (campaign.audience_type === "klaviyo_segment") {
+    const config = await getKlaviyoConfigByCustomerId(customerId);
+    klaviyoSyncStatus = config?.oauth_token_ref ? "connected" : "not_connected";
+    if (klaviyoSyncStatus === "connected") {
+      const segs = await listKlaviyoSegmentsByCustomerId(customerId);
+      if (segs.length === 0) klaviyoSyncStatus = "not_connected"; // 已连接但未同步
+    }
+  }
+
   const questionStats: SurveyDashboardQuestionStat[] = questions
-    .filter((q) => q.status === "active" || impressionsByQuestion.has(q.id) || answeredByQuestion.has(q.id))
+    .filter(
+      (q) =>
+        q.status === "active" ||
+        impressionsByQuestion.has(q.id) ||
+        answeredByQuestion.has(q.id),
+    )
     .map((question) => {
       const qImpressions = impressionsByQuestion.get(question.id) ?? 0;
       const qAnswered = answeredByQuestion.get(question.id) ?? 0;
@@ -196,14 +240,41 @@ export async function getSurveyCampaignDashboardForCustomer(
       const avgResponseTimeMs = times.length
         ? Math.round(times.reduce((a, b) => a + b, 0) / times.length)
         : null;
-
       const questionOptions = allOptions
         .filter((o) => o.survey_question_id === question.id && o.status === "active")
         .sort((a, b) => a.display_order - b.display_order);
-
+      const valueCounts = valueCountsByQuestion.get(question.id) ?? new Map<string, number>();
+      const dashboardOptions =
+        question.question_type === "rating"
+          ? Array.from({ length: Math.max(2, question.rating_scale ?? 5) }).map((_, index) => {
+              const value = String(index + 1);
+              const count = valueCounts.get(value) ?? 0;
+              return {
+                id: `${question.id}-rating-${value}`,
+                label: value,
+                value,
+                isOtherOption: false,
+                count,
+                shareOfAnswered: safeRate(count, qAnswered),
+              };
+            })
+          : questionOptions.map((opt) => {
+              const count = optionCounts.get(opt.id) ?? 0;
+              return {
+                id: opt.id,
+                label: opt.label,
+                value: opt.value,
+                isOtherOption: opt.is_other_option,
+                count,
+                shareOfAnswered: safeRate(count, qAnswered),
+              };
+            });
       return {
         id: question.id,
         questionText: question.question_text,
+        questionType: question.question_type,
+        ratingScale: question.rating_scale,
+        isRequired: question.is_required,
         displayOrder: question.display_order,
         impressions: qImpressions,
         answered: qAnswered,
@@ -212,25 +283,15 @@ export async function getSurveyCampaignDashboardForCustomer(
         skipRate: safeRate(qSkipped, qImpressions),
         avgResponseTimeMs,
         otherRate: safeRate(qOther, qAnswered),
-        options: questionOptions.map((opt) => {
-          const count = optionCounts.get(opt.id) ?? 0;
-          return {
-            id: opt.id,
-            label: opt.label,
-            value: opt.value,
-            isOtherOption: opt.is_other_option,
-            count,
-            shareOfAnswered: safeRate(count, qAnswered),
-          };
-        }),
+        options: dashboardOptions,
       };
     })
     .sort((a, b) => a.displayOrder - b.displayOrder);
 
+  // Magnet breakdown
   const magnetImpressions = new Map<number, number>();
   const magnetAnswered = new Map<number, number>();
   const magnetSkipped = new Map<number, number>();
-
   for (const row of impressions) {
     magnetImpressions.set(row.magnet_id, (magnetImpressions.get(row.magnet_id) ?? 0) + 1);
   }
@@ -240,7 +301,6 @@ export async function getSurveyCampaignDashboardForCustomer(
   for (const event of skippedEvents) {
     magnetSkipped.set(event.magnet_id, (magnetSkipped.get(event.magnet_id) ?? 0) + 1);
   }
-
   const magnetIds = [
     ...new Set([
       ...magnetImpressions.keys(),
@@ -249,7 +309,6 @@ export async function getSurveyCampaignDashboardForCustomer(
     ]),
   ];
   const magnetSnMap = await loadMagnetSnMap(magnetIds);
-
   const magnetBreakdown: SurveyDashboardMagnetStat[] = magnetIds
     .map((magnetId) => ({
       magnetId,
@@ -260,28 +319,40 @@ export async function getSurveyCampaignDashboardForCustomer(
     }))
     .sort((a, b) => b.impressions - a.impressions);
 
+  const individualResponses: SurveyDashboardIndividualResponse[] = submittedResponses.map(
+    (r) => ({
+      id: r.id,
+      userId: r.user_id,
+      submittedAt: r.submitted_at,
+      completionStatus: r.completion_status,
+      answers: r.answers_json,
+    }),
+  );
+
   return {
     campaign: {
       id: campaign.id,
-      name: campaign.name,
+      name: campaign.survey_name ?? campaign.name,
       status: campaign.status,
-      campaignGoal: campaign.campaign_goal,
+      surveyPurpose: campaign.survey_purpose,
     },
-    dateRange: {
-      startAt: dateFilter.startAt,
-      endAt: dateFilter.endAt,
-    },
+    dateRange: { startAt: dateFilter.startAt, endAt: dateFilter.endAt },
     overview: {
       impressions: impressions.length,
-      answered: answeredEvents.length,
-      skipped: skippedEvents.length,
-      answerRate: safeRate(answeredEvents.length, impressions.length),
-      skipRate: safeRate(skippedEvents.length, impressions.length),
-      completedUsers: countUniqueCompletedUsers(answerEvents),
+      starts: startsCount,
+      responses: submittedResponses.length,
+      completionRate: clampedRate(submittedResponses.length, startsCount),
+      dropOffRate:
+        startsCount > 0
+          ? clampedRate(startsCount - submittedResponses.length, startsCount)
+          : null,
+      averageCompletionTimeMs,
       otherAnswers,
+      klaviyoSyncStatus,
     },
     questions: questionStats,
     magnetBreakdown,
+    individualResponses,
   };
 }
 
@@ -293,11 +364,7 @@ export async function getSurveyCampaignOtherReviewForCustomer(
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, campaignId);
   if (!campaign) throw new Error("Survey campaign not found");
 
-  const dateFilter = {
-    startAt: query.startAt ?? null,
-    endAt: query.endAt ?? null,
-  };
-
+  const dateFilter = { startAt: query.startAt ?? null, endAt: query.endAt ?? null };
   const [events, questions] = await Promise.all([
     dashboardRepo.listOtherAnswerEventsForCampaign(campaignId, dateFilter),
     questionRepo.listQuestionsByCampaignId(campaignId),
@@ -320,3 +387,6 @@ export async function getSurveyCampaignOtherReviewForCustomer(
 
   return { entries };
 }
+
+// Re-export for event recording
+export { eventRepo };

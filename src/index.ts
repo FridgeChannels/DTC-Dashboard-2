@@ -36,25 +36,31 @@ import {
 } from "./api/segment-coupon-config.js";
 import { handleGetAvailableCouponCampaigns } from "./api/available-coupon-campaigns.js";
 import {
-  handleGetSurveyAvailability,
-  handleGetSurveyQuestions,
-  handlePostSurveyAnswers,
-} from "./api/tap-choice-surveys.js";
-import {
   handleListSurveyCampaigns,
   handleGetSurveyCampaignDetail,
+  handleGetSurveyPublishCheck,
   handleListSurveyKlaviyoSegments,
   handleCreateSurveyCampaign,
   handleUpdateSurveyCampaign,
   handlePublishSurveyCampaign,
   handleTransitionSurveyCampaign,
+  handleDuplicateSurveyCampaign,
   handleCreateSurveyQuestion,
+  handleReplaceSurveyQuestions,
   handleUpdateSurveyQuestion,
+  handleDeleteSurveyQuestion,
   handleCreateSurveyOption,
   handleUpdateSurveyOption,
   handleGetSurveyCampaignDashboard,
   handleGetSurveyCampaignOtherReview,
 } from "./api/survey-campaigns.js";
+import {
+  handleGetSurveyAvailability,
+  handleGetSurveyQuestions,
+  handlePostSurveyAnswers,
+  handlePostSurveySubmit,
+  handlePostSurveyEvent,
+} from "./api/tap-choice-surveys.js";
 import {
   handleAuthCallback,
   handleAuthLogin,
@@ -301,6 +307,11 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/survey-campaigns/publish-check") {
+    await handleGetSurveyPublishCheck(req, res, url);
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/survey-campaigns") {
     await handleCreateSurveyCampaign(req, res);
     return;
@@ -321,13 +332,28 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/survey-campaigns/duplicate") {
+    await handleDuplicateSurveyCampaign(req, res);
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/survey-questions") {
     await handleCreateSurveyQuestion(req, res);
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/survey-campaigns/replace-questions") {
+    await handleReplaceSurveyQuestions(req, res);
+    return;
+  }
+
   if (req.method === "PUT" && url.pathname === "/api/survey-questions") {
     await handleUpdateSurveyQuestion(req, res);
+    return;
+  }
+
+  if (req.method === "DELETE" && url.pathname === "/api/survey-questions") {
+    await handleDeleteSurveyQuestion(req, res);
     return;
   }
 
@@ -366,6 +392,18 @@ const server = createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/api/tap-choice/surveys/answers") {
     if (!requireApiKey(req, res)) return;
     await handlePostSurveyAnswers(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/tap-choice/surveys/submit") {
+    if (!requireApiKey(req, res)) return;
+    await handlePostSurveySubmit(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/tap-choice/surveys/event") {
+    if (!requireApiKey(req, res)) return;
+    await handlePostSurveyEvent(req, res);
     return;
   }
 

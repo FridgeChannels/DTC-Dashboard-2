@@ -23,6 +23,7 @@ export interface SurveyTapUserParams {
 export interface SurveyCampaignBrief {
   id: string;
   name: string;
+  surveyPurpose: string | null;
   campaignGoal: string;
   questionOrderPolicy: string;
   allowSkip: boolean;
@@ -44,9 +45,14 @@ export interface SurveyQuestionOptionPayload {
 export interface SurveyQuestionPayload {
   id: string;
   text: string;
+  title: string;
   type: string;
   displayOrder: number;
+  sortOrder: number;
   allowSkip: boolean;
+  isRequired: boolean;
+  required: boolean;
+  ratingScale: number | null;
   options: SurveyQuestionOptionPayload[];
 }
 
@@ -85,6 +91,27 @@ async function loadMagnetContext(magnetIdRaw: unknown): Promise<MagnetContext> {
   return { magnetId, customerId: magnet.customer_id };
 }
 
+function toBrief(rpc: {
+  id: string;
+  name: string;
+  surveyPurpose: string | null;
+  campaignGoal: string;
+  questionOrderPolicy: string;
+  allowSkip: boolean;
+  maxQuestionsPerUser: number | null;
+} | null): SurveyCampaignBrief | null {
+  if (!rpc) return null;
+  return {
+    id: rpc.id,
+    name: rpc.name,
+    surveyPurpose: rpc.surveyPurpose,
+    campaignGoal: rpc.campaignGoal,
+    questionOrderPolicy: rpc.questionOrderPolicy,
+    allowSkip: rpc.allowSkip,
+    maxQuestionsPerUser: rpc.maxQuestionsPerUser,
+  };
+}
+
 export async function getSurveyAvailabilityByMagnetId(
   magnetIdRaw: unknown,
   user: SurveyTapUserParams = {},
@@ -102,7 +129,7 @@ export async function getSurveyAvailabilityByMagnetId(
 
   return {
     hasAvailableCampaign: result.hasAvailableCampaign,
-    surveyCampaign: result.surveyCampaign,
+    surveyCampaign: toBrief(result.surveyCampaign),
     availableQuestionCount: result.availableQuestionCount,
     reason: result.reason,
   };
@@ -124,8 +151,20 @@ export async function getSurveyQuestionsByMagnetId(
   }
 
   return {
-    surveyCampaign: result.surveyCampaign,
-    questions: result.questions,
+    surveyCampaign: toBrief(result.surveyCampaign),
+    questions: result.questions.map((q) => ({
+      id: q.id,
+      text: q.text,
+      title: q.title,
+      type: q.type,
+      displayOrder: q.displayOrder,
+      sortOrder: q.sortOrder,
+      allowSkip: q.allowSkip,
+      isRequired: q.isRequired,
+      required: q.required,
+      ratingScale: q.ratingScale,
+      options: q.options,
+    })),
     reason: result.reason,
   };
 }

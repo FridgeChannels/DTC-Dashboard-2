@@ -5,6 +5,7 @@ export interface SurveyQuestionsRpcResult {
   surveyCampaign: {
     id: string;
     name: string;
+    surveyPurpose: string | null;
     campaignGoal: string;
     questionOrderPolicy: string;
     allowSkip: boolean;
@@ -13,9 +14,14 @@ export interface SurveyQuestionsRpcResult {
   questions: Array<{
     id: string;
     text: string;
+    title: string;
     type: string;
     displayOrder: number;
+    sortOrder: number;
     allowSkip: boolean;
+    isRequired: boolean;
+    required: boolean;
+    ratingScale: number | null;
     options: Array<{
       id: string;
       label: string;
@@ -41,7 +47,6 @@ export async function getSurveyQuestionsByMagnetRpc(input: {
     p_fc_user_id: input.fcUserId,
     p_anonymous_id: input.anonymousId,
   });
-
   if (error) throw error;
   return data as SurveyQuestionsRpcResult;
 }

@@ -13,7 +13,7 @@ const PRODUCT_ADD_SECTION = { id: "product-add", label: "Add Product" };
 
 // 营销活动（对外投放）
 const COUPON_CAMPAIGNS_SECTION = { id: "discounts", label: "Discounts" };
-const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Survey Campaigns" };
+const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Surveys" };
 
 // 受众与规则
 const SEGMENT_CONFIG_SECTION = { id: "segment-config", label: "Segment Discounts" };
@@ -48,33 +48,33 @@ function buildNavGroups(conn) {
     {
       label: "Overview",
       items: [
-        { ...DASHBOARD_SECTION },
-        { ...BRAND_COLLECT_SECTION },
-        { ...PRODUCT_ADD_SECTION },
+        { ...DASHBOARD_SECTION, icon: I.navDashboard },
+        { ...BRAND_COLLECT_SECTION, icon: I.navBrand },
+        { ...PRODUCT_ADD_SECTION, icon: I.navProduct },
       ],
     },
     {
-      label: "Coupons",
+      label: "Campaign",
       items: [
         {
           ...COUPON_CAMPAIGNS_SECTION,
+          label: "Coupons",
+          icon: I.navCoupons,
           locked: !shopifyReady,
           lockHint: "Connect Shopify before creating discounts.",
         },
         {
           ...SEGMENT_CONFIG_SECTION,
+          label: "Segments",
+          icon: I.navSegments,
           locked: !klaviyoReady,
           lockHint: "Connect Klaviyo and sync segments before configuring discounts.",
         },
-      ],
-    },
-    {
-      label: "Surveys",
-      items: [
         {
           ...SURVEY_CAMPAIGNS_SECTION,
+          icon: I.navSurveys,
           locked: !klaviyoReady,
-          lockHint: "Connect Klaviyo before running survey campaigns.",
+          lockHint: "Connect Klaviyo before running surveys.",
         },
       ],
     },
@@ -106,6 +106,7 @@ function AdminNavItem({ item, active, onSelect }) {
       aria-disabled={item.locked || undefined}
       onClick={() => onSelect(item.id)}
     >
+      {item.icon && <span className="admin-nav-icon" aria-hidden="true">{item.icon()}</span>}
       <span className="admin-nav-label">{item.label}</span>
 
       {item.status && (
@@ -162,6 +163,7 @@ function AdminSidebar({ section, onSectionChange, connections }) {
           className={`admin-nav-item${accountsActive ? " active" : ""}`}
           onClick={() => onSectionChange(SHOPIFY_SECTION.id)}
         >
+          <span className="admin-nav-icon" aria-hidden="true">{I.navAccounts()}</span>
           <span className="admin-nav-label">Accounts</span>
         </button>
       </div>
@@ -171,12 +173,13 @@ function AdminSidebar({ section, onSectionChange, connections }) {
 
 // Accounts 二级布局：左侧子导航（Account / Integration → Shopify, Klaviyo）+ 右侧内容
 function AccountsPage({ section, user, connections, onSubChange, onLogout }) {
-  const subItem = (sec, label, status) => (
+  const subItem = (sec, label, status, icon = null) => (
     <button
       type="button"
       className={`admin-nav-item${sec === section ? " active" : ""}${status ? " indent" : ""}`}
       onClick={() => onSubChange(sec)}
     >
+      {icon && <span className="accounts-nav-brand-icon">{icon}</span>}
       <span className="admin-nav-label">{label}</span>
       {status && <span className={`admin-nav-status ${status}`} />}
     </button>
@@ -188,8 +191,18 @@ function AccountsPage({ section, user, connections, onSubChange, onLogout }) {
         <div className="admin-nav-group-label">Accounts</div>
         {subItem(ACCOUNT_SECTION.id, "Account")}
         <div className="admin-nav-group-label">Integration</div>
-        {subItem(SHOPIFY_SECTION.id, "Shopify", connections.shopifyReady ? "online" : "offline")}
-        {subItem(KLAVIYO_SECTION.id, "Klaviyo", connections.klaviyoReady ? "online" : "offline")}
+        {subItem(
+          SHOPIFY_SECTION.id,
+          "Shopify",
+          connections.shopifyReady ? "online" : "offline",
+          <I.shopify size={18} />,
+        )}
+        {subItem(
+          KLAVIYO_SECTION.id,
+          "Klaviyo",
+          connections.klaviyoReady ? "online" : "offline",
+          <I.klaviyo height={12} />,
+        )}
       </aside>
       <main className="admin-content accounts-body">
         {section === ACCOUNT_SECTION.id

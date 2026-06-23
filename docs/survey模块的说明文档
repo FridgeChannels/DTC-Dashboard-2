@@ -1,0 +1,1088 @@
+# Survey 模块改动文档｜更新版
+
+## 1. 模块定位
+
+Survey 模块只负责：
+
+* 创建问卷
+* 编辑问卷问题
+* 配置问卷基础信息
+* 配置问卷受众
+* 配置问卷运行时间
+* 发布 / 暂停 / 结束问卷
+* 收集用户回答
+* 查看问卷结果
+
+Survey 模块不负责：
+
+* 金币奖励
+* coupon progress
+* coupon unlock
+* reward 发放
+* reward 去重
+
+问卷完成后，Survey 模块只产生 `survey_completed` 事件。奖励系统是否监听、是否发奖励，由外部系统处理。
+
+---
+
+## 2. 命名调整
+
+### 2.1 左侧导航
+
+```text
+Rewarded Surveys → Surveys
+```
+
+### 2.2 列表页标题
+
+```text
+Rewarded Surveys → Surveys
+```
+
+### 2.3 字段命名
+
+| 当前            | 修改为                    |
+| ------------- | ---------------------- |
+| Goal          | Purpose                |
+| Campaign name | Survey name            |
+| Campaign goal | Survey purpose         |
+| Manage        | 按状态展示具体操作，不再统一叫 Manage |
+
+---
+
+## 3. 列表页改动
+
+### 3.1 表格字段
+
+```text
+Survey / Purpose / Questions / Audience / Schedule / Status / Responses / Actions
+```
+
+### 3.2 字段说明
+
+| 字段        | 说明         |
+| --------- | ---------- |
+| Survey    | 问卷名称       |
+| Purpose   | 问卷用途       |
+| Questions | 问题数量       |
+| Audience  | 受众范围       |
+| Schedule  | 运行时间       |
+| Status    | 当前状态       |
+| Responses | 已收集回答数量    |
+| Actions   | 当前状态下允许的操作 |
+
+### 3.3 列表示例
+
+| Survey                    |           Purpose | Questions | Audience        | Schedule       | Status     | Responses | Actions                              |
+| ------------------------- | ----------------: | --------: | --------------- | -------------- | ---------- | --------: | ------------------------------------ |
+| Product Preference Survey | Product discovery |         4 | All users       | Start now      | Draft      |         — | Edit / Preview / Publish             |
+| Reward Preference Survey  | Reward preference |         1 | All users       | Jun 25 - Jul 1 | Scheduled  |         — | Edit schedule / Preview / Unschedule |
+| 1111                      |        Preference |         0 | All users       | Not set        | Incomplete |         — | Continue setup                       |
+| Post-purchase Feedback    |          Feedback |         5 | Returning users | Active now     | Active     |       128 | Dashboard / Pause / End              |
+
+---
+
+## 4. Create Survey 流程
+
+Create Survey 改成 3 个主步骤：
+
+```text
+1. Build Survey
+2. Configure Survey
+3. Preview & Publish
+```
+
+其中 `Configure Survey` 是一个页面，不再拆成多个独立步骤。
+
+`Configure Survey` 页面内包含 3 个必填区块：
+
+```text
+Basic Setup
+Audience
+Schedule
+```
+
+---
+
+## 5. Build Survey
+
+Build Survey 负责问卷内容本体。
+
+### 5.1 字段
+
+| 字段                      | 说明        |
+| ----------------------- | --------- |
+| User-facing title       | 用户看到的问卷标题 |
+| User-facing description | 用户看到的问卷说明 |
+| Questions               | 问题列表      |
+| Preview                 | 用户侧预览     |
+
+`Survey name` 和 `Survey purpose` 不放在 Build Survey 中，统一放到 Configure Survey 的 Basic Setup 区块中。
+
+### 5.2 问题类型
+
+MVP 支持：
+
+```text
+Single choice
+Multiple choice
+Text input
+Rating
+```
+
+后续可扩展：
+
+```text
+Ranking
+Product preference
+NPS
+```
+
+### 5.3 问题字段
+
+| 字段             | 说明   |
+| -------------- | ---- |
+| Question title | 问题标题 |
+| Question type  | 问题类型 |
+| Options        | 选项   |
+| Required       | 是否必填 |
+| Sort order     | 排序   |
+
+### 5.4 问题校验
+
+发布前必须满足：
+
+```text
+至少 1 个问题
+每个问题都有 title
+Single choice 至少 2 个 options
+Multiple choice 至少 2 个 options
+Text input 不需要 options
+Rating 需要设置评分范围
+```
+
+---
+
+## 6. Configure Survey
+
+Configure Survey 是一个页面，分为 3 个必填区块：
+
+```text
+Basic Setup
+Audience
+Schedule
+```
+
+三个区块都必须完成，问卷才可以进入发布检查。
+
+---
+
+## 7. Basic Setup
+
+Basic Setup 负责问卷基础信息和提交规则。
+
+### 7.1 字段
+
+| 字段                    | 说明           | 是否必填 |
+| --------------------- | ------------ | ---- |
+| Survey name           | 后台内部名称       | 必填   |
+| Survey purpose        | 问卷用途         | 必填   |
+| Internal note         | 内部备注         | 可选   |
+| One response per user | 是否每个用户只能提交一次 | 必填   |
+
+### 7.2 Survey purpose 选项
+
+```text
+Preference
+Reward preference
+Product discovery
+Feedback
+Vote
+Other
+```
+
+### 7.3 默认值
+
+```text
+One response per user = true
+```
+
+不需要以下字段：
+
+```text
+Allow anonymous responses
+Language
+```
+
+---
+
+## 8. Audience
+
+Audience 负责控制谁可以看到这份问卷。
+
+### 8.1 Audience 选项
+
+MVP 支持：
+
+```text
+All users
+Logged-in users
+Not logged-in users
+Klaviyo segment
+```
+
+后续扩展：
+
+```text
+New users
+Returning users
+Users who have not answered this survey
+Users who answered another survey
+```
+
+### 8.2 Klaviyo 规则
+
+```text
+All users：不需要 Klaviyo
+Logged-in users：不需要 Klaviyo
+Not logged-in users：不需要 Klaviyo
+Klaviyo segment：必须已连接 Klaviyo
+```
+
+如果选择 `Klaviyo segment`，但未连接 Klaviyo，阻止发布并提示：
+
+```text
+Connect Klaviyo before targeting Klaviyo segments.
+```
+
+---
+
+## 9. Schedule
+
+Schedule 负责控制问卷运行时间。
+
+### 9.1 字段
+
+| 字段    | 说明   | 是否必填 |
+| ----- | ---- | ---- |
+| Start | 开始方式 | 必填   |
+| End   | 结束方式 | 必填   |
+
+不需要以下字段：
+
+```text
+Max responses
+Timezone
+```
+
+### 9.2 Start 选项
+
+```text
+Start now
+Start later
+```
+
+### 9.3 End 选项
+
+```text
+No end date
+End at specific time
+```
+
+### 9.4 Schedule 校验
+
+```text
+如果选择 Start later，必须填写 Start time
+如果选择 End at specific time，必须填写 End time
+End time 必须晚于 Start time
+```
+
+---
+
+## 10. Preview & Publish
+
+Preview & Publish 展示最终检查结果。
+
+### 10.1 发布检查项
+
+```text
+Survey name 已填写
+Survey purpose 已选择
+One response per user 已配置
+Audience 已配置
+Schedule 已配置
+User-facing title 已填写
+至少 1 个问题
+所有问题配置完整
+如果选择 Klaviyo segment，Klaviyo 必须已连接
+```
+
+### 10.2 检查失败
+
+检查失败时：
+
+```text
+不能 Publish
+状态显示 Incomplete
+展示缺失项
+```
+
+示例提示：
+
+```text
+This survey needs at least 1 question before publishing.
+```
+
+```text
+This survey needs a valid audience before publishing.
+```
+
+```text
+Connect Klaviyo before targeting Klaviyo segments.
+```
+
+---
+
+## 11. 状态体系
+
+Survey 状态统一为：
+
+```text
+Incomplete
+Draft
+Scheduled
+Active
+Paused
+Ended
+Archived
+```
+
+---
+
+## 12. 状态定义
+
+### 12.1 Incomplete
+
+含义：
+
+```text
+问卷配置不完整，不能发布。
+```
+
+触发条件：
+
+```text
+没有 Survey name
+没有 Survey purpose
+没有配置 One response per user
+没有 User-facing title
+没有问题
+问题配置不完整
+Audience 未配置
+Schedule 未配置
+Schedule 配置不合法
+选择 Klaviyo segment 但 Klaviyo 未连接
+```
+
+---
+
+### 12.2 Draft
+
+含义：
+
+```text
+问卷已保存，但尚未发布。
+```
+
+进入条件：
+
+```text
+管理员保存草稿
+管理员暂时不发布
+```
+
+---
+
+### 12.3 Scheduled
+
+含义：
+
+```text
+问卷已发布，但开始时间在未来。
+```
+
+进入条件：
+
+```text
+管理员选择 Start later 并完成发布
+```
+
+系统行为：
+
+```text
+到达 Start time 后自动变为 Active
+```
+
+---
+
+### 12.4 Active
+
+含义：
+
+```text
+问卷正在运行，用户可以看到并提交。
+```
+
+进入条件：
+
+```text
+管理员点击 Publish now
+或 Scheduled 到达 Start time
+```
+
+---
+
+### 12.5 Paused
+
+含义：
+
+```text
+问卷暂停运行，用户暂时看不到，也不能提交。
+```
+
+进入条件：
+
+```text
+管理员从 Active 点击 Pause
+```
+
+---
+
+### 12.6 Ended
+
+含义：
+
+```text
+问卷已结束，不再收集新回答。
+```
+
+进入条件：
+
+```text
+管理员手动 End
+或到达 End time
+```
+
+---
+
+### 12.7 Archived
+
+含义：
+
+```text
+问卷已归档，只读，不参与日常管理。
+```
+
+进入条件：
+
+```text
+管理员从 Ended 点击 Archive
+```
+
+---
+
+## 13. 状态与操作对应关系
+
+| 状态         | 主操作            | 次操作                                                  | 禁止操作                             |
+| ---------- | -------------- | ---------------------------------------------------- | -------------------------------- |
+| Incomplete | Continue setup | Delete                                               | Publish / Dashboard              |
+| Draft      | Edit           | Preview / Publish / Schedule / Delete                | Dashboard                        |
+| Scheduled  | Edit schedule  | Preview / Unschedule / Delete                        | Dashboard                        |
+| Active     | Dashboard      | Pause / End / View responses / Duplicate / Export    | Delete / 直接改 Questions           |
+| Paused     | Resume         | Dashboard / Edit schedule / End / Duplicate / Export | Delete / 直接改 Questions           |
+| Ended      | Results        | Duplicate / Export / Archive                         | Resume / Edit questions / Delete |
+| Archived   | View results   | Duplicate                                            | Edit / Publish / Delete          |
+
+---
+
+## 14. 列表页按钮规则
+
+### 14.1 Incomplete
+
+显示：
+
+```text
+Continue setup
+Delete
+```
+
+不显示：
+
+```text
+Dashboard
+Publish
+```
+
+---
+
+### 14.2 Draft
+
+显示：
+
+```text
+Edit
+Preview
+Publish
+```
+
+更多菜单：
+
+```text
+Schedule
+Duplicate
+Delete
+```
+
+不显示：
+
+```text
+Dashboard
+```
+
+---
+
+### 14.3 Scheduled
+
+显示：
+
+```text
+Edit schedule
+Preview
+Unschedule
+```
+
+更多菜单：
+
+```text
+Duplicate
+Delete
+```
+
+不显示：
+
+```text
+Dashboard
+```
+
+---
+
+### 14.4 Active
+
+显示：
+
+```text
+Dashboard
+Pause
+End
+```
+
+更多菜单：
+
+```text
+Preview
+View responses
+Duplicate
+Export
+```
+
+不允许：
+
+```text
+Delete
+直接修改 Questions
+```
+
+---
+
+### 14.5 Paused
+
+显示：
+
+```text
+Resume
+Dashboard
+End
+```
+
+更多菜单：
+
+```text
+Edit schedule
+Duplicate
+Export
+```
+
+不允许：
+
+```text
+Delete
+直接修改 Questions
+```
+
+---
+
+### 14.6 Ended
+
+显示：
+
+```text
+Results
+Duplicate
+Archive
+```
+
+更多菜单：
+
+```text
+Export CSV
+View responses
+```
+
+不允许：
+
+```text
+Resume
+Edit questions
+Delete
+```
+
+---
+
+### 14.7 Archived
+
+显示：
+
+```text
+View results
+Duplicate
+```
+
+不允许：
+
+```text
+Edit
+Publish
+Delete
+```
+
+---
+
+## 15. 状态流转
+
+### 15.1 正常发布
+
+```text
+Incomplete
+↓ 配置完整
+Draft
+↓ Publish now
+Active
+↓ End / 到达 End time
+Ended
+↓ Archive
+Archived
+```
+
+### 15.2 定时发布
+
+```text
+Draft
+↓ Schedule
+Scheduled
+↓ 到达 Start time
+Active
+↓ End / 到达 End time
+Ended
+```
+
+### 15.3 暂停与恢复
+
+```text
+Active
+↓ Pause
+Paused
+↓ Resume
+Active
+```
+
+### 15.4 取消定时
+
+```text
+Scheduled
+↓ Unschedule
+Draft
+```
+
+### 15.5 复制问卷
+
+```text
+Draft / Active / Paused / Ended / Archived
+↓ Duplicate
+Draft
+```
+
+复制后生成一份新的 Survey，状态为 Draft，responses 不复制。
+
+---
+
+## 16. Active 状态下的编辑规则
+
+### 16.1 Active 且没有 responses
+
+允许编辑：
+
+```text
+Questions
+User-facing title
+User-facing description
+Audience
+Schedule
+Internal note
+```
+
+---
+
+### 16.2 Active 且已有 responses
+
+允许编辑：
+
+```text
+Audience
+End time
+Internal note
+Display visibility
+```
+
+不允许编辑：
+
+```text
+Question title
+Question type
+Question options
+Question order
+Required setting
+```
+
+提示文案：
+
+```text
+This survey already has responses. Duplicate it to edit questions.
+```
+
+---
+
+## 17. Ended 状态规则
+
+Ended 后不允许重新变回 Active。
+
+需要再次运行时，使用：
+
+```text
+Duplicate
+```
+
+Duplicate 后：
+
+```text
+生成新 Survey
+状态为 Draft
+不复制 responses
+复制 questions / basic setup / audience / schedule 配置
+```
+
+---
+
+## 18. Dashboard / Results 规则
+
+### 18.1 Dashboard 展示条件
+
+```text
+Active：显示 Dashboard
+Paused：显示 Dashboard
+Ended：显示 Results
+Archived：显示 View results
+```
+
+### 18.2 不显示 Dashboard 的状态
+
+```text
+Incomplete
+Draft
+Scheduled
+```
+
+### 18.3 Dashboard 指标
+
+Dashboard 只展示问卷数据：
+
+```text
+Impressions
+Starts
+Responses
+Completion rate
+Drop-off rate
+Average completion time
+Answer distribution
+Individual responses
+Export CSV
+Klaviyo sync status
+```
+
+不展示：
+
+```text
+Coins issued
+Coupon unlocked
+Reward claimed
+Coupon progress
+```
+
+---
+
+## 19. 用户提交逻辑
+
+用户提交问卷时，Survey 模块执行：
+
+```text
+1. 检查 Survey 是否 Active
+2. 检查用户是否符合 Audience
+3. 检查 One response per user 规则
+4. 保存 response
+5. 记录 submitted event
+6. 发出 survey_completed 事件
+```
+
+Survey 模块不处理奖励。
+
+---
+
+## 20. 事件定义
+
+### 20.1 survey_completed
+
+```json
+{
+  "event_type": "survey_completed",
+  "survey_id": "string",
+  "user_id": "string",
+  "completed_at": "datetime",
+  "response_id": "string"
+}
+```
+
+---
+
+## 21. 数据结构建议
+
+### 21.1 surveys
+
+```text
+id
+survey_name
+survey_purpose
+user_facing_title
+user_facing_description
+internal_note
+status
+created_at
+updated_at
+```
+
+### 21.2 survey_questions
+
+```text
+id
+survey_id
+question_type
+title
+options_json
+required
+sort_order
+created_at
+updated_at
+```
+
+### 21.3 survey_rules
+
+```text
+id
+survey_id
+one_response_per_user
+created_at
+updated_at
+```
+
+### 21.4 survey_audience_rules
+
+```text
+id
+survey_id
+audience_type
+audience_ref
+created_at
+updated_at
+```
+
+### 21.5 survey_schedules
+
+```text
+id
+survey_id
+start_type
+start_at
+end_type
+end_at
+created_at
+updated_at
+```
+
+### 21.6 survey_responses
+
+```text
+id
+survey_id
+user_id
+answers_json
+started_at
+submitted_at
+completion_status
+created_at
+updated_at
+```
+
+### 21.7 survey_events
+
+```text
+id
+survey_id
+user_id
+event_type
+created_at
+```
+
+event_type：
+
+```text
+viewed
+started
+submitted
+exited
+```
+
+---
+
+## 22. 页面改动清单
+
+### 22.1 左侧导航
+
+```text
+Rewarded Surveys → Surveys
+```
+
+---
+
+### 22.2 列表页
+
+改为：
+
+```text
+Survey / Purpose / Questions / Audience / Schedule / Status / Responses / Actions
+```
+
+---
+
+### 22.3 创建页
+
+改为：
+
+```text
+1. Build Survey
+2. Configure Survey
+3. Preview & Publish
+```
+
+---
+
+### 22.4 Configure Survey 页面
+
+Configure Survey 一个页面内分成 3 个必填区块：
+
+```text
+Basic Setup
+Audience
+Schedule
+```
+
+Basic Setup 字段：
+
+```text
+Survey name
+Survey purpose
+Internal note
+One response per user
+```
+
+Audience 字段：
+
+```text
+Audience type
+Klaviyo segment
+```
+
+Schedule 字段：
+
+```text
+Start
+End
+```
+
+---
+
+### 22.5 详情页
+
+详情页根据状态展示不同操作：
+
+```text
+Incomplete：Continue setup
+Draft：Edit / Preview / Publish
+Scheduled：Edit schedule / Preview / Unschedule
+Active：Dashboard / Pause / End
+Paused：Resume / Dashboard / End
+Ended：Results / Duplicate / Archive
+Archived：View results / Duplicate
+```
+
+---
+
+### 22.6 Dashboard 页
+
+只展示问卷数据，不展示奖励数据。
+
+---
+
+## 23. MVP 必须完成项
+
+1. 模块命名改为 Surveys
+2. Goal 改为 Purpose
+3. 列表增加 Schedule 和 Responses
+4. 状态改为 Incomplete / Draft / Scheduled / Active / Paused / Ended / Archived
+5. Draft 不显示 Dashboard
+6. 0 questions 显示 Incomplete
+7. Create Survey 改成 3 步：Build Survey / Configure Survey / Preview & Publish
+8. Configure Survey 一个页面内展示 Basic Setup / Audience / Schedule 三个必填区块
+9. Basic Setup 只保留 Survey name / Survey purpose / Internal note / One response per user
+10. Schedule 只保留 Start / End
+
+15. Publish 前做完整校验
+16. Active 后有 responses 不允许直接改 Questions
+17. Survey 提交后只发出 survey_completed 事件

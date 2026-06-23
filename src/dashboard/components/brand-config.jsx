@@ -1,7 +1,7 @@
 // ============================================================
 // FC Brand Dashboard — brand configuration (API + Shopify Admin)
 // ============================================================
-const { useState: useStateBC, useEffect: useEffectBC, useCallback: useCallbackBC } = React;
+const { useState: useStateBC, useEffect: useEffectBC, useCallback: useCallbackBC, useRef: useRefBC } = React;
 
 const API = {
   async getConfig(customerId) {
@@ -656,7 +656,7 @@ function isShopifyMultiUseSyncOnly(campaign) {
 function isSingleSharedCodeSyncSelection(campaign, codes, codeCache, pageInfo) {
   if (campaign?.distributionMode !== "shared_code") return false;
   if ((codes?.length ?? 0) !== 1) return false;
-  if (codeCache.size > 1) return false;
+  if (codeCache?.size > 1) return false;
   if (pageInfo?.hasNextPage || pageInfo?.hasPreviousPage) return false;
   return true;
 }
@@ -943,6 +943,8 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
   const [pageIndex, setPageIndex] = useStateBC(0);
   const [cursors, setCursors] = useStateBC([createSyncCodesCursor()]);
   const [codeCache, setCodeCache] = useStateBC(() => new Map());
+  const codeCacheRef = useRefBC(codeCache);
+  codeCacheRef.current = codeCache;
 
   const codes = preview?.codes ?? [];
   const isSharedCampaign = isSingleSharedCodeSyncSelection(
@@ -983,21 +985,20 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
         resumeAfter: cursor.resumeAfter,
         syncStatus: syncFilter,
       });
+      const loadedCodes = data.codes ?? [];
+      const mergedCache = reset ? new Map() : new Map(codeCacheRef.current);
+      for (const item of loadedCodes) {
+        mergedCache.set(item.redeemCodeId, item);
+      }
       setPreview(data);
       setPageIndex(nextPageIndex);
-      setCodeCache((prev) => {
-        const next = reset ? new Map() : new Map(prev);
-        for (const item of data.codes ?? []) {
-          next.set(item.redeemCodeId, item);
-        }
-        return next;
-      });
-      if (isSharedCampaign) {
+      setCodeCache(mergedCache);
+      if (isSingleSharedCodeSyncSelection(campaign, loadedCodes, mergedCache, data.pageInfo)) {
         setSharedSelectedId((current) => {
           if (current) return current;
           const shared =
-            (data.codes ?? []).find((item) => item.fcUsageMode === "shared" || item.synced) ??
-            (data.codes ?? [])[0];
+            loadedCodes.find((item) => item.fcUsageMode === "shared" || item.synced) ??
+            loadedCodes[0];
           return shared?.redeemCodeId ?? null;
         });
       }
@@ -1011,7 +1012,7 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
       setLoading(false);
       setPaging(false);
     }
-  }, [campaign?.id, isSharedCampaign, syncFilter]);
+  }, [campaign?.id, syncFilter]);
 
   useEffectBC(() => {
     if (!isSharedCampaign) {

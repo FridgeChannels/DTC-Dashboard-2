@@ -1,5 +1,10 @@
 import { env } from "../config/env.js";
-import { vaultHasSecret, vaultResolveSecret, vaultStoreSecret } from "./vault.client.js";
+import {
+  vaultDeleteSecret,
+  vaultHasSecret,
+  vaultResolveSecret,
+  vaultStoreSecret,
+} from "./vault.client.js";
 
 /** 开发环境内存密钥缓存（仅 SECRETS_PROVIDER=env 时使用，进程内，重启丢失） */
 const devSecretStore = new Map<string, string>();
@@ -57,6 +62,20 @@ export async function hasSecret(ref: string): Promise<boolean> {
   }
 
   return false;
+}
+
+export async function deleteSecret(ref: string): Promise<void> {
+  if (useVault()) {
+    await vaultDeleteSecret(ref);
+    return;
+  }
+
+  if (env.secretsProvider === "env") {
+    devSecretStore.delete(ref);
+    return;
+  }
+
+  throw new Error(`Unsupported secrets provider: ${env.secretsProvider}`);
 }
 
 export function shopifyAppClientSecretRef(customerId: number): string {

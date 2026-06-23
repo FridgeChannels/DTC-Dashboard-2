@@ -24,3 +24,10 @@ export async function vaultHasSecret(ref: string): Promise<boolean> {
   if (error) throw new Error(`Vault lookup failed for ${ref}: ${error.message}`);
   return Boolean(data);
 }
+
+export async function vaultDeleteSecret(ref: string): Promise<void> {
+  const { error } = await getSupabase().rpc("fc_vault_delete_secret", {
+    ref_name: ref,
+  });
+  if (error) throw new Error(`Vault delete failed for ${ref}: ${error.message}`);
+}

@@ -14,11 +14,14 @@ import {
   generateCodeVerifier,
 } from "../shopify/customer-account.api.js";
 import * as klaviyoConfigRepo from "../repositories/customer-klaviyo-config.repo.js";
-import type { CustomerKlaviyoConfig } from "../coupons/coupon.types.js";
+import { fetchKlaviyoAccountInfo } from "../clients/klaviyo.client.js";
+import {
+  KLAVIYO_DEFAULT_SCOPES,
+  resolveOAuthScopes,
+} from "../klaviyo/klaviyo-oauth.tokens.js";
 
 const KLAVIYO_AUTHORIZE_URL = "https://www.klaviyo.com/oauth/authorize";
 const KLAVIYO_TOKEN_URL = "https://a.klaviyo.com/oauth/token";
-const KLAVIYO_DEFAULT_SCOPES = "profiles:read segments:read events:read metrics:read";
 const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000;
 
 const oauthSessions = new Map<
@@ -95,10 +98,6 @@ async function exchangeCodeForTokens(
     throw new Error(`Klaviyo OAuth token exchange failed: ${detail}`);
   }
   return data;
-}
-
-function resolveOAuthScopes(config: CustomerKlaviyoConfig | null): string {
-  return config?.scopes?.trim() || KLAVIYO_DEFAULT_SCOPES;
 }
 
 export async function handleKlaviyoOAuthStart(
@@ -192,14 +191,27 @@ export async function handleKlaviyoOAuthCallback(
         : null;
 
     const existing = await klaviyoConfigRepo.getKlaviyoConfigByCustomerId(customerId);
+    const apiRevision = existing?.api_revision ?? "2026-04-15";
+
+    let accountName: string | null = null;
+    let accountEmail: string | null = null;
+    try {
+      const account = await fetchKlaviyoAccountInfo(tokenData.access_token!, apiRevision);
+      accountName = account.name;
+      accountEmail = account.email;
+    } catch (err) {
+      console.error("[klaviyo-oauth] failed to fetch account info", err);
+    }
 
     await klaviyoConfigRepo.upsertKlaviyoConfig({
       customerId,
-      apiRevision: existing?.api_revision ?? "2026-04-15",
+      apiRevision,
       scopes: tokenData.scope ?? existing?.scopes ?? KLAVIYO_DEFAULT_SCOPES,
       oauthTokenRef,
       oauthRefreshRef: tokenData.refresh_token ? oauthRefreshRef : existing?.oauth_refresh_ref,
       tokenExpiresAt,
+      accountName,
+      accountEmail,
     });
 
     redirect(res, "/brand-config?klaviyo_oauth=success&section=klaviyo");

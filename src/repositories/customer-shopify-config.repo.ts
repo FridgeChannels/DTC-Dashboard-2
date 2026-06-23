@@ -77,6 +77,8 @@ export async function upsertShopifyConfig(input: {
   customerId: number;
   shopDomain: string;
   shopifyShopId?: string | null;
+  shopName?: string | null;
+  shopEmail?: string | null;
   authType: string;
   shopifyAppClientId?: string | null;
   shopifyAppClientSecretRef?: string | null;
@@ -94,6 +96,8 @@ export async function upsertShopifyConfig(input: {
     input.webhookTenantKey ??
     existing?.webhook_tenant_key ??
     generateWebhookTenantKey();
+  const shopName = input.shopName !== undefined ? input.shopName : existing?.shop_name ?? null;
+  const shopEmail = input.shopEmail !== undefined ? input.shopEmail : existing?.shop_email ?? null;
 
   const now = new Date().toISOString();
   const { data, error } = await getSupabase()
@@ -103,6 +107,8 @@ export async function upsertShopifyConfig(input: {
         customer_id: input.customerId,
         shop_domain: input.shopDomain,
         shopify_shop_id: input.shopifyShopId ?? null,
+        shop_name: shopName,
+        shop_email: shopEmail,
         auth_type: input.authType,
         shopify_app_client_id: input.shopifyAppClientId ?? null,
         shopify_app_client_secret_ref: input.shopifyAppClientSecretRef ?? null,

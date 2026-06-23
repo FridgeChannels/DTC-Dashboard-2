@@ -10,6 +10,7 @@ import {
 } from "./api/brand-config.js";
 import {
   handleShopifyOAuthCallback,
+  handleShopifyOAuthDisconnect,
   handleShopifyOAuthStart,
 } from "./api/shopify-oauth.js";
 import {
@@ -200,6 +201,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/shopify/oauth/callback") {
     await handleShopifyOAuthCallback(res, url);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/shopify/oauth/disconnect") {
+    await handleShopifyOAuthDisconnect(req, res);
     return;
   }
 

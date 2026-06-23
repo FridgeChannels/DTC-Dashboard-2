@@ -29,6 +29,12 @@ const API = {
     if (!res.ok) throw new Error(data.error || "Failed to start Shopify OAuth");
     return data;
   },
+  async disconnectShopify() {
+    const res = await fetch("/api/shopify/oauth/disconnect", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to disconnect Shopify");
+    return data;
+  },
   async startKlaviyoOAuth() {
     const res = await fetch("/api/klaviyo/oauth/start", { method: "POST" });
     const data = await res.json();
@@ -113,11 +119,83 @@ function normalizeShopifyUrl(value) {
     .toLowerCase();
 }
 
+function maskEmail(email) {
+  const trimmed = String(email ?? "").trim();
+  if (!trimmed) return "";
+  const at = trimmed.lastIndexOf("@");
+  if (at <= 0 || at === trimmed.length - 1) return trimmed;
+  const local = trimmed.slice(0, at);
+  const domain = trimmed.slice(at + 1);
+  if (local.length <= 1) return `*@${domain}`;
+  if (local.length === 2) return `${local[0]}*@${domain}`;
+  return `${local.slice(0, 1)}***${local.slice(-1)}@${domain}`;
+}
+
+function shopifyAdminSettingsUrl(shopDomain, path) {
+  const host = normalizeShopifyUrl(shopDomain);
+  if (!host || !/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(host)) return null;
+  return `https://${host}/admin${path}`;
+}
+
+function buildShopifyDisconnectManualSteps({ shopDomain, hasCustomerAccount }) {
+  const steps = [
+    {
+      detail:
+        "Settings → Apps and sales channels: uninstall the FridgeChannel app (or the custom app used for Connect Shopify).",
+      href: shopifyAdminSettingsUrl(shopDomain, "/settings/apps"),
+    },
+  ];
+
+  if (hasCustomerAccount) {
+    steps.push({
+      detail:
+        "Sales channels → Headless → Customer Account API: remove the FridgeChannel callback URL and Javascript origin if consumer Shopify sign-in is no longer needed.",
+      href: shopifyAdminSettingsUrl(shopDomain, "/settings/customer_accounts"),
+    });
+  }
+
+  return steps;
+}
+
+function OauthNoticeBanner({ notice }) {
+  if (!notice) return null;
+
+  return (
+    <div className={`cfg-alert ${notice.tone}`} style={{ marginTop: 16 }}>
+      <I.info /> {notice.text}
+      {notice.manualSteps?.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <strong style={{ display: "block", marginBottom: 8 }}>
+            Also complete these steps in Shopify Admin:
+          </strong>
+          <ol style={{ margin: 0, paddingLeft: 20 }}>
+            {notice.manualSteps.map((step, index) => (
+              <li key={index} style={{ marginBottom: index === notice.manualSteps.length - 1 ? 0 : 8 }}>
+                <span>{step.detail}</span>
+                {step.href ? (
+                  <>
+                    {" "}
+                    <a href={step.href} target="_blank" rel="noopener noreferrer">
+                      Open in Shopify
+                    </a>
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function apiToLocal(data) {
   const shopify = data.shopify ?? {
     authType: "oauth",
     shopDomain: "",
     shopifyShopId: "",
+    shopName: "",
+    shopEmail: "",
     shopifyCustomerAccountClientId: "",
     oauthAppConfigured: false,
     accessTokenRef: `SHOPIFY_TOKEN_REF_${data.customerId}`,
@@ -138,6 +216,8 @@ function apiToLocal(data) {
       authType: shopify.authType,
       shopDomain: shopify.shopDomain,
       shopifyShopId: shopify.shopifyShopId || "",
+      shopName: shopify.shopName || "",
+      shopEmail: shopify.shopEmail || "",
       shopifyCustomerAccountClientId: shopify.shopifyCustomerAccountClientId || "",
       oauthAppConfigured:
         data.shopifyOAuthAppConfigured ?? shopify.oauthAppConfigured ?? false,
@@ -159,12 +239,20 @@ function apiToLocalKlaviyo(data) {
     oauthAppConfigured: false,
     hasOAuthToken: false,
     tokenExpiresAt: null,
+    accountName: null,
+    accountEmail: null,
+    tokenExpired: false,
+    needsReconnectForAccountProfile: false,
   };
 
   return {
     oauthAppConfigured: klaviyo.oauthAppConfigured,
     hasOAuthToken: klaviyo.hasOAuthToken,
     tokenExpiresAt: klaviyo.tokenExpiresAt || null,
+    accountName: klaviyo.accountName || "",
+    accountEmail: klaviyo.accountEmail || "",
+    tokenExpired: Boolean(klaviyo.tokenExpired),
+    needsReconnectForAccountProfile: Boolean(klaviyo.needsReconnectForAccountProfile),
   };
 }
 
@@ -1444,6 +1532,48 @@ function ManualAddCodesPanel({ campaign, onUpdated }) {
   );
 }
 
+function ConfirmModal({
+  title,
+  message,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  confirming = false,
+  onConfirm,
+  onCancel,
+}) {
+  return (
+    <div className="cfg-modal-overlay" role="presentation" onClick={confirming ? undefined : onCancel}>
+      <div
+        className="cfg-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-modal-title"
+        style={{ width: "min(480px, 100%)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="cfg-modal-head">
+          <div className="cfg-modal-title-block">
+            <h3 id="confirm-modal-title">{title}</h3>
+          </div>
+        </div>
+        <div className="cfg-modal-body">
+          <p style={{ margin: 0, lineHeight: 1.5 }}>{message}</p>
+        </div>
+        <div className="cfg-modal-foot">
+          <div className="cfg-modal-foot-actions" style={{ marginLeft: "auto" }}>
+            <button type="button" className="btn" disabled={confirming} onClick={onCancel}>
+              {cancelLabel}
+            </button>
+            <button type="button" className="btn primary" disabled={confirming} onClick={onConfirm}>
+              {confirming ? `${confirmLabel}…` : confirmLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AddCodesModal({ campaign, onClose, onUpdated }) {
   const syncOnly = isShopifyMultiUseSyncOnly(campaign);
   const [tab, setTab] = useStateBC("shopify");
@@ -1508,6 +1638,8 @@ function BrandConfigPage({ section = "shopify" }) {
   const [loading, setLoading] = useStateBC(true);
   const [saving, setSaving] = useStateBC(false);
   const [connecting, setConnecting] = useStateBC(false);
+  const [disconnecting, setDisconnecting] = useStateBC(false);
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useStateBC(false);
   const [klaviyoConnecting, setKlaviyoConnecting] = useStateBC(false);
   const [klaviyoConnectNotice, setKlaviyoConnectNotice] = useStateBC(null);
   const [shopifySavedBaseline, setShopifySavedBaseline] = useStateBC(null);
@@ -1693,6 +1825,41 @@ function BrandConfigPage({ section = "shopify" }) {
     } catch (err) {
       setError(err.message);
       setConnecting(false);
+    }
+  };
+
+  const handleDisconnectShopify = async () => {
+    const shopDomain = config?.shopify?.shopDomain || "";
+    const hasCustomerAccount = Boolean(
+      config?.shopify?.shopifyCustomerAccountClientId?.trim()
+        || config?.shopify?.hasShopifyCustomerAccountClientSecret,
+    );
+
+    setError(null);
+    setOauthNotice(null);
+    setDisconnecting(true);
+    try {
+      const data = await API.disconnectShopify();
+      const local = {
+        ...apiToLocal(data),
+        shopifyCustomerAccountClientSecret: "",
+      };
+      setConfig(local);
+      setShopifySavedBaseline(serializeShopifyForCompare(local.shopify));
+      setOauthNotice({
+        tone: "pos",
+        text: "Shopify connection removed on FridgeChannel. Order sync and discount management are disabled until you connect again.",
+        manualSteps: buildShopifyDisconnectManualSteps({
+          shopDomain,
+          hasCustomerAccount,
+        }),
+      });
+      setShowDisconnectConfirm(false);
+    } catch (err) {
+      setOauthNotice({ tone: "warn", text: err.message });
+      setShowDisconnectConfirm(false);
+    } finally {
+      setDisconnecting(false);
     }
   };
 
@@ -1897,11 +2064,7 @@ function BrandConfigPage({ section = "shopify" }) {
         </div>
       )}
 
-      {oauthNotice && (
-        <div className={`cfg-alert ${oauthNotice.tone}`} style={{ marginTop: 16 }}>
-          <I.info /> {oauthNotice.text}
-        </div>
-      )}
+      <OauthNoticeBanner notice={oauthNotice} />
 
       {showShopify && (
       <div className="cfg-page">
@@ -1916,6 +2079,21 @@ function BrandConfigPage({ section = "shopify" }) {
             </div>
           )}
 
+          {shopify.hasAccessToken && (shopify.shopName || shopify.shopEmail) && (
+            <div className="cfg-form grid grid-2" style={{ marginBottom: 16 }}>
+              {shopify.shopName ? (
+                <ConfigField label="Shop name">
+                  <div className="cfg-static-value">{shopify.shopName}</div>
+                </ConfigField>
+              ) : null}
+              {shopify.shopEmail ? (
+                <ConfigField label="Shop account">
+                  <div className="cfg-static-value">{maskEmail(shopify.shopEmail)}</div>
+                </ConfigField>
+              ) : null}
+            </div>
+          )}
+
           <div className="cfg-form grid grid-2">
             <ConfigField label="Shopify URL" fullRow>
               <input
@@ -1923,6 +2101,8 @@ function BrandConfigPage({ section = "shopify" }) {
                 value={shopify.shopDomain}
                 onChange={(e) => updateShopify("shopDomain", e.target.value)}
                 placeholder="https://brand-name.myshopify.com"
+                disabled={shopify.hasAccessToken}
+                readOnly={shopify.hasAccessToken}
               />
             </ConfigField>
           </div>
@@ -1930,11 +2110,17 @@ function BrandConfigPage({ section = "shopify" }) {
           <CfgActions>
             <button
               type="button"
-              className="btn primary"
-              disabled={saving || connecting}
-              onClick={handleConnectShopify}
+              className={`btn${shopify.hasAccessToken ? "" : " primary"}`}
+              disabled={saving || connecting || disconnecting}
+              onClick={shopify.hasAccessToken ? () => setShowDisconnectConfirm(true) : handleConnectShopify}
             >
-              {connecting ? "Redirecting…" : "Connect Shopify"}
+              {disconnecting
+                ? "Disconnecting…"
+                : connecting
+                  ? "Redirecting…"
+                  : shopify.hasAccessToken
+                    ? "Disconnect"
+                    : "Connect Shopify"}
             </button>
           </CfgActions>
         </CfgSection>
@@ -2009,13 +2195,39 @@ function BrandConfigPage({ section = "shopify" }) {
           desc="Connect Klaviyo so FridgeChannel can read profiles and segments for coupon targeting."
         >
           {klaviyo.hasOAuthToken && (
-            <div className="cfg-alert pos" style={{ marginBottom: 16 }}>
-              <span className="cfg-pill pos"><span className="d" />Authorized</span>
+            <div className={`cfg-alert ${klaviyo.tokenExpired ? "warn" : "pos"}`} style={{ marginBottom: 16 }}>
+              <span className={`cfg-pill ${klaviyo.tokenExpired ? "warn" : "pos"}`}>
+                <span className="d" />
+                {klaviyo.tokenExpired ? "Token expired" : "Authorized"}
+              </span>
               {klaviyo.tokenExpiresAt && (
                 <span className="mono muted">
                   Token expires: {new Date(klaviyo.tokenExpiresAt).toLocaleString()}
                 </span>
               )}
+            </div>
+          )}
+
+          {klaviyo.hasOAuthToken && (klaviyo.accountName || klaviyo.accountEmail) && (
+            <div className="cfg-form grid grid-2" style={{ marginBottom: 16 }}>
+              {klaviyo.accountName ? (
+                <ConfigField label="Account name">
+                  <div className="cfg-static-value">{klaviyo.accountName}</div>
+                </ConfigField>
+              ) : null}
+              {klaviyo.accountEmail ? (
+                <ConfigField label="Account email">
+                  <div className="cfg-static-value">{maskEmail(klaviyo.accountEmail)}</div>
+                </ConfigField>
+              ) : null}
+            </div>
+          )}
+
+          {klaviyo.needsReconnectForAccountProfile && (
+            <div className="cfg-alert warn" style={{ marginBottom: 16 }}>
+              <I.info />
+              {" "}
+              Account details are unavailable. Click Connect Klaviyo to refresh authorization and load account name and email.
             </div>
           )}
 
@@ -2077,7 +2289,7 @@ function BrandConfigPage({ section = "shopify" }) {
                     disabled={!shopifyReady || campaignSyncing}
                     onClick={handleSyncCampaigns}
                   >
-                    {campaignSyncing ? "Syncing…" : "Sync Shopify"}
+                    {campaignSyncing ? "Syncing…" : "Sync Shopify Discounts"}
                   </button>
                   <button
                     type="button"
@@ -2119,7 +2331,7 @@ function BrandConfigPage({ section = "shopify" }) {
                     disabled={!shopifyReady || campaignSyncing}
                     onClick={handleSyncCampaigns}
                   >
-                    {campaignSyncing ? "Syncing…" : "Sync Shopify"}
+                    {campaignSyncing ? "Syncing…" : "Sync Shopify Discounts"}
                   </button>
                   {CREATE_DISCOUNT_ENABLED && (
                     <button
@@ -2155,6 +2367,18 @@ function BrandConfigPage({ section = "shopify" }) {
           campaign={addCodesCampaign}
           onClose={() => setAddCodesCampaign(null)}
           onUpdated={loadConfig}
+        />
+      )}
+
+      {showDisconnectConfirm && (
+        <ConfirmModal
+          title="Disconnect Shopify"
+          message="FridgeChannel will remove the saved access token. You must also uninstall the app in Shopify Admin."
+          confirmLabel="Disconnect"
+          cancelLabel="Cancel"
+          confirming={disconnecting}
+          onConfirm={handleDisconnectShopify}
+          onCancel={() => setShowDisconnectConfirm(false)}
         />
       )}
     </div>

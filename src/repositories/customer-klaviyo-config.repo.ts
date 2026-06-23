@@ -2,7 +2,7 @@ import { getSupabase } from "../clients/supabase.client.js";
 import type { CustomerKlaviyoConfig } from "../coupons/coupon.types.js";
 
 const DEFAULT_API_REVISION = "2026-04-15";
-const DEFAULT_SCOPES = "profiles:read segments:read events:read metrics:read";
+const DEFAULT_SCOPES = "accounts:read profiles:read segments:read events:read metrics:read";
 
 export async function getKlaviyoConfigByCustomerId(
   customerId: number,
@@ -24,6 +24,8 @@ export async function upsertKlaviyoConfig(input: {
   oauthTokenRef?: string | null;
   oauthRefreshRef?: string | null;
   tokenExpiresAt?: string | null;
+  accountName?: string | null;
+  accountEmail?: string | null;
 }): Promise<CustomerKlaviyoConfig> {
   const now = new Date().toISOString();
   const existing = await getKlaviyoConfigByCustomerId(input.customerId);
@@ -47,6 +49,14 @@ export async function upsertKlaviyoConfig(input: {
             : (existing?.token_expires_at ?? null),
         api_revision: input.apiRevision ?? existing?.api_revision ?? DEFAULT_API_REVISION,
         scopes: input.scopes ?? existing?.scopes ?? DEFAULT_SCOPES,
+        account_name:
+          input.accountName !== undefined
+            ? input.accountName
+            : (existing?.account_name ?? null),
+        account_email:
+          input.accountEmail !== undefined
+            ? input.accountEmail
+            : (existing?.account_email ?? null),
         updated_at: now,
         ...(existing ? {} : { created_at: now }),
       },

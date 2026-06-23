@@ -2,12 +2,18 @@ import {
   resolveSecret,
   storeSecret,
   hasSecret,
+  deleteSecret,
   shopifyAccessTokenRef,
   shopifyWebhookSecretRef,
   shopifyCustomerAccountClientSecretRef,
   klaviyoOauthTokenRef,
 } from "../clients/secrets.client.js";
 import { fetchShopInfo } from "../shopify/shop.api.js";
+import { fetchKlaviyoAccountInfo } from "../clients/klaviyo.client.js";
+import {
+  ensureKlaviyoAccessToken,
+  hasKlaviyoAccountsReadScope,
+} from "../klaviyo/klaviyo-oauth.tokens.js";
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
 import * as klaviyoConfigRepo from "../repositories/customer-klaviyo-config.repo.js";
 import * as couponSettingsRepo from "../repositories/customer-coupon-settings.repo.js";
@@ -18,6 +24,7 @@ import { env } from "../config/env.js";
 import { isShopifyOAuthAppConfigured } from "../lib/shopify-oauth-app.js";
 import { isFcCreatedCouponCampaign } from "../coupons/generate-code.js";
 import type { CouponModeId } from "../repositories/customer-coupon-settings.repo.js";
+import type { CustomerShopifyConfig, CustomerKlaviyoConfig } from "../coupons/coupon.types.js";
 
 export interface BrandConfigResponse {
   customerId: number;
@@ -29,6 +36,8 @@ export interface BrandConfigResponse {
     authType: string;
     shopDomain: string;
     shopifyShopId: string | null;
+    shopName: string | null;
+    shopEmail: string | null;
     shopifyCustomerAccountClientId: string | null;
     oauthAppConfigured: boolean;
     accessTokenRef: string;
@@ -70,6 +79,10 @@ export interface BrandConfigResponse {
     oauthAppConfigured: boolean;
     hasOAuthToken: boolean;
     tokenExpiresAt: string | null;
+    accountName: string | null;
+    accountEmail: string | null;
+    tokenExpired: boolean;
+    needsReconnectForAccountProfile: boolean;
   };
 }
 
@@ -111,7 +124,16 @@ function buildKlaviyoDefaults() {
     oauthAppConfigured: Boolean(env.klaviyoClientId && env.klaviyoClientSecret),
     hasOAuthToken: false,
     tokenExpiresAt: null,
+    accountName: null,
+    accountEmail: null,
+    tokenExpired: false,
+    needsReconnectForAccountProfile: false,
   };
+}
+
+function isKlaviyoTokenExpired(tokenExpiresAt: string | null | undefined): boolean {
+  if (!tokenExpiresAt) return false;
+  return new Date(tokenExpiresAt).getTime() <= Date.now();
 }
 
 function mapKlaviyoConfig(
@@ -121,10 +143,23 @@ function mapKlaviyoConfig(
   const defaults = buildKlaviyoDefaults();
   if (!klaviyoConfig) return defaults;
 
+  const accountName = klaviyoConfig.account_name;
+  const accountEmail = klaviyoConfig.account_email;
+  const tokenExpired = hasOAuthToken && isKlaviyoTokenExpired(klaviyoConfig.token_expires_at);
+  const missingAccountProfile = !accountName && !accountEmail;
+  const needsReconnectForAccountProfile =
+    hasOAuthToken
+    && missingAccountProfile
+    && (!hasKlaviyoAccountsReadScope(klaviyoConfig.scopes) || tokenExpired);
+
   return {
     oauthAppConfigured: defaults.oauthAppConfigured,
     hasOAuthToken,
     tokenExpiresAt: klaviyoConfig.token_expires_at,
+    accountName,
+    accountEmail,
+    tokenExpired,
+    needsReconnectForAccountProfile,
   };
 }
 
@@ -137,6 +172,62 @@ async function getBrandName(customerId: number): Promise<string> {
 
   if (error) throw error;
   return data?.nickname || data?.email || `Customer ${customerId}`;
+}
+
+async function maybeRefreshShopProfile(
+  customerId: number,
+  config: CustomerShopifyConfig,
+): Promise<CustomerShopifyConfig> {
+  if (config.shop_name && config.shop_email) return config;
+  if (!(await hasSecret(config.access_token_ref))) return config;
+
+  try {
+    const token = await resolveSecret(config.access_token_ref);
+    const shop = await fetchShopInfo(config.shop_domain, token, config.api_version);
+    return shopifyConfigRepo.upsertShopifyConfig({
+      customerId,
+      shopDomain: config.shop_domain,
+      shopifyShopId: shop.id,
+      shopName: shop.name,
+      shopEmail: shop.email,
+      authType: config.auth_type,
+      shopifyCustomerAccountClientId: config.shopify_customer_account_client_id,
+      shopifyCustomerAccountClientSecretRef: config.shopify_customer_account_client_secret_ref,
+      accessTokenRef: config.access_token_ref,
+      webhookSecretRef: config.webhook_secret_ref,
+      scopes: config.scopes,
+      apiVersion: config.api_version,
+      status: config.status,
+    });
+  } catch {
+    return config;
+  }
+}
+
+async function maybeRefreshKlaviyoProfile(
+  customerId: number,
+  config: CustomerKlaviyoConfig,
+): Promise<CustomerKlaviyoConfig> {
+  if (config.account_name || config.account_email) return config;
+  if (!hasKlaviyoAccountsReadScope(config.scopes)) return config;
+
+  const tokenResult = await ensureKlaviyoAccessToken(customerId, config);
+  if (!tokenResult) return config;
+
+  try {
+    const account = await fetchKlaviyoAccountInfo(
+      tokenResult.accessToken,
+      tokenResult.config.api_revision,
+    );
+    return klaviyoConfigRepo.upsertKlaviyoConfig({
+      customerId,
+      accountName: account.name || null,
+      accountEmail: account.email || null,
+    });
+  } catch (err) {
+    console.error("[brand-config] failed to refresh klaviyo account profile", err);
+    return tokenResult.config;
+  }
 }
 
 export async function getBrandConfig(customerId: number): Promise<BrandConfigResponse> {
@@ -166,20 +257,27 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
     await shopifyConfigRepo.ensureWebhookTenantKey(customerId);
   }
 
-  const shopify = shopifyConfig
+  let resolvedShopifyConfig = shopifyConfig;
+  if (shopifyConfig) {
+    resolvedShopifyConfig = await maybeRefreshShopProfile(customerId, shopifyConfig);
+  }
+
+  const shopify = resolvedShopifyConfig
     ? {
-        authType: shopifyConfig.auth_type,
-        shopDomain: shopifyConfig.shop_domain,
-        shopifyShopId: shopifyConfig.shopify_shop_id,
-        shopifyCustomerAccountClientId: shopifyConfig.shopify_customer_account_client_id,
+        authType: resolvedShopifyConfig.auth_type,
+        shopDomain: resolvedShopifyConfig.shop_domain,
+        shopifyShopId: resolvedShopifyConfig.shopify_shop_id,
+        shopName: resolvedShopifyConfig.shop_name,
+        shopEmail: resolvedShopifyConfig.shop_email,
+        shopifyCustomerAccountClientId: resolvedShopifyConfig.shopify_customer_account_client_id,
         oauthAppConfigured: isShopifyOAuthAppConfigured(),
-        accessTokenRef: shopifyConfig.access_token_ref,
-        apiVersion: shopifyConfig.api_version,
-        scopes: shopifyConfig.scopes,
-        status: shopifyConfig.status,
-        hasAccessToken: await hasSecret(shopifyConfig.access_token_ref),
+        accessTokenRef: resolvedShopifyConfig.access_token_ref,
+        apiVersion: resolvedShopifyConfig.api_version,
+        scopes: resolvedShopifyConfig.scopes,
+        status: resolvedShopifyConfig.status,
+        hasAccessToken: await hasSecret(resolvedShopifyConfig.access_token_ref),
         hasShopifyCustomerAccountClientSecret: await hasSecret(
-          shopifyConfig.shopify_customer_account_client_secret_ref ??
+          resolvedShopifyConfig.shopify_customer_account_client_secret_ref ??
             shopifyCustomerAccountClientSecretRef(customerId),
         ),
       }
@@ -188,7 +286,13 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
   const klaviyoHasOAuthToken = await resolveKlaviyoHasOAuthToken(
     klaviyoConfig?.oauth_token_ref ?? (klaviyoConfig ? klaviyoOauthTokenRef(customerId) : null),
   );
-  const klaviyo = mapKlaviyoConfig(klaviyoConfig, klaviyoHasOAuthToken);
+
+  let resolvedKlaviyoConfig = klaviyoConfig;
+  if (klaviyoConfig && klaviyoHasOAuthToken) {
+    resolvedKlaviyoConfig = await maybeRefreshKlaviyoProfile(customerId, klaviyoConfig);
+  }
+
+  const klaviyo = mapKlaviyoConfig(resolvedKlaviyoConfig, klaviyoHasOAuthToken);
 
   return {
     customerId,
@@ -256,11 +360,15 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
     }
 
     let shopifyShopId: string | null = null;
+    let shopName: string | null | undefined;
+    let shopEmail: string | null | undefined;
     if (await hasSecret(accessTokenRef)) {
       try {
         const token = await resolveSecret(accessTokenRef);
         const shop = await fetchShopInfo(shopDomain, token, s.apiVersion);
         shopifyShopId = shop.id;
+        shopName = shop.name;
+        shopEmail = shop.email;
       } catch {
         // 保存配置不因连接测试失败而中断
       }
@@ -276,6 +384,8 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
       customerId: input.customerId,
       shopDomain,
       shopifyShopId,
+      shopName,
+      shopEmail,
       authType: "oauth",
       shopifyAppClientId: null,
       shopifyAppClientSecretRef: null,
@@ -304,5 +414,37 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
   }
 
   return getBrandConfig(input.customerId);
+}
+
+export async function disconnectShopifyAuthorization(
+  customerId: number,
+): Promise<BrandConfigResponse> {
+  const existing = await shopifyConfigRepo.getShopifyConfigByCustomerId(customerId);
+  if (!existing) {
+    throw new Error("Shopify is not configured");
+  }
+  if (!(await hasSecret(existing.access_token_ref))) {
+    throw new Error("Shopify is not connected");
+  }
+
+  await deleteSecret(existing.access_token_ref);
+
+  await shopifyConfigRepo.upsertShopifyConfig({
+    customerId,
+    shopDomain: existing.shop_domain,
+    shopifyShopId: null,
+    shopName: null,
+    shopEmail: null,
+    authType: existing.auth_type,
+    shopifyCustomerAccountClientId: existing.shopify_customer_account_client_id,
+    shopifyCustomerAccountClientSecretRef: existing.shopify_customer_account_client_secret_ref,
+    accessTokenRef: existing.access_token_ref,
+    webhookSecretRef: existing.webhook_secret_ref,
+    scopes: existing.scopes,
+    apiVersion: existing.api_version,
+    status: "revoked",
+  });
+
+  return getBrandConfig(customerId);
 }
 

@@ -15,6 +15,7 @@ import { fetchShopInfo } from "../shopify/shop.api.js";
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
 import type { CustomerShopifyConfig } from "../coupons/coupon.types.js";
 import { getShopifyOAuthCredentials } from "../lib/shopify-oauth-app.js";
+import { disconnectShopifyAuthorization } from "../services/brand-config.service.js";
 
 const oauthStates = new Map<
   string,
@@ -127,6 +128,8 @@ export async function handleShopifyOAuthStart(
       shopDomain: shop,
       shopifyShopId:
         existing.shop_domain === shop ? existing.shopify_shop_id ?? null : null,
+      shopName: existing.shop_domain === shop ? existing.shop_name ?? null : null,
+      shopEmail: existing.shop_domain === shop ? existing.shop_email ?? null : null,
       authType: existing.auth_type ?? "oauth",
       shopifyAppClientId: null,
       shopifyAppClientSecretRef: null,
@@ -230,6 +233,8 @@ export async function handleShopifyOAuthCallback(
       customerId,
       shopDomain: shop,
       shopifyShopId: shopInfo.id,
+      shopName: shopInfo.name,
+      shopEmail: shopInfo.email,
       authType: "oauth",
       shopifyAppClientId: null,
       shopifyAppClientSecretRef: null,
@@ -247,5 +252,19 @@ export async function handleShopifyOAuthCallback(
   } catch (err) {
     console.error(err);
     redirect(res, "/brand-config?shopify_oauth=failed&section=shopify");
+  }
+}
+
+export async function handleShopifyOAuthDisconnect(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const customerId = await getRequestCustomerId(req, res);
+    const config = await disconnectShopifyAuthorization(customerId);
+    json(res, 200, config);
+  } catch (err) {
+    const status = err instanceof AuthError ? 401 : 400;
+    errorJson(res, status, err instanceof Error ? err.message : "Failed to disconnect Shopify");
   }
 }

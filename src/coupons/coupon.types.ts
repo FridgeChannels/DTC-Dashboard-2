@@ -111,6 +111,8 @@ export interface CustomerKlaviyoConfig {
   token_expires_at: string | null;
   api_revision: string;
   scopes: string | null;
+  account_name: string | null;
+  account_email: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -119,6 +121,8 @@ export interface CustomerShopifyConfig {
   customer_id: number;
   shop_domain: string;
   shopify_shop_id: string | null;
+  shop_name: string | null;
+  shop_email: string | null;
   auth_type: ShopifyAuthType;
   shopify_app_client_id: string | null;
   shopify_app_client_secret_ref: string | null;

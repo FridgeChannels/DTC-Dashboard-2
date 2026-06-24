@@ -107,6 +107,13 @@ async function assignRealtimeCoupon(
     if (err instanceof NoAvailableCouponError) {
       throw new RealtimeCouponError(err.message, 404);
     }
+    const message = err instanceof Error ? err.message : "";
+    if (message.includes("assignment already exists for magnet")) {
+      throw new RealtimeCouponError(
+        "This coupon has already been claimed for this magnet",
+        409,
+      );
+    }
     throw err;
   }
 

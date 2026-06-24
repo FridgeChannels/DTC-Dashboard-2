@@ -147,37 +147,53 @@ export async function countCouponCodesByCampaignIds(
   const counts = new Map<string, number>();
   if (campaignIds.length === 0) return counts;
 
-  for (const id of campaignIds) counts.set(id, 0);
+  const results = await Promise.all(
+    campaignIds.map(async (campaignId) => {
+      const { count, error } = await getSupabase()
+        .from("fc_coupon_code")
+        .select("coupon_code_id", { count: "exact", head: true })
+        .eq("customer_id", customerId)
+        .eq("campaign_id", campaignId);
 
-  const { data, error } = await getSupabase()
-    .from("fc_coupon_code")
-    .select("campaign_id")
-    .eq("customer_id", customerId)
-    .in("campaign_id", campaignIds);
+      if (error) throw error;
+      return { campaignId, count: count ?? 0 };
+    }),
+  );
 
-  if (error) throw error;
-
-  for (const row of data ?? []) {
-    const id = row.campaign_id as string;
-    counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const { campaignId, count } of results) {
+    counts.set(campaignId, count);
   }
 
   return counts;
 }
 
+const COUPON_CODE_LIST_PAGE_SIZE = 1000;
+
 export async function listCouponCodesByCampaignId(
   customerId: number,
   campaignId: string,
 ): Promise<FcCouponCode[]> {
-  const { data, error } = await getSupabase()
-    .from("fc_coupon_code")
-    .select("*")
-    .eq("customer_id", customerId)
-    .eq("campaign_id", campaignId)
-    .order("created_at", { ascending: true });
+  const rows: FcCouponCode[] = [];
+  let offset = 0;
 
-  if (error) throw error;
-  return (data ?? []) as FcCouponCode[];
+  while (true) {
+    const { data, error } = await getSupabase()
+      .from("fc_coupon_code")
+      .select("*")
+      .eq("customer_id", customerId)
+      .eq("campaign_id", campaignId)
+      .order("created_at", { ascending: true })
+      .range(offset, offset + COUPON_CODE_LIST_PAGE_SIZE - 1);
+
+    if (error) throw error;
+
+    const page = (data ?? []) as FcCouponCode[];
+    rows.push(...page);
+    if (page.length < COUPON_CODE_LIST_PAGE_SIZE) break;
+    offset += COUPON_CODE_LIST_PAGE_SIZE;
+  }
+
+  return rows;
 }
 
 export async function findCouponCodeByCode(

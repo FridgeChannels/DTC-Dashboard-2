@@ -29,6 +29,33 @@ const DISCOUNT_REDEEM_CODE_BULK_ADD = `
   }
 `;
 
+const DISCOUNT_REDEEM_CODE_BULK_CREATION_STATUS = `
+  query DiscountRedeemCodeBulkCreationStatus($id: ID!) {
+    discountRedeemCodeBulkCreation(id: $id) {
+      id
+      done
+      importedCount
+      failedCount
+      codesCount
+    }
+  }
+`;
+
+const DISCOUNT_REDEEM_CODE_BULK_CREATION_CODES = `
+  query DiscountRedeemCodeBulkCreationCodes($id: ID!, $first: Int!, $after: String) {
+    discountRedeemCodeBulkCreation(id: $id) {
+      codes(first: $first, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          code
+          discountRedeemCode { id code }
+          errors { message }
+        }
+      }
+    }
+  }
+`;
+
 const DISCOUNT_CODE_FREE_SHIPPING_CREATE = `
   mutation discountCodeFreeShippingCreate($freeShippingCodeDiscount: DiscountCodeFreeShippingInput!) {
     discountCodeFreeShippingCreate(freeShippingCodeDiscount: $freeShippingCodeDiscount) {
@@ -601,13 +628,29 @@ export async function discountCodeBasicCreate(
   };
 }
 
+export interface BulkRedeemCodeCreationItem {
+  code: string;
+  redeemCodeId: string | null;
+  errorMessage: string | null;
+}
+
+const BULK_REDEEM_CODE_POLL_INTERVAL_MS = 500;
+const BULK_REDEEM_CODE_MAX_WAIT_MS = 120_000;
+const BULK_REDEEM_CODE_CODES_PAGE_SIZE = 250;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function discountRedeemCodeBulkAdd(
   shopDomain: string,
   accessToken: string,
   discountId: string,
   codes: string[],
-): Promise<void> {
-  if (codes.length === 0) return;
+): Promise<string> {
+  if (codes.length === 0) {
+    throw new Error("discountRedeemCodeBulkAdd requires at least one code");
+  }
   if (codes.length > 250) {
     throw new Error("discountRedeemCodeBulkAdd supports at most 250 codes per call");
   }
@@ -626,4 +669,109 @@ export async function discountRedeemCodeBulkAdd(
   if (result.userErrors?.length) {
     throw new Error(result.userErrors.map((e) => e.message).join(", "));
   }
+  if (!result.bulkCreation?.id) {
+    throw new Error("discountRedeemCodeBulkAdd returned no bulk creation job");
+  }
+
+  return result.bulkCreation.id;
+}
+
+export async function waitForDiscountRedeemCodeBulkCreation(
+  shopDomain: string,
+  accessToken: string,
+  bulkCreationId: string,
+  options: { maxWaitMs?: number; pollIntervalMs?: number } = {},
+): Promise<{ importedCount: number; failedCount: number; codesCount: number }> {
+  const maxWaitMs = options.maxWaitMs ?? BULK_REDEEM_CODE_MAX_WAIT_MS;
+  const pollIntervalMs = options.pollIntervalMs ?? BULK_REDEEM_CODE_POLL_INTERVAL_MS;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < maxWaitMs) {
+    const data = await shopifyGraphql<{
+      discountRedeemCodeBulkCreation: {
+        id: string;
+        done: boolean;
+        importedCount: number;
+        failedCount: number;
+        codesCount: number;
+      } | null;
+    }>(shopDomain, accessToken, DISCOUNT_REDEEM_CODE_BULK_CREATION_STATUS, {
+      id: bulkCreationId,
+    });
+
+    const job = data.discountRedeemCodeBulkCreation;
+    if (!job) {
+      throw new Error("Shopify bulk code creation job not found");
+    }
+    if (job.done) {
+      return {
+        importedCount: job.importedCount,
+        failedCount: job.failedCount,
+        codesCount: job.codesCount,
+      };
+    }
+
+    await sleep(pollIntervalMs);
+  }
+
+  throw new Error("Timed out waiting for Shopify bulk code creation to finish");
+}
+
+type BulkRedeemCodeCreationCodesResponse = {
+  discountRedeemCodeBulkCreation: {
+    codes: {
+      pageInfo: { hasNextPage: boolean; endCursor: string | null };
+      nodes: Array<{
+        code: string;
+        discountRedeemCode: { id: string; code: string } | null;
+        errors: Array<{ message: string }> | null;
+      } | null>;
+    } | null;
+  } | null;
+};
+
+export async function fetchDiscountRedeemCodeBulkCreationCodes(
+  shopDomain: string,
+  accessToken: string,
+  bulkCreationId: string,
+): Promise<BulkRedeemCodeCreationItem[]> {
+  const items: BulkRedeemCodeCreationItem[] = [];
+  let cursor: string | null = null;
+
+  while (true) {
+    const data: BulkRedeemCodeCreationCodesResponse = await shopifyGraphql(
+      shopDomain,
+      accessToken,
+      DISCOUNT_REDEEM_CODE_BULK_CREATION_CODES,
+      {
+        id: bulkCreationId,
+        first: BULK_REDEEM_CODE_CODES_PAGE_SIZE,
+        after: cursor,
+      },
+    );
+
+    const connection = data.discountRedeemCodeBulkCreation?.codes;
+    if (!connection) break;
+
+    for (const node of connection.nodes) {
+      if (!node) continue;
+      const errorMessage = node.errors
+        ?.map((error: { message: string }) => error.message)
+        .filter(Boolean)
+        .join("; ") || null;
+      const redeem = node.discountRedeemCode;
+      items.push({
+        code: redeem?.code ?? node.code,
+        redeemCodeId: redeem?.id ?? null,
+        errorMessage,
+      });
+    }
+
+    if (!connection.pageInfo.hasNextPage || !connection.pageInfo.endCursor) {
+      break;
+    }
+    cursor = connection.pageInfo.endCursor;
+  }
+
+  return items;
 }

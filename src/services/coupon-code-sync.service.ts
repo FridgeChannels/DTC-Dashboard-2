@@ -1,8 +1,13 @@
 import { resolveSecret } from "../clients/secrets.client.js";
 import { isShopifyMultiUsePerCodeDiscount } from "../coupons/coupon.types.js";
 import { generateCouponCode, isFcCreatedCouponCampaign } from "../coupons/generate-code.js";
-import { discountRedeemCodeBulkAdd } from "../shopify/discount.api.js";
-import { fetchShopifyRedeemCodesForDiscountNode, fetchShopifyRedeemCodesPage } from "../shopify/discount-codes.api.js";
+import {
+  discountRedeemCodeBulkAdd,
+  fetchDiscountRedeemCodeBulkCreationCodes,
+  waitForDiscountRedeemCodeBulkCreation,
+  type BulkRedeemCodeCreationItem,
+} from "../shopify/discount.api.js";
+import { fetchShopifyRedeemCodesPage } from "../shopify/discount-codes.api.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
 import * as codeRepo from "../repositories/coupon-code.repo.js";
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
@@ -417,32 +422,44 @@ export async function addCampaignCodesToFc(
   const accessToken = await resolveSecret(config.access_token_ref);
   const shopifyNodeId = campaign.shopify_discount_node_id as string;
 
+  const createdByCode = new Map<string, BulkRedeemCodeCreationItem>();
+
   for (let i = 0; i < toAdd.length; i += SHOPIFY_BULK_ADD_BATCH_SIZE) {
-    await discountRedeemCodeBulkAdd(
+    const batch = toAdd.slice(i, i + SHOPIFY_BULK_ADD_BATCH_SIZE);
+    const bulkCreationId = await discountRedeemCodeBulkAdd(
       config.shop_domain,
       accessToken,
       shopifyNodeId,
-      toAdd.slice(i, i + SHOPIFY_BULK_ADD_BATCH_SIZE),
+      batch,
     );
+    await waitForDiscountRedeemCodeBulkCreation(
+      config.shop_domain,
+      accessToken,
+      bulkCreationId,
+    );
+    const batchResults = await fetchDiscountRedeemCodeBulkCreationCodes(
+      config.shop_domain,
+      accessToken,
+      bulkCreationId,
+    );
+    for (const item of batchResults) {
+      createdByCode.set(item.code.toLowerCase(), item);
+    }
   }
-
-  const shopifyCodes = await fetchShopifyRedeemCodesForDiscountNode(
-    config.shop_domain,
-    accessToken,
-    shopifyNodeId,
-  );
-  const shopifyByCode = new Map(
-    shopifyCodes.map((row) => [row.code.toLowerCase(), row]),
-  );
 
   let added = 0;
   let skipped = 0;
   const failed: AddCampaignCodesResult["failed"] = [];
 
   for (const code of toAdd) {
-    const shopifyCode = shopifyByCode.get(code.toLowerCase());
-    if (!shopifyCode) {
-      failed.push({ code, reason: "Code not found in Shopify after creation" });
+    const shopifyCode = createdByCode.get(code.toLowerCase());
+    if (!shopifyCode?.redeemCodeId) {
+      failed.push({
+        code,
+        reason:
+          shopifyCode?.errorMessage
+          ?? "Code not created in Shopify bulk job",
+      });
       continue;
     }
 

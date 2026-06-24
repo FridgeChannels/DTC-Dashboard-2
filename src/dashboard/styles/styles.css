@@ -4067,7 +4067,8 @@ input:checked + .survey-slider:before {
 }
 
 /* =====================================================================
-   Brand Dashboard 去卡片化：区块用横线分割（CfgSection），指标用无边框网格
+   Brand Dashboard：模块用横线分割（CfgSection），不再是一个大卡片；
+   但 Revenue Overview 内每个指标是一张带边框的小卡片
    仅作用于新版 Dashboard（.brand-dashboard-page），dashboard_pre 不受影响
    ===================================================================== */
 .brand-dashboard-page .summary {
@@ -4076,23 +4077,16 @@ input:checked + .survey-slider:before {
   border-radius: 0;
   padding: 0;
   overflow: visible;
-  gap: 20px 36px;
+  gap: 12px;
 }
 .brand-dashboard-page .summary > .cell {
-  padding: 2px 0;
-  border-right: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
 }
-.brand-dashboard-page .summary > .cell:last-child { border-bottom: 0; }
 /* 区块之间的横线与行间距（CfgSection 已提供，这里略增 Dashboard 的呼吸感） */
 .brand-dashboard-page .cfg-section + .cfg-section {
   margin-top: 40px;
   padding-top: 40px;
-}
-@media (max-width: 640px) {
-  /* 窄屏下指标按横线分割堆叠 */
-  .brand-dashboard-page .summary > .cell {
-    padding: 12px 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .brand-dashboard-page .summary > .cell:last-child { border-bottom: 0; }
 }

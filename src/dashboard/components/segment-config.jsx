@@ -205,7 +205,7 @@ function SegmentConfigTable({
   };
 
   const handleDefaultSelect = (row) => {
-    if (row.isDefault || disabled || settingDefaultId) return;
+    if (row.isDefault || disabled) return;
     onSetDefault(row.segmentId);
   };
 
@@ -226,17 +226,22 @@ function SegmentConfigTable({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.segmentId} className={row.dirty ? "row-dirty" : ""}>
+            <tr
+              key={row.segmentId}
+              className={`segment-default-row${row.dirty ? " row-dirty" : ""}${row.isDefault ? " is-default" : ""}`}
+              onClick={() => handleDefaultSelect(row)}
+              title={row.isDefault ? "Default segment" : "Click to set as default segment"}
+            >
               <td className="table-default-col">
                 <label
                   className="table-default-radio"
-                  title="Set as default segment"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <input
                     type="radio"
                     name="default-segment"
                     checked={row.isDefault}
-                    disabled={disabled || settingDefaultId != null}
+                    disabled={disabled}
                     onChange={() => handleDefaultSelect(row)}
                   />
                   {row.isDefault && <span className="table-default-label">Default</span>}
@@ -244,7 +249,7 @@ function SegmentConfigTable({
               </td>
               <td><strong>{row.name || "—"}</strong></td>
               <td><SegmentStatusBadge active={row.segmentActive} processing={row.isProcessing} /></td>
-              <td>
+              <td onClick={(e) => e.stopPropagation()}>
                 {campaigns.length ? (
                   <CampaignMultiSelect
                     row={row}
@@ -274,6 +279,8 @@ function SegmentConfigPage() {
   const [loading, setLoading] = useStateSC(true);
   const [saving, setSaving] = useStateSC(false);
   const [settingDefaultId, setSettingDefaultId] = useStateSC(null);
+  const savingDefaultRef = React.useRef(false);
+  const pendingDefaultRef = React.useRef(null);
   const [error, setError] = useStateSC(null);
   const [saved, setSaved] = useStateSC(false);
   const [klaviyoConnected, setKlaviyoConnected] = useStateSC(false);
@@ -330,19 +337,30 @@ function SegmentConfigPage() {
     }
   };
 
-  const handleSetDefault = async (segmentId) => {
-    setSettingDefaultId(segmentId);
+  // 切换默认项：乐观更新立即生效，后台串行保存最新目标（合并连点），不阻塞 UI
+  const handleSetDefault = (segmentId) => {
     setError(null);
     setSaved(false);
-    try {
-      const data = await SegmentAPI.setDefault(segmentId, "percentage");
-      setRows(apiToLocalRows(data.items));
-      setCampaigns(data.campaigns ?? []);
-    } catch (err) {
-      setError(err.message || "Failed to set default segment");
-    } finally {
-      setSettingDefaultId(null);
-    }
+    setRows((rs) => rs.map((r) => ({ ...r, isDefault: r.segmentId === segmentId })));
+    pendingDefaultRef.current = segmentId;
+    if (savingDefaultRef.current) return; // 已有保存在跑，跑完会接着保存最新项
+    savingDefaultRef.current = true;
+    setSettingDefaultId(segmentId);
+    (async () => {
+      try {
+        while (pendingDefaultRef.current != null) {
+          const target = pendingDefaultRef.current;
+          pendingDefaultRef.current = null;
+          await SegmentAPI.setDefault(target, "percentage");
+        }
+      } catch (err) {
+        setError(err.message || "Failed to set default segment");
+        load(); // 出错时用服务端真值兜底
+      } finally {
+        savingDefaultRef.current = false;
+        setSettingDefaultId(null);
+      }
+    })();
   };
 
   if (loading) {
@@ -361,12 +379,6 @@ function SegmentConfigPage() {
           <I.info /> Configuration saved
         </div>
       )}
-      {settingDefaultId && (
-        <div className="cfg-alert" style={{ marginBottom: 16 }}>
-          <I.info /> Setting default segment…
-        </div>
-      )}
-
       <CfgSection
         title="Segment coupon configuration"
         desc="Bind coupons to each Klaviyo segment. A user's available coupons are resolved from the segments they belong to."
@@ -380,7 +392,7 @@ function SegmentConfigPage() {
           onChange={setRows}
           onSetDefault={handleSetDefault}
           settingDefaultId={settingDefaultId}
-          disabled={saving || settingDefaultId != null}
+          disabled={saving}
         />
         {rows.length > 0 && (
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>

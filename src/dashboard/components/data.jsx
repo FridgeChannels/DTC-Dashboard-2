@@ -371,7 +371,7 @@ window.SUMMARY = SUMMARY;
 
 // ------------- Brand config defaults -------------
 const SHOPIFY_SCOPES = [
-  { id: "write_discounts", label: "write_discounts", desc: "Create discount codes / add unique codes", required: true },
+  { id: "write_discounts", label: "write_discounts", desc: "Create coupon codes / add unique codes", required: true },
   { id: "read_discounts", label: "read_discounts", desc: "Read FC coupon status", required: true },
   { id: "read_orders", label: "read_orders", desc: "Read orders for coupon redemption", required: true },
   { id: "read_customers", label: "read_customers", desc: "Read Shopify customers", required: true },

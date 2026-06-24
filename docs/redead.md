@@ -1,6 +1,6 @@
 # Klaviyo Segment 中文对照
 
-Segment discount configuration 页面中常见分群的中文名称与用途说明。
+Segment coupon configuration 页面中常见分群的中文名称与用途说明。
 
 | 英文名称 | 中文名称 | 说明 |
 | --- | --- | --- |

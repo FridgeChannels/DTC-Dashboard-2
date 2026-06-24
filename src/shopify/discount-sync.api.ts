@@ -174,17 +174,9 @@ type ShopifyMinimumRequirement = {
   greaterThanOrEqualToQuantity?: string | number | null;
 } | null;
 
-function mapShopifyStatus(status: string): CampaignStatus {
-  switch (status) {
-    case "ACTIVE":
-      return "active";
-    case "EXPIRED":
-      return "expired";
-    case "SCHEDULED":
-      return "draft";
-    default:
-      return "paused";
-  }
+/** Only Shopify ACTIVE maps to FC active; all other Shopify states → paused. */
+export function mapShopifyCampaignStatus(status: string): CampaignStatus {
+  return status === "ACTIVE" ? "active" : "paused";
 }
 
 function parseMinPurchase(minimumRequirement?: ShopifyMinimumRequirement): number | null {
@@ -337,7 +329,7 @@ function buildSnapshotBase(
 ): ShopifyCampaignSnapshot {
   const startsAt = (codeDiscount.startsAt as string | null | undefined) ?? null;
   const endsAt = (codeDiscount.endsAt as string | null | undefined) ?? null;
-  const status = mapShopifyStatus(String(codeDiscount.status ?? "ACTIVE"));
+  const status = mapShopifyCampaignStatus(String(codeDiscount.status ?? "ACTIVE"));
   const oncePerCustomer = Boolean(codeDiscount.appliesOncePerCustomer ?? true);
   const shopifyUsageLimit = parseNullableNumber(codeDiscount.usageLimit);
 

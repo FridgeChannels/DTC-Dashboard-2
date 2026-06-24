@@ -535,11 +535,11 @@ function StepDiscountDetails({ shopifyReady, form, onChange, error }) {
 
   return (
     <div className="cfg-form grid grid-2">
-      <ConfigField label="Discount type" fullRow>
+      <ConfigField label="Coupon type" fullRow>
         <div className="cfg-static-value">{kindOption.label}</div>
         <p className="cfg-hint" style={{ marginTop: 8, marginBottom: 0 }}>{kindOption.hint}</p>
       </ConfigField>
-      <ConfigField label="Discount name" fullRow>
+      <ConfigField label="Coupon name" fullRow>
         <input
           className="cfg-input"
           value={form.name}
@@ -558,7 +558,7 @@ function StepDiscountDetails({ shopifyReady, form, onChange, error }) {
         </select>
       </ConfigField>
       {showAmountFields && (
-        <ConfigField label="Discount method">
+        <ConfigField label="Coupon method">
           <select
             className="cfg-input"
             value={form.valueType}
@@ -570,7 +570,7 @@ function StepDiscountDetails({ shopifyReady, form, onChange, error }) {
         </ConfigField>
       )}
       {showAmountFields && (
-        <ConfigField label={isPercentage ? "Discount (%)" : "Discount amount"}>
+        <ConfigField label={isPercentage ? "Coupon (%)" : "Coupon amount"}>
           <input
             className="cfg-input mono"
             type="number"
@@ -654,7 +654,7 @@ function StepDiscountDetails({ shopifyReady, form, onChange, error }) {
       </ConfigField>
       {!shopifyReady && (
         <div className="cfg-alert warn" style={{ gridColumn: "1 / -1" }}>
-          <I.shopify /> Complete Shopify authorization before creating discounts.
+          <I.shopify /> Complete Shopify authorization before creating coupons.
         </div>
       )}
       {error && (
@@ -722,7 +722,7 @@ function DiscountCreateWizard({
             disabled={creating || !shopifyReady}
             onClick={onSubmit}
           >
-            {creating ? "Creating…" : "Create discount"}
+            {creating ? "Creating…" : "Create coupon"}
           </button>
         )}
       </div>
@@ -771,14 +771,14 @@ function CampaignEditForm({ form, saving, error, onChange, onSubmit }) {
 
   return (
     <div className="cfg-form grid grid-2">
-      <ConfigField label="Discount name" fullRow>
+      <ConfigField label="Coupon name" fullRow>
         <input
           className="cfg-input"
           value={form.name}
           onChange={(e) => onChange("name", e.target.value)}
         />
       </ConfigField>
-      <ConfigField label="Discount type">
+      <ConfigField label="Coupon type">
         <div className="cfg-static-value">{formatCampaignType(form)}</div>
       </ConfigField>
       <ConfigField label="Status">
@@ -804,7 +804,7 @@ function CampaignEditForm({ form, saving, error, onChange, onSubmit }) {
       </ConfigField>
       {isAmountDiscount && (
         <ConfigField
-          label={form.discountType === "percentage" ? "Discount (%)" : "Discount amount"}
+          label={form.discountType === "percentage" ? "Coupon (%)" : "Coupon amount"}
         >
           <input
             className="cfg-input mono"
@@ -899,10 +899,10 @@ function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady }) {
         </div>
         <div className="discount-connection-copy">
           <div className="discount-connection-kicker">Shopify connection required</div>
-          <h3>Connect Shopify to view discounts</h3>
+          <h3>Connect Shopify to view coupons</h3>
           <p>
-            Discount information is imported from your Shopify store. Connect the
-            store first, then return here to sync its discounts.
+            Coupon information is imported from your Shopify store. Connect the
+            store first, then return here to sync its coupons.
           </p>
         </div>
         <a
@@ -919,8 +919,8 @@ function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady }) {
   if (!campaigns.length) {
     return (
       <EmptyState
-        title="No discounts yet"
-        note="Your Shopify store is connected. Sync now to import its discounts."
+        title="No coupons yet"
+        note="Your Shopify store is connected. Sync now to import its coupons."
         compact
       />
     );
@@ -932,7 +932,7 @@ function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady }) {
         <table className="data">
           <thead>
             <tr>
-              <th>Discount</th>
+              <th>Coupon</th>
               <th>Type</th>
               <th>Value</th>
               <th>Usage limit</th>
@@ -962,7 +962,7 @@ function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady }) {
                     disabled={!shopifyReady || !c.shopifyDiscountNodeId}
                     title={
                       !c.shopifyDiscountNodeId
-                        ? "Link this discount to Shopify first"
+                        ? "Link this coupon to Shopify first"
                         : "Sync coupon codes from Shopify"
                     }
                     onClick={() => onAddCodes(c)}
@@ -987,7 +987,7 @@ function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady }) {
         <span className="muted cfg-table-pager-label">
           Page {safePageIndex + 1} of {totalPages}
           {" · "}
-          {campaigns.length} discount{campaigns.length === 1 ? "" : "s"}
+          {campaigns.length} coupon{campaigns.length === 1 ? "" : "s"}
         </span>
         <button
           type="button"
@@ -1312,7 +1312,7 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
                 : "Synced codes stay in FC by default. Check unsynced codes to import, or uncheck synced codes that are still available or assigned to remove them from FC."}
               {" "}
               When Shopify has multiple codes, each row can be synced or removed independently.
-              Only single-code shared discounts use one-at-a-time selection.
+              Only single-code shared coupons use one-at-a-time selection.
             </p>
           </div>
           <div className="cfg-sync-filter" role="group" aria-label="Filter by sync status">
@@ -1352,8 +1352,8 @@ function ShopifySyncCodesPanel({ campaign, onUpdated }) {
             title={syncFilter === "unsynced" ? "No unsynced codes" : "No codes in Shopify"}
             note={
               syncFilter === "unsynced"
-                ? "All Shopify codes for this discount are already in FC."
-                : "This discount has no redeem codes in Shopify yet."
+                ? "All Shopify codes for this coupon are already in FC."
+                : "This coupon has no redeem codes in Shopify yet."
             }
             compact
           />
@@ -1873,7 +1873,7 @@ function BrandConfigPage({ section = "shopify" }) {
       setShopifySavedBaseline(serializeShopifyForCompare(local.shopify));
       setOauthNotice({
         tone: "pos",
-        text: "Shopify connection removed on FridgeChannel. Order sync and discount management are disabled until you connect again.",
+        text: "Shopify connection removed on FridgeChannel. Order sync and coupon management are disabled until you connect again.",
         manualSteps: buildShopifyDisconnectManualSteps({
           shopDomain,
           hasCustomerAccount,
@@ -1963,8 +1963,11 @@ function BrandConfigPage({ section = "shopify" }) {
       if (summary.notFoundInShopify) {
         parts.push(`${summary.notFoundInShopify} not found in Shopify`);
       }
+      if (summary.pausedLocally) {
+        parts.push(`${summary.pausedLocally} marked paused (not synced from Shopify)`);
+      }
       if (summary.skipped) {
-        parts.push(`${summary.skipped} unsupported Shopify discount type(s) skipped`);
+        parts.push(`${summary.skipped} unsupported Shopify coupon type(s) skipped`);
       }
       setSyncNotice(parts.length ? `Sync complete: ${parts.join("，")}` : "Sync complete. No changes.");
     } catch (err) {
@@ -2004,7 +2007,7 @@ function BrandConfigPage({ section = "shopify" }) {
     setCampaignError(null);
     try {
       if (!campaignForm.name.trim()) {
-        throw new Error("Discount name is required");
+        throw new Error("Coupon name is required");
       }
 
       const startsAt = dateTimeInputToIso(campaignForm.startsAt);
@@ -2095,7 +2098,7 @@ function BrandConfigPage({ section = "shopify" }) {
       <div className="cfg-page">
         <CfgSection
           title="Step 1 Authorization"
-          desc="Connect your store via Admin OAuth. FridgeChannel uses this to manage discounts."
+          desc="Connect your store via Admin OAuth. FridgeChannel uses this to manage coupons."
         >
           {shopify.hasAccessToken && (
             <div className="cfg-alert pos" style={{ marginBottom: 16 }}>
@@ -2277,7 +2280,7 @@ function BrandConfigPage({ section = "shopify" }) {
         {editForm ? (
           <>
             <ModuleHead
-              title="Edit discount"
+              title="Edit coupon"
               action={(
                 <button
                   type="button"
@@ -2302,17 +2305,17 @@ function BrandConfigPage({ section = "shopify" }) {
         ) : showCampaignCreate ? (
           <>
             <ModuleHead
-              title="Create discount"
+              title="Create coupon"
               action={(
                 <>
                   <button
                     type="button"
                     className="btn"
                     disabled={!shopifyReady || campaignSyncing}
-                    title={!shopifyReady ? "Connect Shopify before syncing discounts" : undefined}
+                    title={!shopifyReady ? "Connect Shopify before syncing coupons" : undefined}
                     onClick={handleSyncCampaigns}
                   >
-                    {campaignSyncing ? "Syncing…" : "Sync Shopify Discounts"}
+                    {campaignSyncing ? "Syncing…" : "Sync Shopify Coupons"}
                   </button>
                   <button
                     type="button"
@@ -2325,8 +2328,8 @@ function BrandConfigPage({ section = "shopify" }) {
               )}
             />
             <CfgSection
-              title="New discount"
-              sub="Choose a discount type, then configure and create it in Shopify."
+              title="New coupon"
+              sub="Choose a coupon type, then configure and create it in Shopify."
             >
               <DiscountCreateWizard
                 shopifyReady={shopifyReady}
@@ -2345,17 +2348,17 @@ function BrandConfigPage({ section = "shopify" }) {
         ) : (
           <>
             <ModuleHead
-              title="Discounts"
+              title="Coupons"
               action={(
                 <>
                   <button
                     type="button"
                     className="btn"
                     disabled={!shopifyReady || campaignSyncing}
-                    title={!shopifyReady ? "Connect Shopify before syncing discounts" : undefined}
+                    title={!shopifyReady ? "Connect Shopify before syncing coupons" : undefined}
                     onClick={handleSyncCampaigns}
                   >
-                    {campaignSyncing ? "Syncing…" : "Sync Shopify Discounts"}
+                    {campaignSyncing ? "Syncing…" : "Sync Shopify Coupons"}
                   </button>
                   {CREATE_DISCOUNT_ENABLED && (
                     <button
@@ -2363,7 +2366,7 @@ function BrandConfigPage({ section = "shopify" }) {
                       className="btn primary"
                       onClick={openCreateDiscount}
                     >
-                      Create discount
+                      Create coupon
                     </button>
                   )}
                 </>

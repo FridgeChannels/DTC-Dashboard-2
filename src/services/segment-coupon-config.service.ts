@@ -1,8 +1,11 @@
 import * as klaviyoSegmentRepo from "../repositories/klaviyo-segment.repo.js";
-import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
 import * as campaignSegmentRepo from "../repositories/coupon-campaign-segment.repo.js";
 import * as segmentConfigRepo from "../repositories/segment-coupon-config.repo.js";
-import type { FcCouponCampaign } from "../coupons/coupon.types.js";
+import {
+  isSegmentBindableCouponCampaign,
+  listCampaignSummariesForCustomer,
+  type CampaignSummary,
+} from "./coupon-campaign.service.js";
 import type { SegmentDiscountType } from "../repositories/segment-coupon-config.repo.js";
 
 export interface SegmentCouponCampaignOption {
@@ -90,24 +93,18 @@ function uniqueTrimmed(values: string[] | undefined): string[] {
   return [...new Set((values ?? []).map((v) => v.trim()).filter(Boolean))];
 }
 
-function isSelectableSegmentDiscountCampaign(
-  campaign: Pick<FcCouponCampaign, "status">,
-): boolean {
-  return campaign.status === "active";
-}
-
 function toSegmentCouponCampaignOption(
-  campaign: FcCouponCampaign,
+  campaign: CampaignSummary,
 ): SegmentCouponCampaignOption {
   return {
-    id: campaign.campaign_id,
-    key: campaign.campaign_key,
+    id: campaign.id,
+    key: campaign.key,
     name: campaign.name,
-    discountType: campaign.discount_type,
+    discountType: campaign.discountType,
     value: campaign.value,
-    minPurchaseAmount: campaign.min_purchase_amount,
-    startsAt: campaign.starts_at,
-    endsAt: campaign.ends_at,
+    minPurchaseAmount: campaign.minPurchaseAmount,
+    startsAt: campaign.startsAt,
+    endsAt: campaign.endsAt,
     status: campaign.status,
   };
 }
@@ -164,14 +161,14 @@ export async function listSegmentCouponConfig(
   const [segments, configs, campaigns, bindings] = await Promise.all([
     klaviyoSegmentRepo.listKlaviyoSegmentsByCustomerId(customerId),
     segmentConfigRepo.listConfigsByCustomerId(customerId, discountType),
-    campaignRepo.listCampaignsByCustomerId(customerId),
+    listCampaignSummariesForCustomer(customerId),
     campaignSegmentRepo.listCampaignSegmentsByCustomerId(customerId),
   ]);
 
   const configBySegment = new Map(configs.map((c) => [c.segment_id, c]));
-  const selectableCampaigns = campaigns.filter(isSelectableSegmentDiscountCampaign);
+  const selectableCampaigns = campaigns.filter(isSegmentBindableCouponCampaign);
   const selectableCampaignIds = new Set(
-    selectableCampaigns.map((campaign) => campaign.campaign_id),
+    selectableCampaigns.map((campaign) => campaign.id),
   );
   const campaignIdsBySegment = new Map<string, string[]>();
   for (const binding of bindings) {
@@ -219,14 +216,14 @@ export async function saveSegmentCouponConfig(
   const discountType = input.discountType ?? "percentage";
   const [segments, campaigns] = await Promise.all([
     klaviyoSegmentRepo.listKlaviyoSegmentsByCustomerId(input.customerId),
-    campaignRepo.listCampaignsByCustomerId(input.customerId),
+    listCampaignSummariesForCustomer(input.customerId),
   ]);
   const ownedSegmentIds = new Set(segments.map((s) => s.segment_id));
   const segmentNameById = new Map(segments.map((s) => [s.segment_id, s.name]));
   const selectableCampaignIds = new Set(
     campaigns
-      .filter(isSelectableSegmentDiscountCampaign)
-      .map((campaign) => campaign.campaign_id),
+      .filter(isSegmentBindableCouponCampaign)
+      .map((campaign) => campaign.id),
   );
 
   for (const item of input.items) {

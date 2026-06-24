@@ -1,5 +1,5 @@
 // ============================================================
-// FC Admin — Klaviyo Segment discount configuration
+// FC Admin — Klaviyo Segment coupon configuration
 // ============================================================
 const { useState: useStateSC, useEffect: useEffectSC, useCallback: useCallbackSC } = React;
 
@@ -65,10 +65,10 @@ function campaignOptionLabel(campaign) {
 }
 
 function campaignSelectSummary(campaigns, selectedIds) {
-  if (!selectedIds.length) return "Select discounts";
+  if (!selectedIds.length) return "Select coupons";
   const selected = campaigns.filter((campaign) => selectedIds.includes(campaign.id));
   if (selected.length === 1) return selected[0].name || selected[0].key;
-  return `${selected.length} discounts selected`;
+  return `${selected.length} coupons selected`;
 }
 
 function CampaignMultiSelect({ row, campaigns, open, disabled, onToggleOpen, onChange }) {
@@ -97,7 +97,7 @@ function CampaignMultiSelect({ row, campaigns, open, disabled, onToggleOpen, onC
       {open && (
         <div className="segment-campaign-menu">
           <div className="segment-campaign-menu-head">
-            <strong>Discounts</strong>
+            <strong>Coupons</strong>
             <button
               type="button"
               className="link-btn"
@@ -160,7 +160,7 @@ function SegmentConfigTable({
             <h3>Connect Klaviyo to load segments</h3>
             <p>
               Segment information comes from Klaviyo. Authorize your account before
-              configuring which discounts each segment can receive.
+              configuring which coupons each segment can receive.
             </p>
           </div>
           <a className="btn primary" href="/brand-config?section=klaviyo">
@@ -221,7 +221,7 @@ function SegmentConfigTable({
             <th className="table-default-col">Default</th>
             <th>Segment</th>
             <th>Status</th>
-            <th>Discounts</th>
+            <th>Coupons</th>
           </tr>
         </thead>
         <tbody>
@@ -257,7 +257,7 @@ function SegmentConfigTable({
                     onChange={(campaignIds) => updateCampaignIds(row.segmentId, campaignIds)}
                   />
                 ) : (
-                  <span className="muted">Create discounts first</span>
+                  <span className="muted">Create coupons first</span>
                 )}
               </td>
             </tr>
@@ -303,7 +303,7 @@ function SegmentConfigPage() {
 
   const handleSaveAll = async () => {
     if (!savableRows.length) {
-      setError("Choose discounts for at least one segment");
+      setError("Choose coupons for at least one segment");
       setSaved(false);
       return;
     }
@@ -321,6 +321,7 @@ function SegmentConfigPage() {
       };
       const data = await SegmentAPI.save(payload);
       setRows(apiToLocalRows(data.items));
+      setCampaigns(data.campaigns ?? []);
       setSaved(true);
     } catch (err) {
       setError(err.message || "Failed to save");
@@ -336,6 +337,7 @@ function SegmentConfigPage() {
     try {
       const data = await SegmentAPI.setDefault(segmentId, "percentage");
       setRows(apiToLocalRows(data.items));
+      setCampaigns(data.campaigns ?? []);
     } catch (err) {
       setError(err.message || "Failed to set default segment");
     } finally {
@@ -366,8 +368,8 @@ function SegmentConfigPage() {
       )}
 
       <CfgSection
-        title="Segment discount configuration"
-        desc="Bind discounts to each Klaviyo segment. A user's available discounts are resolved from the segments they belong to."
+        title="Segment coupon configuration"
+        desc="Bind coupons to each Klaviyo segment. A user's available coupons are resolved from the segments they belong to."
       >
         <SegmentConfigTable
           rows={rows}
@@ -384,8 +386,8 @@ function SegmentConfigPage() {
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>
             <span className="muted" style={{ fontSize: 12.5 }}>
               {savableRows.length > 0
-                ? `${savableRows.length} segment(s) ready to save · explicit discount bindings take priority`
-                : "Choose discounts before saving"}
+                ? `${savableRows.length} segment(s) ready to save · explicit coupon bindings take priority`
+                : "Choose coupons before saving"}
             </span>
             <div className="row" style={{ gap: 8 }}>
               <button type="button" className="btn" disabled={saving} onClick={load}>Refresh</button>

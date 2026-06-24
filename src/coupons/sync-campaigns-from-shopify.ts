@@ -18,6 +18,7 @@ export interface SyncCampaignsResult {
   updated: number;
   unchanged: number;
   notFoundInShopify: number;
+  pausedLocally: number;
   skipped: number;
 }
 
@@ -179,11 +180,27 @@ export async function syncCampaignsFromShopify(
   }
 
   let notFoundInShopify = 0;
-  for (const local of localByNodeId.values()) {
-    if (!shopifyByNodeId.has(local.shopify_discount_node_id as string)) {
+  let pausedLocally = 0;
+  for (const local of localCampaigns) {
+    const nodeId = local.shopify_discount_node_id;
+    const missingFromShopify = Boolean(nodeId && !shopifyByNodeId.has(nodeId));
+    const cannotSyncFromShopify = !nodeId || missingFromShopify;
+
+    if (!cannotSyncFromShopify) {
+      continue;
+    }
+
+    if (missingFromShopify) {
       notFoundInShopify += 1;
     }
+
+    if (local.status === "paused") {
+      continue;
+    }
+
+    await campaignRepo.updateCampaignById(customerId, local.campaign_id, { status: "paused" });
+    pausedLocally += 1;
   }
 
-  return { imported, updated, unchanged, notFoundInShopify, skipped };
+  return { imported, updated, unchanged, notFoundInShopify, pausedLocally, skipped };
 }

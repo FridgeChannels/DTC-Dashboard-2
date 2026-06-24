@@ -17,12 +17,10 @@ import {
 import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
 import * as klaviyoConfigRepo from "../repositories/customer-klaviyo-config.repo.js";
 import * as couponSettingsRepo from "../repositories/customer-coupon-settings.repo.js";
-import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
-import * as codeRepo from "../repositories/coupon-code.repo.js";
+import { listCampaignSummariesForCustomer } from "./coupon-campaign.service.js";
 import { getSupabase } from "../clients/supabase.client.js";
 import { env } from "../config/env.js";
 import { isShopifyOAuthAppConfigured } from "../lib/shopify-oauth-app.js";
-import { isFcCreatedCouponCampaign } from "../coupons/generate-code.js";
 import type { CouponModeId } from "../repositories/customer-coupon-settings.repo.js";
 import type { CustomerShopifyConfig, CustomerKlaviyoConfig } from "../coupons/coupon.types.js";
 
@@ -236,7 +234,7 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
     shopifyConfigRepo.getShopifyConfigByCustomerId(customerId),
     klaviyoConfigRepo.getKlaviyoConfigByCustomerId(customerId),
     couponSettingsRepo.getCouponSettings(customerId),
-    campaignRepo.listCampaignsByCustomerId(customerId),
+    listCampaignSummariesForCustomer(customerId),
   ]);
 
   const defaultMode = couponSettings.default_mode;
@@ -249,9 +247,6 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
       },
     ]),
   ) as Record<CouponModeId, { enabled: boolean; default: boolean }>;
-
-  const campaignIds = campaigns.map((c) => c.campaign_id);
-  const codeCounts = await codeRepo.countCouponCodesByCampaignIds(customerId, campaignIds);
 
   if (shopifyConfig && !shopifyConfig.webhook_tenant_key) {
     await shopifyConfigRepo.ensureWebhookTenantKey(customerId);
@@ -302,25 +297,7 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
     shopify,
     klaviyo,
     couponModes: { defaultMode, modes },
-    campaigns: campaigns.map((c) => ({
-      id: c.campaign_id,
-      key: c.campaign_key,
-      name: c.name,
-      discountType: c.discount_type,
-      value: c.value,
-      minPurchaseAmount: c.min_purchase_amount,
-      startsAt: c.starts_at,
-      endsAt: c.ends_at,
-      status: c.status,
-      mode: defaultMode,
-      distributionMode: c.distribution_mode,
-      oncePerCustomer: c.once_per_customer,
-      shopifyUsageLimit: c.shopify_usage_limit,
-      shopifyDiscountNodeId: c.shopify_discount_node_id,
-      codeCount: codeCounts.get(c.campaign_id) ?? 0,
-      fcCreated: isFcCreatedCouponCampaign(c.campaign_key),
-      discountTarget: c.discount_target,
-    })),
+    campaigns,
     shopifyConnection: null,
   };
 }

@@ -1,10 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  mapShopifyCampaignStatus,
   parseCombinesWithFromShopify,
   parseDiscountTargetFromCustomerGets,
   parseFreeShippingRulesFromShopify,
   parseMinPurchaseQuantity,
 } from "../../src/shopify/discount-sync.api.js";
+
+describe("mapShopifyCampaignStatus", () => {
+  it("maps ACTIVE to active", () => {
+    expect(mapShopifyCampaignStatus("ACTIVE")).toBe("active");
+  });
+
+  it("maps non-ACTIVE Shopify states to paused", () => {
+    expect(mapShopifyCampaignStatus("EXPIRED")).toBe("paused");
+    expect(mapShopifyCampaignStatus("SCHEDULED")).toBe("paused");
+    expect(mapShopifyCampaignStatus("DISABLED")).toBe("paused");
+  });
+});
 
 describe("parseCombinesWithFromShopify", () => {
   it("parses Shopify combinesWith flags", () => {

@@ -12,11 +12,11 @@ const BRAND_COLLECT_SECTION = { id: "brand-collect", label: "Brand Info" };
 const PRODUCT_ADD_SECTION = { id: "product-add", label: "Add Product" };
 
 // 营销活动（对外投放）
-const COUPON_CAMPAIGNS_SECTION = { id: "discounts", label: "Discounts" };
+const COUPON_CAMPAIGNS_SECTION = { id: "discounts", label: "Coupons" };
 const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Surveys" };
 
 // 受众与规则
-const SEGMENT_CONFIG_SECTION = { id: "segment-config", label: "Segment Discounts" };
+const SEGMENT_CONFIG_SECTION = { id: "segment-config", label: "Segment Coupons" };
 
 // Accounts 区（底部）：FC Account + 集成 Shopify / Klaviyo
 const ACCOUNT_SECTION = { id: "account", label: "FC Account" };
@@ -38,8 +38,8 @@ const ALL_SECTIONS = [
   KLAVIYO_SECTION,
 ];
 
-// 依赖门控：shopify → Coupon Campaigns；klaviyo → Segment Discounts / Survey Campaigns
-// 层级：Coupons（券线）下含 Coupon Campaigns + Segment Discounts；Surveys（问卷线）独立；
+// 依赖门控：shopify → Coupons；klaviyo → Segment Coupons / Survey Campaigns
+// 层级：Coupons（券线）下含 Coupons + Segment Coupons；Surveys（问卷线）独立；
 //       Integrations（Shopify+Klaviyo 合并）为地基，单独一项。
 function buildNavGroups(conn) {
   const shopifyReady = conn.shopifyReady;
@@ -61,14 +61,14 @@ function buildNavGroups(conn) {
           label: "Coupons",
           icon: I.navCoupons,
           locked: !shopifyReady,
-          lockHint: "Connect Shopify before creating discounts.",
+          lockHint: "Connect Shopify before creating coupons.",
         },
         {
           ...SEGMENT_CONFIG_SECTION,
           label: "Segments",
           icon: I.navSegments,
           locked: !klaviyoReady,
-          lockHint: "Connect Klaviyo and sync segments before configuring discounts.",
+          lockHint: "Connect Klaviyo and sync segments before configuring coupons.",
         },
         {
           ...SURVEY_CAMPAIGNS_SECTION,

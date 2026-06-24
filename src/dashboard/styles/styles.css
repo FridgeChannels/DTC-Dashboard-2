@@ -2425,7 +2425,7 @@ select.cfg-input-sm {
 }
 .admin-nav-item.locked .admin-nav-label { color: var(--ink-3); }
 .admin-nav-item.locked:hover { background: var(--bg-sunken); }
-/* 券线下属规则（Segment Discounts）：缩进表达从属于 Coupon Campaigns */
+/* 券线下属规则（Segment Coupons）：缩进表达从属于 Coupons */
 .admin-nav-item.indent { padding-left: 22px; }
 .admin-nav-item.indent .admin-nav-label {
   font-weight: 500;

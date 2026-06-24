@@ -268,7 +268,8 @@ export async function updateCampaignForCustomer(
   return toCampaignSummary(customerId, campaign, settings.default_mode);
 }
 
-async function listCampaignSummariesForCustomer(
+/** Campaigns shown in Brand Config → Coupons table. */
+export async function listCampaignSummariesForCustomer(
   customerId: number,
 ): Promise<CampaignSummary[]> {
   const [settings, campaigns] = await Promise.all([
@@ -298,6 +299,11 @@ async function listCampaignSummariesForCustomer(
     fcCreated: isFcCreatedCouponCampaign(c.campaign_key),
     discountTarget: c.discount_target,
   }));
+}
+
+/** Segment binding dropdown: only active coupon campaigns. */
+export function isSegmentBindableCouponCampaign(campaign: CampaignSummary): boolean {
+  return campaign.status === "active";
 }
 
 export async function syncCampaignsForCustomer(

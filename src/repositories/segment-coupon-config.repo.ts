@@ -27,6 +27,7 @@ export interface UpsertSegmentCouponConfigInput {
   maxDiscountRatio?: number | null;
   defaultDiscountRatio?: number | null;
   isActive?: boolean;
+  isDefault?: boolean;
   notes?: string | null;
 }
 
@@ -80,6 +81,9 @@ export async function upsertSegmentCouponConfig(
   if (input.defaultDiscountRatio !== undefined) {
     row.default_discount_ratio = input.defaultDiscountRatio ?? 0;
   }
+  if (input.isDefault !== undefined) {
+    row.is_default = input.isDefault;
+  }
 
   const { data, error } = await getSupabase()
     .from("fc_segment_coupon_config")
@@ -106,6 +110,20 @@ export async function findDefaultSegmentConfig(
 
   if (error) throw error;
   return data as SegmentCouponConfigRow | null;
+}
+
+/** 清掉该 customer / discountType 下所有 is_default 标记（单次写入） */
+export async function clearDefaultSegmentCouponConfig(
+  customerId: number,
+  discountType: SegmentDiscountType = "percentage",
+): Promise<void> {
+  const { error } = await getSupabase()
+    .from("fc_segment_coupon_config")
+    .update({ is_default: false, updated_at: new Date().toISOString() })
+    .eq("customer_id", customerId)
+    .eq("discount_type", discountType)
+    .eq("is_default", true);
+  if (error) throw error;
 }
 
 export async function setDefaultSegmentCouponConfig(

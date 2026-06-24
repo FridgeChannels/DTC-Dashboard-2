@@ -267,22 +267,27 @@ export async function saveSegmentCouponConfig(
   return listSegmentCouponConfig(input.customerId, discountType);
 }
 
+export interface SetDefaultSegmentCouponConfigResult {
+  defaultSegmentId: string;
+  discountType: SegmentDiscountType;
+}
+
 export async function setDefaultSegmentCouponConfig(
   customerId: number,
   segmentId: string,
   discountType: SegmentDiscountType = "percentage",
-): Promise<SegmentCouponConfigListResponse> {
-  const segments = await klaviyoSegmentRepo.listKlaviyoSegmentsByCustomerId(customerId);
-  if (!segments.some((s) => s.segment_id === segmentId)) {
-    throw new Error(`Segment ${segmentId} does not belong to this brand. Refresh and try again.`);
-  }
-
+): Promise<SetDefaultSegmentCouponConfigResult> {
+  // 仅 2 次远程数据库往返：
+  //   1) 清掉旧默认（含自身）
+  //   2) upsert 当前项为 active + default（行不存在也会创建）
+  // 不再做校验读 + find + 全量重列（前端已乐观更新，输入来自品牌自有 segment 列表）
+  await segmentConfigRepo.clearDefaultSegmentCouponConfig(customerId, discountType);
   await segmentConfigRepo.upsertSegmentCouponConfig({
     customerId,
     segmentId,
     discountType,
     isActive: true,
+    isDefault: true,
   });
-  await segmentConfigRepo.setDefaultSegmentCouponConfig(customerId, segmentId, discountType);
-  return listSegmentCouponConfig(customerId, discountType);
+  return { defaultSegmentId: segmentId, discountType };
 }

@@ -1,0 +1,452 @@
+# Brand Dashboard PRD｜收入优先版
+
+## 1. 页面目标
+
+Brand Dashboard 用来帮助品牌判断这套挑战机制是否带来真实经营收益。
+
+品牌最关心的是：
+
+1. 挑战机制带来了多少收入。
+2. 优惠券带来了多少收入。
+3. 复购用户贡献了多少收入。
+4. 活跃用户的人均收入是否提升。
+5. 哪些优惠券真正带来了订单和收入。
+6. 这套机制是否提升了复购、留存和回流。
+
+后台不展示游戏过程、金币规则、任务细节。品牌只看最终经营结果。
+
+---
+
+## 2. 页面结构
+
+Dashboard 分为 5 个模块：
+
+1. 时间筛选
+2. 收入概览
+3. 优惠券收入漏斗
+4. 优惠券表现
+5. 收入趋势
+
+---
+
+## 3. 时间筛选
+
+页面顶部提供时间筛选。
+
+默认展示：
+
+* Last 30 days
+
+可切换：
+
+* Last 7 days
+* Last 30 days
+* Last 90 days
+* Month to date
+* All time
+
+时间筛选影响整个 Dashboard 的所有数据。
+
+---
+
+## 4. 收入概览
+
+收入概览是首屏最重要的区域。
+
+这里集中展示品牌最关心的收入、复购、留存、回流结果。
+
+### 4.1 首屏指标
+
+| 指标                                            | 含义                        |
+| --------------------------------------------- | ------------------------- |
+| Challenge attributed revenue / Coupon revenue | 挑战机制带来的总归因收入 / 使用优惠券产生的收入 |
+| Repeat customer revenue                       | 复购用户贡献的收入                 |
+| Revenue per active user / Active users        | 每个活跃参与用户平均带来的收入 / 活跃参与用户数 |
+| Revenue growth                                | 当前周期相较上一周期的收入增长           |
+| Coupon order revenue / Orders                 | 使用挑战优惠券完成订单带来的收入 / 对应订单数  |
+| Repeat purchase rate                          | 当前周期复购率                   |
+| 30-day retention                              | 当前周期 30 日留存               |
+| Winback rate                                  | 当前周期回流用户比例                |
+
+### 4.2 展示规则
+
+收入类指标优先展示在第一行：
+
+| 第一行指标                                         | 说明         |
+| --------------------------------------------- | ---------- |
+| Challenge attributed revenue / Coupon revenue | 最核心收入结果    |
+| Repeat customer revenue                       | 复购收入       |
+| Revenue per active user / Active users        | 人均收入与活跃规模  |
+| Revenue growth                                | 收入增长       |
+| Coupon order revenue / Orders                 | 用券订单收入与订单数 |
+
+复购、留存、回流指标展示在同一个 Revenue Overview 模块的第二行：
+
+| 第二行指标                | 说明         |
+| -------------------- | ---------- |
+| Repeat purchase rate | 判断是否提升复购   |
+| 30-day retention     | 判断是否提升留存   |
+| Winback rate         | 判断是否唤回沉默用户 |
+
+### 4.3 合并展示规则
+
+如果两个指标表达的是同一类经营结果，可以共同存在于一个卡片里，用斜杠区分，不拆成两个重复卡片。
+
+示例：
+
+| 卡片                                            | 展示方式                    |
+| --------------------------------------------- | ----------------------- |
+| Challenge attributed revenue / Coupon revenue | 上方展示挑战归因总收入，下方展示其中优惠券收入 |
+| Coupon order revenue / Orders                 | 上方展示优惠券订单收入，下方展示对应订单数   |
+| Revenue per active user / Active users        | 上方展示人均收入，下方展示活跃参与用户数    |
+
+### 4.4 不放在收入概览里的指标
+
+以下指标不放首屏收入概览：
+
+* Active devices
+* Participants
+* Coupons earned
+* Coupons used
+* Orders 单独卡片
+* Use rate
+* Completion rate
+* Game plays
+* Coins earned
+* Task completions
+* Survey responses
+
+这些数据只用于解释收入来源，不作为首屏收入指标。
+
+---
+
+## 5. 优惠券收入漏斗
+
+### 5.1 模块目标
+
+优惠券收入漏斗用来解释收入是怎么来的。
+
+首屏先告诉品牌赚了多少钱，漏斗再解释：
+
+这些收入来自多少设备、多少参与用户、多少优惠券、多少订单。
+
+### 5.2 漏斗阶段
+
+| 阶段             | 含义                |
+| -------------- | ----------------- |
+| Active devices | 当前时间段内处于激活状态的设备数量 |
+| Participants   | 参与挑战的用户           |
+| Coupons earned | 获得优惠券             |
+| Coupons used   | 使用优惠券             |
+| Orders         | 使用优惠券产生的订单        |
+| Coupon revenue | 使用优惠券产生的收入        |
+
+### 5.3 Active devices 规则
+
+Active devices 是漏斗的起点，用来告诉品牌：
+
+当前时间段内有多少设备正在产生有效触点。
+
+它不是用户行为指标，也不是收入指标，所以不放在 Revenue Overview 里。
+
+Active devices 用来帮助品牌判断：
+
+| 现象                                | 说明               |
+| --------------------------------- | ---------------- |
+| Active devices 多，但 Participants 少 | 设备触点存在，但用户参与挑战不足 |
+| Active devices 少，但收入高             | 设备覆盖少，但单设备质量高    |
+| Active devices 多，收入低              | 设备覆盖足够，但后续转化弱    |
+
+### 5.4 展示规则
+
+漏斗每一层展示：
+
+* 数量
+* 相对上一层的转化率
+* 相对 Active devices 的总转化率
+
+其中 Coupon revenue 是金额结果，不需要展示转化率，只展示收入金额。
+
+### 5.5 关键规则
+
+获得优惠券就代表用户已经拿到 coupon code。
+
+不展示：
+
+* Coupon revealed
+* Saved coupon
+* Scratch code
+* Reveal code
+
+旧版漏斗：
+
+| 旧阶段          | 处理               |
+| ------------ | ---------------- |
+| Saw coupon   | 删除               |
+| Saved coupon | 删除               |
+| Used coupon  | 保留为 Coupons used |
+
+新版漏斗：
+
+| 新阶段            | 说明       |
+| -------------- | -------- |
+| Active devices | 当前周期激活设备 |
+| Participants   | 参与挑战用户   |
+| Coupons earned | 获得优惠券    |
+| Coupons used   | 使用优惠券    |
+| Orders         | 用券订单     |
+| Coupon revenue | 用券收入     |
+
+### 5.6 运营判断
+
+| 现象                                | 说明                      |
+| --------------------------------- | ----------------------- |
+| Active devices 高，Participants 低   | 用户看到入口但没有参与挑战           |
+| Participants 高，Coupons earned 低   | 用户参与了挑战，但没有有效获得券        |
+| Coupons earned 高，Coupons used 低   | 用户拿到券后没有足够动力下单          |
+| Coupons used 高，Orders 低           | 可能订单归因或 checkout 链路存在问题 |
+| Orders 高，Coupon revenue 低         | 可能客单价低，或高折扣券占比过高        |
+| Active devices 高，Coupon revenue 低 | 设备规模足够，但整体转化效率不足        |
+
+---
+
+## 6. 优惠券表现
+
+### 6.1 模块目标
+
+让品牌知道哪一档优惠券真正带来了收入。
+
+### 6.2 表格维度
+
+| Coupon  | Earned | Used | Orders | Revenue | Use rate |
+| ------- | -----: | ---: | -----: | ------: | -------: |
+| 10% OFF |    320 |   78 |     72 |  $3,120 |      24% |
+| 15% OFF |    188 |   62 |     58 |  $2,460 |      33% |
+| 20% OFF |     92 |   45 |     41 |  $1,980 |      49% |
+| 25% OFF |     31 |   19 |     18 |    $920 |      61% |
+
+### 6.3 排序规则
+
+默认按照优惠力度从低到高展示。
+
+### 6.4 品牌可以判断
+
+1. 哪一档券带来的收入最高。
+2. 哪一档券带来的订单最多。
+3. 哪一档券使用率最高。
+4. 高折扣券是否真的比低折扣券更有效。
+5. 哪一档券可能需要调整门槛或有效期。
+
+---
+
+## 7. 收入趋势
+
+### 7.1 模块目标
+
+展示当前时间段内收入变化。
+
+### 7.2 展示内容
+
+收入趋势优先展示：
+
+1. Challenge attributed revenue
+2. Coupon revenue
+
+可以叠加展示：
+
+1. Coupons used
+2. Orders
+
+图表主轴必须是收入，不以用券数作为主指标。
+
+### 7.3 目的
+
+帮助品牌判断：
+
+* 收入是否在增长
+* 哪些时间段收入高
+* 哪些时间段优惠券使用带来了明显收入
+* 最近是否出现收入下降
+
+---
+
+## 8. 旧版 Dashboard 数据处理
+
+旧版音频 / CTA Dashboard 中的数据按以下规则处理。
+
+### 8.1 保留并前置到 Revenue Overview
+
+| 旧版指标                    | 新版处理                                                    |
+| ----------------------- | ------------------------------------------------------- |
+| FC Attributed Revenue   | 改为 Challenge attributed revenue，放入收入概览                  |
+| Coupon Redeemed Revenue | 改为 Coupon revenue，和 Challenge attributed revenue 放在同一卡片 |
+| Repeat Customer Revenue | 保留为 Repeat customer revenue，放入收入概览                      |
+| Revenue / Active HH     | 改为 Revenue per active user / Active users，放入收入概览        |
+| Repeat Purchase Rate    | 保留为 Repeat purchase rate，放入收入概览第二行                      |
+| 30-day Retention        | 保留为 30-day retention，放入收入概览第二行                          |
+| Winback Rate            | 保留为 Winback rate，放入收入概览第二行                              |
+
+### 8.2 删除
+
+| 旧版指标                        | 处理  |
+| --------------------------- | --- |
+| C1 Sticking                 | 不保留 |
+| C2 Regular Tap              | 不保留 |
+| C3 Weekly Tap               | 不保留 |
+| C4 CTA Click                | 不保留 |
+| C5 Take                     | 不保留 |
+| Saw coupon                  | 不保留 |
+| Saved coupon                | 不保留 |
+| Coupon revealed             | 不保留 |
+| CTA Impressions             | 不保留 |
+| Revenue / CTA Click         | 不保留 |
+| CTA Performance             | 不保留 |
+| Source / Magnet Performance | 不保留 |
+
+---
+
+## 9. 空状态
+
+### 9.1 没有任何活动
+
+No activity yet.
+Once devices become active and users join the challenge, revenue and coupon data will appear here.
+
+### 9.2 有激活设备但没有参与
+
+Devices are active, but no users have joined the challenge yet.
+
+### 9.3 有参与但没有收入
+
+Users have started joining the challenge, but no coupon revenue has been generated yet.
+
+### 9.4 有获得券但没有使用
+
+Coupons have been earned, but none have been used yet.
+
+### 9.5 Shopify 未连接
+
+Connect Shopify to track coupon usage, orders, and revenue.
+
+未连接 Shopify 时，不展示订单和收入假数据。
+
+---
+
+## 10. 页面操作
+
+### 10.1 Export
+
+保留 Export。
+
+导出内容包括：
+
+* 时间范围
+* 激活设备数
+* 参与用户数
+* 优惠券档位
+* 获得数量
+* 使用数量
+* 订单数
+* 收入
+* 使用率
+
+### 10.2 View orders
+
+Shopify 已连接时，可以从订单数字进入订单明细。
+
+订单明细展示：
+
+* 订单号
+* 用户
+* 使用的优惠券
+* 订单金额
+* 下单时间
+* 订单状态
+
+---
+
+## 11. 本期范围
+
+本期必须完成：
+
+1. 时间筛选
+2. 收入概览
+3. 优惠券收入漏斗
+4. 优惠券表现表
+5. 收入趋势
+6. Export
+7. Shopify 未连接降级状态
+8. 空状态
+
+本期不做：
+
+1. 游戏数据
+2. 金币数据
+3. 任务完成率
+4. 问卷细节
+5. Coupon revealed
+6. Saved coupon
+7. 旧版 C1-C5 漏斗
+8. 技术同步状态
+9. Klaviyo sync status
+10. 用户分群
+11. Source / Magnet Performance
+12. Discount cost
+13. Net revenue
+14. Refund analysis
+15. CTA Performance
+
+---
+
+## 12. 最终页面信息架构
+
+新版 Brand Dashboard 最终结构为：
+
+1. Date Filter
+
+2. Revenue Overview
+
+   * Challenge attributed revenue / Coupon revenue
+   * Repeat customer revenue
+   * Revenue per active user / Active users
+   * Revenue growth
+   * Coupon order revenue / Orders
+   * Repeat purchase rate
+   * 30-day retention
+   * Winback rate
+
+3. Coupon Revenue Funnel
+
+   * Active devices
+   * Participants
+   * Coupons earned
+   * Coupons used
+   * Orders
+   * Coupon revenue
+
+4. Coupon Performance
+
+   * By coupon tier
+
+5. Revenue Trend
+
+   * Challenge attributed revenue
+   * Coupon revenue
+
+---
+
+## 13. 验收标准
+
+1. 首屏必须优先展示收入相关指标。
+2. Repeat purchase rate、30-day retention、Winback rate 必须合并展示在 Revenue Overview，不再单独成模块。
+3. Coupon Revenue Funnel 第一层必须是 Active devices。
+4. Participants、Coupons earned、Coupons used 不作为首屏核心概览卡片。
+5. Dashboard 不出现游戏、金币、任务细节。
+6. Dashboard 不出现 Coupon revealed、Saved coupon、Scratch code。
+7. 同一经营含义的收入指标可以在同一卡片内用斜杠合并展示。
+8. 同一个指标不能在多个模块重复作为独立卡片展示。
+9. 品牌可以在首屏看到挑战归因收入、优惠券收入、复购收入、人均收入、复购率、留存和回流。
+10. 品牌可以在漏斗中看到 Active devices → Participants → Coupons earned → Coupons used → Orders → Coupon revenue。
+11. 品牌可以按优惠券档位查看 earned、used、orders、revenue、use rate。
+12. 品牌可以看到收入趋势。
+13. 未连接 Shopify 时，不展示订单和收入假数据，只展示连接提示。

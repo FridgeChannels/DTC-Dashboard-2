@@ -3,9 +3,16 @@
 // ============================================================
 const { useState: useStateAdmin, useEffect: useEffectAdmin } = React;
 
+// 新版收入优先 Brand Dashboard
 const DASHBOARD_SECTION = {
   id: "dashboard",
   label: "Dashboard",
+};
+
+// 旧版（mock 数据）Dashboard，保留为 dashboard_pre
+const DASHBOARD_PRE_SECTION = {
+  id: "dashboard-pre",
+  label: "dashboard_pre",
 };
 
 const BRAND_COLLECT_SECTION = { id: "brand-collect", label: "Brand Info" };
@@ -48,6 +55,7 @@ function buildNavGroups(conn) {
     {
       label: "Overview",
       items: [
+        // dashboard_pre 暂时隐藏（保留 DASHBOARD_PRE_SECTION 与渲染分支，未删除）
         { ...DASHBOARD_SECTION, icon: I.navDashboard },
         { ...BRAND_COLLECT_SECTION, icon: I.navBrand },
         { ...PRODUCT_ADD_SECTION, icon: I.navProduct },
@@ -84,6 +92,7 @@ function buildNavGroups(conn) {
 
 function parseSection() {
   if (window.location.pathname === "/" || window.location.pathname === "/dashboard") return DASHBOARD_SECTION.id;
+  if (window.location.pathname === "/dashboard-pre") return DASHBOARD_PRE_SECTION.id;
   if (window.location.pathname === "/brand-collect") return BRAND_COLLECT_SECTION.id;
   if (window.location.pathname === "/product-add") return PRODUCT_ADD_SECTION.id;
   if (window.location.pathname === "/segment-config") return SEGMENT_CONFIG_SECTION.id;
@@ -351,6 +360,8 @@ function AdminApp() {
       />
       <div className="admin-main">
         {section === DASHBOARD_SECTION.id
+          ? <BrandDashboardPage />
+          : section === DASHBOARD_PRE_SECTION.id
           ? <DashboardPage />
           : section === BRAND_COLLECT_SECTION.id
             ? <BrandCollectPage />

@@ -3937,3 +3937,156 @@ input:checked + .survey-slider:before {
   align-self: center;
   margin-right: 2px;
 }
+
+/* =====================================================================
+   全站响应式适配（移动端 / 平板 / 桌面）
+   - 仅新增 max-width 媒体查询与文本溢出保护，不改动桌面布局
+   - dashboard_pre（旧 mock 看板）已隐藏，不在适配范围内
+   ===================================================================== */
+
+/* ---- 文本溢出 / 重叠保护（所有尺寸）---- */
+.panel-title, .panel-sub,
+.cell .cell-title, .cell .cell-value,
+.survey-stat-title, .survey-stat-value, .survey-stat-sub,
+.module-title, .module-sub,
+.admin-page-title, .admin-page-sub,
+.admin-nav-label, .survey-detail-title,
+.survey-dashboard-question-title, .survey-user-q,
+.survey-option-bar-label, .funnel .label {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+}
+.cell, .survey-stat-card, .panel-head > div,
+.survey-dashboard-head-meta, .survey-dashboard-head-context,
+.module-head, .module-head .titles {
+  min-width: 0;
+}
+/* 表格在窄屏横向滚动，避免挤压变形 */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ---- 平板（≤1024px）---- */
+@media (max-width: 1024px) {
+  .admin-content { padding: 22px 22px 36px; }
+}
+
+/* ---- 手机（≤640px）---- */
+@media (max-width: 640px) {
+  .admin-content { padding: 16px 14px 40px; max-width: 100%; }
+  .card { padding: 16px; }
+
+  /* 大号数字缩小，避免溢出 */
+  .cell .cell-value { font-size: 26px; }
+  .survey-stat-value { font-size: 22px; }
+  .module-title { font-size: 24px; }
+  .survey-detail-title { font-size: 21px; }
+  .admin-page-title { font-size: 24px; }
+  .panel-title { font-size: 15px; }
+
+  /* 所有多列网格收为单列 */
+  .summary,
+  .survey-stats-grid,
+  .survey-information-grid,
+  .cfg-scope-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* 顶部操作区堆叠并占满 */
+  .survey-dashboard-head-actions { width: 100%; }
+  .survey-dashboard-head-actions .cfg-input,
+  .survey-dashboard-head-actions .btn { flex: 1 1 auto; min-width: 0; }
+  .module-head-right { width: 100%; flex-wrap: wrap; }
+  .module-head-right .btn { flex: 1 1 auto; justify-content: center; }
+
+  /* tabs / 步骤条：横向滚动，不换行挤压 */
+  .survey-dashboard-tabs,
+  .survey-wizard-stepbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+  .survey-dashboard-tab,
+  .survey-wizard-step { flex-shrink: 0; white-space: nowrap; }
+
+  /* 弹窗在小屏接近全宽 */
+  .cfg-modal { width: 100%; max-height: 92vh; }
+  .cfg-modal-head, .cfg-modal-foot, .cfg-modal-body {
+    padding-left: 16px; padding-right: 16px;
+  }
+  .cfg-modal-foot { flex-wrap: wrap; }
+  .cfg-modal-foot .btn { flex: 1 1 auto; justify-content: center; }
+
+  /* 侧栏移动导航：缩小项宽，减少横向滚动 */
+  .admin-nav-item { min-width: 140px; padding: 10px 8px; }
+  .admin-sidebar { padding: 14px 12px; }
+
+  /* 漏斗金额条字号 */
+  .funnel-bar > div { font-size: 13px; }
+}
+
+/* ---- 超小屏（≤400px）---- */
+@media (max-width: 400px) {
+  .cell .cell-value { font-size: 23px; }
+  .module-title { font-size: 21px; }
+  .btn { padding: 8px 12px; font-size: 14px; }
+  .admin-nav-item { min-width: 120px; }
+  /* 极窄屏下答案选项也收为单列 */
+  .survey-answer-options.compact { grid-template-columns: 1fr; }
+}
+
+/* ---- 其余页面补充适配 ---- */
+@media (max-width: 900px) {
+  /* Accounts：二级侧栏在窄屏改为顶部横向滚动，内容堆叠在下方 */
+  .accounts-layout { flex-direction: column; }
+  .accounts-subnav {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 12px 14px;
+    gap: 8px;
+  }
+  .accounts-subnav .admin-nav-group-label { display: none; }
+  .accounts-subnav .admin-nav-link,
+  .accounts-subnav .admin-nav-item { flex-shrink: 0; white-space: nowrap; min-width: auto; }
+}
+
+@media (max-width: 640px) {
+  /* 预览全部问题卡片收为单列 */
+  .survey-preview-all-questions { grid-template-columns: 1fr; }
+  /* 工具栏换行，避免溢出 */
+  .cfg-sync-toolbar,
+  .survey-list-toolbar { flex-wrap: wrap; }
+  .survey-list-toolbar > * { min-width: 0; }
+  /* 表单字段统一占满 */
+  .cfg-field, .cfg-input, .cfg-select, .cfg-textarea { max-width: 100%; }
+}
+
+/* =====================================================================
+   Brand Dashboard：模块用横线分割（CfgSection），不再是一个大卡片；
+   但 Revenue Overview 内每个指标是一张带边框的小卡片
+   仅作用于新版 Dashboard（.brand-dashboard-page），dashboard_pre 不受影响
+   ===================================================================== */
+.brand-dashboard-page .summary {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  overflow: visible;
+  gap: 12px;
+}
+.brand-dashboard-page .summary > .cell {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+/* 区块之间的横线与行间距（CfgSection 已提供，这里略增 Dashboard 的呼吸感） */
+.brand-dashboard-page .cfg-section + .cfg-section {
+  margin-top: 40px;
+  padding-top: 40px;
+}

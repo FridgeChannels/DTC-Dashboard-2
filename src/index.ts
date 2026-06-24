@@ -54,6 +54,7 @@ import {
   handleGetSurveyCampaignDashboard,
   handleGetSurveyCampaignOtherReview,
 } from "./api/survey-campaigns.js";
+import { handleGetBrandDashboard } from "./api/brand-dashboard.js";
 import {
   handleGetSurveyAvailability,
   handleGetSurveyQuestions,
@@ -364,6 +365,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "PUT" && url.pathname === "/api/survey-question-options") {
     await handleUpdateSurveyOption(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/brand-dashboard") {
+    await handleGetBrandDashboard(req, res, url);
     return;
   }
 

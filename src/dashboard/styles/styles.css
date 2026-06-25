@@ -489,6 +489,28 @@ main {
 }
 .card-title .info:hover { color: var(--ink-2); border-color: var(--ink-2); }
 
+/* calc-rule tooltip on summary metric cells (right-corner info icon) */
+.cell .cell-title .info {
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  border: 1px solid var(--ink-4);
+  color: var(--ink-4);
+  font-size: 10px;
+  display: inline-grid;
+  place-items: center;
+  cursor: help;
+  font-style: italic;
+  font-family: var(--font-serif);
+  line-height: 1;
+  flex: none;
+}
+.cell .cell-title .info:hover,
+.cell .cell-title .info:focus-visible { color: var(--ink-2); border-color: var(--ink-2); outline: none; }
+.cell-info-wrap { position: relative; display: inline-flex; margin-left: auto; }
+/* anchor tip to the right edge so it stays inside the cell/page */
+.cell-info-tip { left: auto; right: 0; }
+.cell-info-tip::after { left: auto; right: 8px; }
+
 .card-sub { color: var(--ink-3); font-size: 13.5px; font-family: var(--font-mono); }
 
 .metric-value {
@@ -1234,6 +1256,12 @@ table.data td.tag {
   align-items: center;
   gap: 8px;
   margin-top: 6px;
+}
+/* 卡片底部的小分解行（如 frequency 的 Daily/Weekly/Monthly） */
+.cell .cell-breakdown {
+  margin-top: 6px;
+  font-size: 12px;
+  letter-spacing: -0.005em;
 }
 .summary-spark { margin-top: 10px; }
 

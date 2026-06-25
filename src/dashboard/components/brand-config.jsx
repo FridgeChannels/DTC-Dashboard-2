@@ -2080,6 +2080,7 @@ function BrandConfigPage({ section = "shopify" }) {
   const shopify = config.shopify;
   const klaviyo = config.klaviyo;
   const shopifyReady = Boolean(shopify?.hasAccessToken && shopify?.shopDomain);
+  const customerAccountCallbackUrl = `${config.webhookPublicBaseUrl.replace(/\/$/, "")}/shopify/customer/callback`;
 
   const showShopify = section === "shopify";
   const showKlaviyo = section === "klaviyo";
@@ -2159,11 +2160,27 @@ function BrandConfigPage({ section = "shopify" }) {
           desc={(
             <>
               Consumer Shopify sign-in is separate from Admin OAuth above. In Shopify Admin, go to Sales channels → Headless → Customer Account API settings and copy the UUID-format Client ID and Secret.
-              Set the callback URL to <span className="mono">{(config?.webhookPublicBaseUrl || window.location.origin).replace(/\/$/, "")}/shopify/customer/callback</span>
+              Set the callback URL below in Shopify.
             </>
           )}
         >
           <div className="cfg-form grid grid-2">
+            <ConfigField
+              label="Callback URL"
+              hint="Paste into Headless → Customer Account API → Callback URL"
+              mono
+              fullRow
+            >
+              <div className="cfg-copy-row">
+                <input
+                  className="cfg-input mono cfg-copy-text"
+                  readOnly
+                  value={customerAccountCallbackUrl}
+                  aria-label="Customer Account API callback URL"
+                />
+                <CopyTextButton text={customerAccountCallbackUrl} />
+              </div>
+            </ConfigField>
             <ConfigField
               label="Customer Account Client ID"
               hint="UUID format — not the 32-character Admin Client ID"

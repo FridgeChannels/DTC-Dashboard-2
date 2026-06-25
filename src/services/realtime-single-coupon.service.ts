@@ -1,4 +1,5 @@
 import { getSupabase } from "../clients/supabase.client.js";
+import type { PostgrestError } from "@supabase/supabase-js";
 import type {
   IssueRealtimeSingleCouponInput,
   IssueRealtimeSingleCouponResult,
@@ -43,6 +44,18 @@ function dedupeCampaignIds(campaignIds: string[]): string[] {
   return result;
 }
 
+function throwRealtimeCouponRpcError(error: PostgrestError): never {
+  const statusCode = Number(error.details);
+  const message =
+    error.message?.replace(/^PFC01:\s*/i, "") ??
+    "Failed to issue realtime coupons";
+
+  throw new RealtimeCouponError(
+    message,
+    Number.isFinite(statusCode) && statusCode >= 400 ? statusCode : 500,
+  );
+}
+
 async function issueRealtimeSingleCouponsViaRpc(
   magnetId: number,
   campaignIds: string[],
@@ -52,7 +65,7 @@ async function issueRealtimeSingleCouponsViaRpc(
     p_campaign_ids: campaignIds,
   });
 
-  if (error) throw error;
+  if (error) throwRealtimeCouponRpcError(error);
 
   const result = data as IssueRealtimeSingleCouponsRpcResponse | null;
   if (result?.error) {

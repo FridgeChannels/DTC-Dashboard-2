@@ -58,7 +58,7 @@ function buildNavGroups(conn) {
         // dashboard_pre 暂时隐藏（保留 DASHBOARD_PRE_SECTION 与渲染分支，未删除）
         { ...DASHBOARD_SECTION, icon: I.navDashboard },
         { ...BRAND_COLLECT_SECTION, icon: I.navBrand },
-        { ...PRODUCT_ADD_SECTION, icon: I.navProduct },
+        // Add Product 暂时隐藏（保留 PRODUCT_ADD_SECTION 与渲染分支，未删除）
       ],
     },
     {

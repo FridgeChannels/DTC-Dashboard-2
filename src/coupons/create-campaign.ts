@@ -1,6 +1,6 @@
 import { resolveSecret } from "../clients/secrets.client.js";
 import { createDiscountCodeNode } from "../shopify/discount.api.js";
-import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
+import { getConnectedShopifyConfig } from "../lib/shopify-connected-config.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
 import { generateCouponCode } from "./generate-code.js";
 import type { CreateCouponCampaignInput, FcCouponCampaign } from "./coupon.types.js";
@@ -18,7 +18,7 @@ export async function createCouponCampaign(
   );
   if (existing) return existing;
 
-  const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(input.customerId, { activeOnly: true });
+  const config = await getConnectedShopifyConfig(input.customerId);
   if (!config) {
     throw new Error(`Shopify not configured for customer: ${input.customerId}`);
   }

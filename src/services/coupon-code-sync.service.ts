@@ -10,7 +10,7 @@ import {
 import { fetchShopifyRedeemCodesPage } from "../shopify/discount-codes.api.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
 import * as codeRepo from "../repositories/coupon-code.repo.js";
-import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
+import { getConnectedShopifyConfig } from "../lib/shopify-connected-config.js";
 
 export interface CampaignCodeSyncItem {
   redeemCodeId: string;
@@ -157,9 +157,7 @@ export async function listCampaignCodesForSync(
 ): Promise<CampaignCodesSyncPreview> {
   const campaign = await loadCampaignForCustomer(customerId, campaignId);
 
-  const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(customerId, {
-    activeOnly: true,
-  });
+  const config = await getConnectedShopifyConfig(customerId);
   if (!config) {
     throw new Error("Shopify is not configured or authorization is incomplete");
   }
@@ -412,9 +410,7 @@ export async function addCampaignCodesToFc(
     count,
   );
 
-  const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(customerId, {
-    activeOnly: true,
-  });
+  const config = await getConnectedShopifyConfig(customerId);
   if (!config) {
     throw new Error("Shopify is not configured or authorization is incomplete");
   }

@@ -4,7 +4,7 @@ import {
   discountCodeDeactivate,
   updateDiscountCodeNode,
 } from "../shopify/discount.api.js";
-import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
+import { getConnectedShopifyConfig } from "../lib/shopify-connected-config.js";
 import type { CampaignStatus, FcCouponCampaign } from "./coupon.types.js";
 
 export interface MergedCampaignState {
@@ -53,9 +53,7 @@ export async function syncCampaignToShopify(
     throw new Error("Campaign is not linked to a Shopify discount node and cannot be synced");
   }
 
-  const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(customerId, {
-    activeOnly: true,
-  });
+  const config = await getConnectedShopifyConfig(customerId);
   if (!config) {
     throw new Error("Shopify is not configured or authorization is incomplete");
   }

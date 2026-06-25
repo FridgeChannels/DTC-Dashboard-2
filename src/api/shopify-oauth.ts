@@ -141,7 +141,7 @@ export async function handleShopifyOAuthStart(
       webhookSecretRef: existing.webhook_secret_ref,
       scopes: existing.scopes ?? [],
       apiVersion: existing.api_version ?? env.shopifyApiVersion,
-      status: existing.status ?? "active",
+      status: existing.status === "revoked" ? "active" : (existing.status ?? "active"),
     });
   }
 

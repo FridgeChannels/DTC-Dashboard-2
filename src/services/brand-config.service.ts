@@ -366,6 +366,10 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
       (Boolean(s.shopifyCustomerAccountClientId) &&
         (await hasSecret(customerAccountClientSecretRef)));
     const shouldPersistWebhookSecretRef = await hasSecret(webhookSecretRef);
+    const hasAccessToken = await hasSecret(accessTokenRef);
+    const status = hasAccessToken
+      ? "active"
+      : (s.status ?? existing?.status ?? "active");
 
     await shopifyConfigRepo.upsertShopifyConfig({
       customerId: input.customerId,
@@ -388,7 +392,7 @@ export async function saveBrandConfig(input: SaveBrandConfigInput): Promise<Bran
           : null,
       scopes: s.scopes,
       apiVersion: s.apiVersion,
-      status: s.status,
+      status,
     });
   }
 

@@ -1864,7 +1864,7 @@ function BrandConfigPage({ section = "shopify" }) {
       const data = await API.saveConfig(
         localToSavePayload({
           ...config,
-          shopify: { ...config.shopify, shopDomain },
+          shopify: { ...config.shopify, shopDomain, status: "active" },
         }),
       );
       const local = {

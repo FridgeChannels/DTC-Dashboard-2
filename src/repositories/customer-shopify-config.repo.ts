@@ -134,6 +134,21 @@ export async function upsertShopifyConfig(input: {
   return data as CustomerShopifyConfig;
 }
 
+export async function updateShopifyConfigStatus(
+  customerId: number,
+  status: string,
+): Promise<CustomerShopifyConfig> {
+  const { data, error } = await getSupabase()
+    .from("customer_shopify_config")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("customer_id", customerId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as CustomerShopifyConfig;
+}
+
 export async function getShopifyConfigByShopDomain(
   shopDomain: string,
 ): Promise<CustomerShopifyConfig | null> {

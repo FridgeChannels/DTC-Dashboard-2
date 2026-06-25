@@ -11,7 +11,7 @@ import {
   type ShopifyCampaignSnapshot,
 } from "../shopify/discount-sync.api.js";
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
-import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
+import { getConnectedShopifyConfig } from "../lib/shopify-connected-config.js";
 
 export interface SyncCampaignsResult {
   imported: number;
@@ -132,9 +132,7 @@ function campaignDiffers(
 export async function syncCampaignsFromShopify(
   customerId: number,
 ): Promise<SyncCampaignsResult> {
-  const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(customerId, {
-    activeOnly: true,
-  });
+  const config = await getConnectedShopifyConfig(customerId);
   if (!config) {
     throw new Error("Shopify is not configured or authorization is incomplete");
   }

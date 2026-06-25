@@ -1,7 +1,7 @@
 import { resolveSecret } from "../clients/secrets.client.js";
 import type { CouponCodeStatus } from "../coupons/coupon.types.js";
 import * as codeRepo from "../repositories/coupon-code.repo.js";
-import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
+import { getConnectedShopifyConfig } from "../lib/shopify-connected-config.js";
 import { fetchShopifyRedeemCodeStatusByCode } from "../shopify/discount-lookup.api.js";
 
 export class CouponLookupError extends Error {
@@ -98,9 +98,7 @@ function shouldSyncFromShopify(status: CouponCodeStatus): boolean {
 async function syncUniqueCouponStatusFromShopify(
   row: codeRepo.CouponCodeWithCampaignRow,
 ): Promise<CouponCodeStatus> {
-  const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(row.customer_id, {
-    activeOnly: true,
-  });
+  const config = await getConnectedShopifyConfig(row.customer_id);
   if (!config) {
     throw new CouponLookupError(
       `Shopify not configured for customer: ${row.customer_id}`,

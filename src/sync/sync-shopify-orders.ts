@@ -1,6 +1,6 @@
 import { resolveSecret } from "../clients/secrets.client.js";
 import { fetchOrderById } from "../shopify/order.api.js";
-import * as shopifyConfigRepo from "../repositories/customer-shopify-config.repo.js";
+import { getConnectedShopifyConfig } from "../lib/shopify-connected-config.js";
 import { syncCouponRedemptionFromOrder } from "../coupons/redeem-coupon.js";
 import type { ShopifyOrderPayload } from "../coupons/coupon.types.js";
 
@@ -11,7 +11,7 @@ export async function syncShopifyOrderById(
   customerId: number,
   orderGid: string,
 ): Promise<void> {
-  const config = await shopifyConfigRepo.getShopifyConfigByCustomerId(customerId, { activeOnly: true });
+  const config = await getConnectedShopifyConfig(customerId);
   if (!config) {
     throw new Error(`Shopify not configured for customer: ${customerId}`);
   }

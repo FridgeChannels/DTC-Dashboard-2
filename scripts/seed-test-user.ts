@@ -1,6 +1,5 @@
 /**
- * Dev-only: create (or reset) a confirmed email+password test user so you can
- * log in inside the localhost preview without Google OAuth.
+ * Dev-only: create (or reset) a confirmed email+password test user for local login.
  *
  *   npx tsx scripts/seed-test-user.ts
  *

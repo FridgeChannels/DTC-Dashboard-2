@@ -30,7 +30,7 @@
 ## 推荐流程
 
 ```
-1. GET  /api/coupon-campaigns/available?magnet_id=xxx   → 查可用活动，收集 campaignId
+1. GET  /api/coupon-campaigns/available?magnet_id=xxx   → 查可用活动（campaigns）及分群绑定但不可发活动（unavailableCampaigns），收集 campaignId
 2. POST /api/coupons/realtime-single                    → 传入 campaign_id（单张）或 campaign_ids（批量）发券
 ```
 
@@ -38,7 +38,7 @@
 
 ## 1. 查询可用券活动
 
-根据 `magnet_id` 找到用户所属 Klaviyo 分群，再按分群减免配置筛选可发的 `fc_coupon_campaign`。
+根据 `magnet_id` 找到用户所属 Klaviyo 分群，再按分群减免配置筛选可发的 `fc_coupon_campaign`。同时返回该分群已绑定、但当前无法发放的 campaign 及原因（`unavailableCampaigns`）。
 
 ### 请求
 
@@ -85,9 +85,50 @@ GET /api/coupon-campaigns/available?magnet_id={magnet_id}
         }
       ]
     }
+  ],
+  "unavailableCampaigns": [
+    {
+      "campaignId": "bcf157c5-a711-40cd-abf8-74ab8e2e0911",
+      "campaignKey": "shopify_1283300982831",
+      "name": "Order percentage 10%",
+      "discountType": "percentage",
+      "value": 10,
+      "currencyCode": null,
+      "status": "active",
+      "restrictions": {
+        "minPurchaseAmount": null,
+        "startsAt": "2026-06-22T23:21:00+00:00",
+        "endsAt": null,
+        "distributionMode": "unique_pool",
+        "oncePerCustomer": false,
+        "shopifyUsageLimit": 1,
+        "discountTarget": null,
+        "buyQuantity": null,
+        "getQuantity": null
+      },
+      "matchedSegments": [
+        {
+          "segmentId": "VqMj66",
+          "name": "Second Order Push",
+          "minDiscountRatio": 0,
+          "maxDiscountRatio": 1,
+          "priority": 1
+        }
+      ],
+      "reason": "No available coupon codes in pool",
+      "reasonCode": "no_coupon_codes"
+    }
   ]
 }
 ```
+
+### 顶层字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `fcUserId` | string \| null | FC 用户 ID；尚无 `fc_user_identity` 时为 `null` |
+| `campaigns` | array | 当前可发券的活动列表 |
+| `unavailableCampaigns` | array | 用户所属分群已绑定、但当前不可发券的活动列表（含不可用原因） |
 
 ### `campaigns[]` 字段
 
@@ -102,6 +143,39 @@ GET /api/coupon-campaigns/available?magnet_id={magnet_id}
 | `status` | string | 活动状态 |
 | `restrictions` | object | 折扣限制规则，见下表 |
 | `matchedSegments` | array | 命中的 Klaviyo 分群及减免区间 |
+
+### `unavailableCampaigns[]` 字段
+
+结构与 `campaigns[]` 相同，额外包含不可用原因。仅包含在 `fc_coupon_campaign_segments` 中与用户分群有 **active** 绑定、但当前不满足发券条件的活动；**不可用于发券**，仅供前端展示或排查。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `campaignId` | string | 活动 ID |
+| `campaignKey` | string | 业务键 |
+| `name` | string | 活动展示名 |
+| `discountType` | string | 折扣类型，同 `campaigns[]` |
+| `value` | number \| null | 折扣值，同 `campaigns[]` |
+| `currencyCode` | string \| null | 币种，同 `campaigns[]` |
+| `status` | string | 活动状态（可能为 `draft` / `paused` 等非 `active`） |
+| `restrictions` | object | 折扣限制规则，同 `campaigns[]` |
+| `matchedSegments` | array | 绑定的 Klaviyo 分群及减免区间 |
+| `reason` | string | 人类可读的不可用原因（英文） |
+| `reasonCode` | string | 机器可读的原因码，见下表 |
+
+#### `reasonCode` 取值
+
+| `reasonCode` | `reason` 示例 | 说明 |
+|--------------|---------------|------|
+| `campaign_inactive` | `Campaign is not active (status: draft)` | 活动状态不是 `active` |
+| `campaign_not_started` | `Campaign has not started yet` | 当前时间早于 `restrictions.startsAt` |
+| `campaign_expired` | `Campaign has expired` | 当前时间晚于 `restrictions.endsAt` |
+| `already_claimed` | `This magnet has already claimed this campaign` | `oncePerCustomer=true` 且该 magnet 已领取过 |
+| `no_coupon_codes` | `No available coupon codes in pool` | `unique_pool` 模式券池无 `available` 券码 |
+| `no_shared_codes` | `No shared coupon codes available for this campaign` | `shared_code` 模式未配置可用共享码 |
+| `usage_limit_reached` | `Campaign usage limit has been reached` | `shared_code` 模式已达 `shopifyUsageLimit` 上限 |
+| `campaign_not_found` | `Campaign not found` | 活动记录不存在（异常兜底） |
+
+> `unavailableCampaigns` 与 `campaigns` 互斥：同一 `campaignId` 不会同时出现在两个数组中。
 
 ### `restrictions` 字段
 
@@ -300,14 +374,19 @@ GET /api/coupon-campaigns/available?magnet_id={magnet_id}
    - 在有效期内（`starts_at` / `ends_at`）
    - **当前仍可发券**（见下方「可发券过滤」）
 
-**可发券过滤**：即使分群匹配成功，以下 campaign 也不会出现在列表中：
+**可发券过滤**：即使分群匹配成功，以下 campaign 也不会出现在 `campaigns` 中，但若在 `fc_coupon_campaign_segments` 有分群绑定，则会出现在 `unavailableCampaigns` 并附带 `reason` / `reasonCode`：
 
-| 发券模式 | 排除条件 |
-|----------|----------|
-| `unique_pool`（一人一码） | 券池中没有 `available` 状态的券码 |
-| `shared_code`（一码多用） | 未配置共享码，或已领取次数达到 `shopifyUsageLimit` 上限 |
+| 发券模式 | 排除条件 | `reasonCode` |
+|----------|----------|--------------|
+| 任意 | 活动状态非 `active` | `campaign_inactive` |
+| 任意 | 未到开始时间 | `campaign_not_started` |
+| 任意 | 已过结束时间 | `campaign_expired` |
+| 任意 | `oncePerCustomer=true` 且该 magnet 已领取 | `already_claimed` |
+| `unique_pool`（一人一码） | 券池中没有 `available` 状态的券码 | `no_coupon_codes` |
+| `shared_code`（一码多用） | 未配置可用共享码 | `no_shared_codes` |
+| `shared_code`（一码多用） | 已领取次数达到 `shopifyUsageLimit` 上限 | `usage_limit_reached` |
 
-共享码的领取次数按 `fc_coupon_assignment` 记录数统计，上限取自 Shopify 同步的 `shopify_usage_limit`（如 `50 total`）。`realtime-single` 发券接口复用同一套可用列表校验。
+共享码的领取次数按 `fc_coupon_assignment` 记录数统计，上限取自 Shopify 同步的 `shopify_usage_limit`（如 `50 total`）。`realtime-single` 发券接口复用同一套可用列表校验，**只能对 `campaigns` 中的活动发券**。
 
 **默认 segment 回退**：以下任一情况时，使用后台 **Segment Config** 中标记为 **Default** 的分群配置（`fc_segment_coupon_config.is_default = true` 且 `is_active = true`），按其 min/max 减免区间筛选可用 campaign：
 
@@ -328,6 +407,8 @@ GET /api/coupon-campaigns/available?magnet_id={magnet_id}
 ### `campaigns` 为空时
 
 表示未命中分群且品牌 **未配置默认 segment**，或默认 segment 的减免区间内没有可用 campaign，或匹配到的 campaign **当前均不可发券**（券池已空或共享码已达领取上限）。
+
+此时可检查 `unavailableCampaigns`：若数组非空，说明分群绑定存在但活动因上述原因暂不可发；若也为空，则用户分群下没有配置任何 campaign 绑定。
 
 ---
 

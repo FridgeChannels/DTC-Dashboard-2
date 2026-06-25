@@ -2221,7 +2221,28 @@ function BrandConfigPage({ section = "shopify" }) {
       <div className="cfg-page">
         <CfgSection
           title="Klaviyo OAuth"
-          desc="Authorize FridgeChannel to access: View account details, View events, and View segments and segment memberships."
+          desc={(
+            <>
+              Authorize FridgeChannel to access the following Klaviyo scopes:
+              <ul style={{ margin: "8px 0 0", paddingLeft: "1.25rem" }}>
+                <li>
+                  <span className="mono">accounts:read</span>
+                  {" "}
+                  — Required. Used to retrieve the authorized account and account name.
+                </li>
+                <li>
+                  <span className="mono">profiles:read</span>
+                  {" "}
+                  — Required. Used to predict the next order time and check which segments a user belongs to.
+                </li>
+                <li>
+                  <span className="mono">segments:read</span>
+                  {" "}
+                  — Required. Used to retrieve the segments list.
+                </li>
+              </ul>
+            </>
+          )}
         >
           {klaviyo.hasOAuthToken && (
             <div className={`cfg-alert ${klaviyo.tokenExpired ? "warn" : "pos"}`} style={{ marginBottom: 16 }}>

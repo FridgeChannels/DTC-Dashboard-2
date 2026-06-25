@@ -2287,45 +2287,6 @@ select.cfg-input-sm {
 }
 .auth-form { display: grid; gap: 14px; }
 .auth-submit { width: 100%; justify-content: center; }
-.auth-divider {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 12px;
-  margin: 18px 0;
-  color: var(--ink-4);
-  font-size: 14px;
-}
-.auth-divider::before,
-.auth-divider::after {
-  content: "";
-  height: 1px;
-  background: var(--line);
-}
-.auth-google { width: 100%; justify-content: center; }
-.auth-google-icon { flex-shrink: 0; display: block; }
-.auth-switch { margin-top: 16px; text-align: center; }
-.auth-verify-panel {
-  margin-bottom: 16px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--bg-2);
-}
-.auth-verify-panel p {
-  margin: 0 0 12px;
-  font-size: 14px;
-  color: var(--ink-2);
-  line-height: 1.5;
-}
-.auth-resend {
-  width: 100%;
-  justify-content: center;
-}
-.auth-resend-link {
-  margin-top: 10px;
-  text-align: center;
-}
 .btn.linkish {
   background: transparent;
   border: none;

@@ -53,9 +53,25 @@ export interface AvailableCouponCampaign {
   }>;
 }
 
+export type UnavailableCampaignReasonCode =
+  | "campaign_not_found"
+  | "campaign_inactive"
+  | "campaign_not_started"
+  | "campaign_expired"
+  | "already_claimed"
+  | "no_shared_codes"
+  | "usage_limit_reached"
+  | "no_coupon_codes";
+
+export interface UnavailableCouponCampaign extends AvailableCouponCampaign {
+  reason: string;
+  reasonCode: UnavailableCampaignReasonCode;
+}
+
 export interface AvailableCouponCampaignsResponse {
   fcUserId: string | null;
   campaigns: AvailableCouponCampaign[];
+  unavailableCampaigns: UnavailableCouponCampaign[];
 }
 
 interface AvailableCouponCampaignsRpcError {
@@ -92,6 +108,7 @@ export async function listAvailableCouponCampaignsByMagnetId(
   return {
     fcUserId: result?.fcUserId ?? null,
     campaigns: result?.campaigns ?? [],
+    unavailableCampaigns: result?.unavailableCampaigns ?? [],
   };
 }
 

@@ -67,9 +67,6 @@ import {
   handleAuthLogin,
   handleAuthLogout,
   handleAuthMe,
-  handleAuthOAuthStart,
-  handleAuthRegister,
-  handleAuthResendVerification,
 } from "./api/auth/handlers.js";
 import { serveStatic } from "./api/serve-static.js";
 import { serveFcStatic } from "./api/serve-fc-static.js";
@@ -136,16 +133,6 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/api/auth/register") {
-    await handleAuthRegister(req, res);
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/auth/resend-verification") {
-    await handleAuthResendVerification(req, res);
-    return;
-  }
-
   if (req.method === "POST" && url.pathname === "/api/auth/logout") {
     await handleAuthLogout(req, res);
     return;
@@ -153,11 +140,6 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/auth/me") {
     await handleAuthMe(req, res);
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/auth/oauth/start") {
-    await handleAuthOAuthStart(req, res, url);
     return;
   }
 

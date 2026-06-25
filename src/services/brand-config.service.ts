@@ -425,3 +425,31 @@ export async function disconnectShopifyAuthorization(
   return getBrandConfig(customerId);
 }
 
+export async function disconnectKlaviyoAuthorization(
+  customerId: number,
+): Promise<BrandConfigResponse> {
+  const existing = await klaviyoConfigRepo.getKlaviyoConfigByCustomerId(customerId);
+  if (!existing?.oauth_token_ref) {
+    throw new Error("Klaviyo is not configured");
+  }
+  if (!(await hasSecret(existing.oauth_token_ref))) {
+    throw new Error("Klaviyo is not connected");
+  }
+
+  await deleteSecret(existing.oauth_token_ref);
+  if (existing.oauth_refresh_ref && (await hasSecret(existing.oauth_refresh_ref))) {
+    await deleteSecret(existing.oauth_refresh_ref);
+  }
+
+  await klaviyoConfigRepo.upsertKlaviyoConfig({
+    customerId,
+    oauthTokenRef: null,
+    oauthRefreshRef: null,
+    tokenExpiresAt: null,
+    accountName: null,
+    accountEmail: null,
+  });
+
+  return getBrandConfig(customerId);
+}
+

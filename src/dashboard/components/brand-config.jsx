@@ -41,6 +41,12 @@ const API = {
     if (!res.ok) throw new Error(data.error || "Failed to start Klaviyo OAuth");
     return data;
   },
+  async disconnectKlaviyo() {
+    const res = await fetch("/api/klaviyo/oauth/disconnect", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to disconnect Klaviyo");
+    return data;
+  },
   async createCampaign(payload) {
     const res = await fetch("/api/coupon-campaigns", {
       method: "POST",
@@ -1666,6 +1672,8 @@ function BrandConfigPage({ section = "shopify" }) {
   const [disconnecting, setDisconnecting] = useStateBC(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useStateBC(false);
   const [klaviyoConnecting, setKlaviyoConnecting] = useStateBC(false);
+  const [klaviyoDisconnecting, setKlaviyoDisconnecting] = useStateBC(false);
+  const [showKlaviyoDisconnectConfirm, setShowKlaviyoDisconnectConfirm] = useStateBC(false);
   const [klaviyoConnectNotice, setKlaviyoConnectNotice] = useStateBC(null);
   const [shopifySavedBaseline, setShopifySavedBaseline] = useStateBC(null);
   const [error, setError] = useStateBC(null);
@@ -1796,6 +1804,27 @@ function BrandConfigPage({ section = "shopify" }) {
     } catch (err) {
       setKlaviyoConnectNotice({ tone: "warn", text: err.message });
       setKlaviyoConnecting(false);
+    }
+  };
+
+  const handleDisconnectKlaviyo = async () => {
+    setError(null);
+    setOauthNotice(null);
+    setKlaviyoConnectNotice(null);
+    setKlaviyoDisconnecting(true);
+    try {
+      const data = await API.disconnectKlaviyo();
+      setConfig(apiToLocal(data));
+      setOauthNotice({
+        tone: "pos",
+        text: "Klaviyo authorization removed. Segment sync and survey targeting are disabled until you connect again.",
+      });
+      setShowKlaviyoDisconnectConfirm(false);
+    } catch (err) {
+      setKlaviyoConnectNotice({ tone: "warn", text: err.message });
+      setShowKlaviyoDisconnectConfirm(false);
+    } finally {
+      setKlaviyoDisconnecting(false);
     }
   };
 
@@ -2167,7 +2196,7 @@ function BrandConfigPage({ section = "shopify" }) {
           <div className="cfg-form grid grid-2">
             <ConfigField
               label="Callback URL"
-              hint="Paste into Headless → Customer Account API → Callback URL"
+              hint="Paste into Headless → Customer Account API → Application setup → Callback URL"
               mono
               fullRow
             >
@@ -2289,7 +2318,7 @@ function BrandConfigPage({ section = "shopify" }) {
             <div className="cfg-alert warn" style={{ marginBottom: 16 }}>
               <I.info />
               {" "}
-              Account details are unavailable. Click Connect Klaviyo to refresh authorization and load account name and email.
+              Account details are unavailable. Disconnect, then use Connect Klaviyo to authorize again and load account name and email.
             </div>
           )}
 
@@ -2299,15 +2328,27 @@ function BrandConfigPage({ section = "shopify" }) {
             </div>
           )}
           <CfgActions>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={saving || klaviyoConnecting}
-              onClick={handleConnectKlaviyo}
-            >
-              <I.klaviyo />
-              {klaviyoConnecting ? "Redirecting…" : "Connect Klaviyo"}
-            </button>
+            {klaviyo.hasOAuthToken ? (
+              <button
+                type="button"
+                className="btn"
+                disabled={saving || klaviyoConnecting || klaviyoDisconnecting}
+                onClick={() => setShowKlaviyoDisconnectConfirm(true)}
+              >
+                <I.klaviyo />
+                {klaviyoDisconnecting ? "Disconnecting…" : "Disconnect"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn primary"
+                disabled={saving || klaviyoConnecting || klaviyoDisconnecting}
+                onClick={handleConnectKlaviyo}
+              >
+                <I.klaviyo />
+                {klaviyoConnecting ? "Redirecting…" : "Connect Klaviyo"}
+              </button>
+            )}
           </CfgActions>
         </CfgSection>
       </div>
@@ -2444,6 +2485,18 @@ function BrandConfigPage({ section = "shopify" }) {
           confirming={disconnecting}
           onConfirm={handleDisconnectShopify}
           onCancel={() => setShowDisconnectConfirm(false)}
+        />
+      )}
+
+      {showKlaviyoDisconnectConfirm && (
+        <ConfirmModal
+          title="Disconnect Klaviyo"
+          message="FridgeChannel will remove the saved OAuth tokens. Segment sync and survey targeting will be disabled until you connect again."
+          confirmLabel="Disconnect"
+          cancelLabel="Cancel"
+          confirming={klaviyoDisconnecting}
+          onConfirm={handleDisconnectKlaviyo}
+          onCancel={() => setShowKlaviyoDisconnectConfirm(false)}
         />
       )}
     </div>

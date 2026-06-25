@@ -15,6 +15,7 @@ import {
 } from "../shopify/customer-account.api.js";
 import * as klaviyoConfigRepo from "../repositories/customer-klaviyo-config.repo.js";
 import { fetchKlaviyoAccountInfo } from "../clients/klaviyo.client.js";
+import { disconnectKlaviyoAuthorization } from "../services/brand-config.service.js";
 import {
   KLAVIYO_DEFAULT_SCOPES,
   resolveOAuthScopes,
@@ -218,5 +219,19 @@ export async function handleKlaviyoOAuthCallback(
   } catch (err) {
     console.error(err);
     redirect(res, "/brand-config?klaviyo_oauth=failed&section=klaviyo");
+  }
+}
+
+export async function handleKlaviyoOAuthDisconnect(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const customerId = await getRequestCustomerId(req, res);
+    const config = await disconnectKlaviyoAuthorization(customerId);
+    json(res, 200, config);
+  } catch (err) {
+    const status = err instanceof AuthError ? 401 : 400;
+    errorJson(res, status, err instanceof Error ? err.message : "Failed to disconnect Klaviyo");
   }
 }

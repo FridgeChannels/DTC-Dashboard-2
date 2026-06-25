@@ -435,8 +435,8 @@ function CfgSection({ title, sub, desc, action, children }) {
 }
 window.CfgSection = CfgSection;
 
-function CfgActions({ children }) {
-  return <div className="cfg-actions">{children}</div>;
+function CfgActions({ children, className = "" }) {
+  return <div className={`cfg-actions${className ? ` ${className}` : ""}`}>{children}</div>;
 }
 window.CfgActions = CfgActions;
 

@@ -15,6 +15,7 @@ import {
 } from "./api/shopify-oauth.js";
 import {
   handleKlaviyoOAuthCallback,
+  handleKlaviyoOAuthDisconnect,
   handleKlaviyoOAuthStart,
 } from "./api/klaviyo-oauth.js";
 import { handleIssueRealtimeSingleCoupon } from "./api/coupons/realtime-single.js";
@@ -200,6 +201,10 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/klaviyo/oauth/start") {
     await handleKlaviyoOAuthStart(req, res);
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/klaviyo/oauth/disconnect") {
+    await handleKlaviyoOAuthDisconnect(req, res);
     return;
   }
 

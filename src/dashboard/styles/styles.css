@@ -1731,7 +1731,12 @@ select.cfg-input-sm {
 .cfg-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
   margin-top: 20px;
+}
+.cfg-actions.cfg-actions-split {
+  justify-content: space-between;
 }
 /* 问卷问题：从属于 "Questions" 大标题的子块，靠分隔线区分，不用卡片 */
 .survey-question {

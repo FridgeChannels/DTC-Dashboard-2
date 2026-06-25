@@ -214,16 +214,34 @@ export async function countSubmittedResponsesByCampaignIds(
 ): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
   if (!campaignIds.length) return counts;
-  const { data, error } = await getSupabase()
-    .from("q_survey_responses")
-    .select("survey_id")
-    .in("survey_id", campaignIds)
-    .eq("completion_status", "submitted");
-  if (error) throw error;
-  for (const row of data ?? []) {
-    const id = row.survey_id as string;
-    counts.set(id, (counts.get(id) ?? 0) + 1);
+
+  for (const campaignId of campaignIds) {
+    counts.set(campaignId, 0);
   }
+
+  const PAGE_SIZE = 1000;
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await getSupabase()
+      .from("q_survey_responses")
+      .select("survey_id")
+      .in("survey_id", campaignIds)
+      .eq("completion_status", "submitted")
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) throw error;
+
+    const rows = data ?? [];
+    for (const row of rows) {
+      const id = row.survey_id as string;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+
+    if (rows.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
   return counts;
 }
 

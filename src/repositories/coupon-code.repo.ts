@@ -147,21 +147,31 @@ export async function countCouponCodesByCampaignIds(
   const counts = new Map<string, number>();
   if (campaignIds.length === 0) return counts;
 
-  const results = await Promise.all(
-    campaignIds.map(async (campaignId) => {
-      const { count, error } = await getSupabase()
-        .from("fc_coupon_code")
-        .select("coupon_code_id", { count: "exact", head: true })
-        .eq("customer_id", customerId)
-        .eq("campaign_id", campaignId);
+  for (const campaignId of campaignIds) {
+    counts.set(campaignId, 0);
+  }
 
-      if (error) throw error;
-      return { campaignId, count: count ?? 0 };
-    }),
-  );
+  const PAGE_SIZE = 1000;
+  let offset = 0;
 
-  for (const { campaignId, count } of results) {
-    counts.set(campaignId, count);
+  while (true) {
+    const { data, error } = await getSupabase()
+      .from("fc_coupon_code")
+      .select("campaign_id")
+      .eq("customer_id", customerId)
+      .in("campaign_id", campaignIds)
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) throw error;
+
+    const rows = data ?? [];
+    for (const row of rows) {
+      const campaignId = row.campaign_id as string;
+      counts.set(campaignId, (counts.get(campaignId) ?? 0) + 1);
+    }
+
+    if (rows.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
   }
 
   return counts;

@@ -16,6 +16,7 @@ import type {
 import * as campaignRepo from "../repositories/coupon-campaign.repo.js";
 import * as codeRepo from "../repositories/coupon-code.repo.js";
 import * as couponSettingsRepo from "../repositories/customer-coupon-settings.repo.js";
+import type { CustomerCouponSettings } from "../repositories/customer-coupon-settings.repo.js";
 
 export interface CreateCampaignRequest {
   campaignKey?: string;
@@ -271,9 +272,12 @@ export async function updateCampaignForCustomer(
 /** Campaigns shown in Brand Config → Coupons table. */
 export async function listCampaignSummariesForCustomer(
   customerId: number,
+  couponSettings?: CustomerCouponSettings,
 ): Promise<CampaignSummary[]> {
   const [settings, campaigns] = await Promise.all([
-    couponSettingsRepo.getCouponSettings(customerId),
+    couponSettings
+      ? Promise.resolve(couponSettings)
+      : couponSettingsRepo.getCouponSettings(customerId),
     campaignRepo.listCampaignsByCustomerId(customerId),
   ]);
   const campaignIds = campaigns.map((c) => c.campaign_id);
@@ -304,6 +308,38 @@ export async function listCampaignSummariesForCustomer(
 /** Segment binding dropdown: only active coupon campaigns. */
 export function isSegmentBindableCouponCampaign(campaign: CampaignSummary): boolean {
   return campaign.status === "active";
+}
+
+export interface SegmentBindableCampaignSummary {
+  id: string;
+  key: string;
+  name: string;
+  discountType: string;
+  value: number | null;
+  minPurchaseAmount: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  status: string;
+}
+
+/** Segment 配置页下拉：仅拉 active campaigns，跳过 code count 等重查询。 */
+export async function listSegmentBindableCampaignsForCustomer(
+  customerId: number,
+): Promise<SegmentBindableCampaignSummary[]> {
+  const campaigns = await campaignRepo.listCampaignsByCustomerId(customerId);
+  return campaigns
+    .filter((c) => c.status === "active")
+    .map((c) => ({
+      id: c.campaign_id,
+      key: c.campaign_key,
+      name: c.name,
+      discountType: c.discount_type,
+      value: c.value,
+      minPurchaseAmount: c.min_purchase_amount,
+      startsAt: c.starts_at,
+      endsAt: c.ends_at,
+      status: c.status,
+    }));
 }
 
 export async function syncCampaignsForCustomer(

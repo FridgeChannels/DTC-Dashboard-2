@@ -2,11 +2,13 @@ import * as klaviyoSegmentRepo from "../repositories/klaviyo-segment.repo.js";
 import * as campaignSegmentRepo from "../repositories/coupon-campaign-segment.repo.js";
 import * as segmentConfigRepo from "../repositories/segment-coupon-config.repo.js";
 import {
-  isSegmentBindableCouponCampaign,
-  listCampaignSummariesForCustomer,
-  type CampaignSummary,
+  listSegmentBindableCampaignsForCustomer,
+  type SegmentBindableCampaignSummary,
 } from "./coupon-campaign.service.js";
-import type { SegmentDiscountType } from "../repositories/segment-coupon-config.repo.js";
+import type {
+  SegmentCouponConfigRow,
+  SegmentDiscountType,
+} from "../repositories/segment-coupon-config.repo.js";
 
 export interface SegmentCouponCampaignOption {
   id: string;
@@ -94,7 +96,7 @@ function uniqueTrimmed(values: string[] | undefined): string[] {
 }
 
 function toSegmentCouponCampaignOption(
-  campaign: CampaignSummary,
+  campaign: SegmentBindableCampaignSummary,
 ): SegmentCouponCampaignOption {
   return {
     id: campaign.id,
@@ -129,11 +131,11 @@ function compareSegmentCouponConfigItems(
 /** 有已保存配置时保证恰好有一个默认 segment（按 created_at 最早者优先） */
 async function ensureDefaultSegmentConfig(
   customerId: number,
+  configs: SegmentCouponConfigRow[],
   discountType: SegmentDiscountType = "percentage",
-): Promise<boolean> {
-  const configs = await segmentConfigRepo.listConfigsByCustomerId(customerId, discountType);
+): Promise<SegmentCouponConfigRow[] | null> {
   if (!configs.length || configs.some((c) => c.is_default)) {
-    return false;
+    return null;
   }
 
   const pool = configs.filter((c) => c.is_active !== false);
@@ -147,29 +149,25 @@ async function ensureDefaultSegmentConfig(
     pick.segment_id,
     discountType,
   );
-  return true;
+  return segmentConfigRepo.listConfigsByCustomerId(customerId, discountType);
 }
 
 export async function listSegmentCouponConfig(
   customerId: number,
   discountType: SegmentDiscountType = "percentage",
 ): Promise<SegmentCouponConfigListResponse> {
-  if (await ensureDefaultSegmentConfig(customerId, discountType)) {
-    return listSegmentCouponConfig(customerId, discountType);
-  }
-
   const [segments, configs, campaigns, bindings] = await Promise.all([
     klaviyoSegmentRepo.listKlaviyoSegmentsByCustomerId(customerId),
     segmentConfigRepo.listConfigsByCustomerId(customerId, discountType),
-    listCampaignSummariesForCustomer(customerId),
+    listSegmentBindableCampaignsForCustomer(customerId),
     campaignSegmentRepo.listCampaignSegmentsByCustomerId(customerId),
   ]);
 
-  const configBySegment = new Map(configs.map((c) => [c.segment_id, c]));
-  const selectableCampaigns = campaigns.filter(isSegmentBindableCouponCampaign);
-  const selectableCampaignIds = new Set(
-    selectableCampaigns.map((campaign) => campaign.id),
-  );
+  const resolvedConfigs =
+    (await ensureDefaultSegmentConfig(customerId, configs, discountType)) ?? configs;
+
+  const configBySegment = new Map(resolvedConfigs.map((c) => [c.segment_id, c]));
+  const selectableCampaignIds = new Set(campaigns.map((campaign) => campaign.id));
   const campaignIdsBySegment = new Map<string, string[]>();
   for (const binding of bindings) {
     if (binding.status !== "active") continue;
@@ -205,7 +203,7 @@ export async function listSegmentCouponConfig(
   return {
     customerId,
     discountType,
-    campaigns: selectableCampaigns.map(toSegmentCouponCampaignOption),
+    campaigns: campaigns.map(toSegmentCouponCampaignOption),
     items,
   };
 }
@@ -216,15 +214,11 @@ export async function saveSegmentCouponConfig(
   const discountType = input.discountType ?? "percentage";
   const [segments, campaigns] = await Promise.all([
     klaviyoSegmentRepo.listKlaviyoSegmentsByCustomerId(input.customerId),
-    listCampaignSummariesForCustomer(input.customerId),
+    listSegmentBindableCampaignsForCustomer(input.customerId),
   ]);
   const ownedSegmentIds = new Set(segments.map((s) => s.segment_id));
   const segmentNameById = new Map(segments.map((s) => [s.segment_id, s.name]));
-  const selectableCampaignIds = new Set(
-    campaigns
-      .filter(isSegmentBindableCouponCampaign)
-      .map((campaign) => campaign.id),
-  );
+  const selectableCampaignIds = new Set(campaigns.map((campaign) => campaign.id));
 
   for (const item of input.items) {
     if (!ownedSegmentIds.has(item.segmentId)) {

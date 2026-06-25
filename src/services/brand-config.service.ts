@@ -229,12 +229,15 @@ async function maybeRefreshKlaviyoProfile(
 }
 
 export async function getBrandConfig(customerId: number): Promise<BrandConfigResponse> {
+  const couponSettingsPromise = couponSettingsRepo.getCouponSettings(customerId);
   const [brandName, shopifyConfig, klaviyoConfig, couponSettings, campaigns] = await Promise.all([
     getBrandName(customerId),
     shopifyConfigRepo.getShopifyConfigByCustomerId(customerId),
     klaviyoConfigRepo.getKlaviyoConfigByCustomerId(customerId),
-    couponSettingsRepo.getCouponSettings(customerId),
-    listCampaignSummariesForCustomer(customerId),
+    couponSettingsPromise,
+    couponSettingsPromise.then((settings) =>
+      listCampaignSummariesForCustomer(customerId, settings),
+    ),
   ]);
 
   const defaultMode = couponSettings.default_mode;
@@ -248,46 +251,53 @@ export async function getBrandConfig(customerId: number): Promise<BrandConfigRes
     ]),
   ) as Record<CouponModeId, { enabled: boolean; default: boolean }>;
 
-  if (shopifyConfig && !shopifyConfig.webhook_tenant_key) {
-    await shopifyConfigRepo.ensureWebhookTenantKey(customerId);
-  }
+  const klaviyoTokenRef =
+    klaviyoConfig?.oauth_token_ref ?? (klaviyoConfig ? klaviyoOauthTokenRef(customerId) : null);
 
-  let resolvedShopifyConfig = shopifyConfig;
+  const [hasAccessToken, hasShopifyCustomerAccountClientSecret, klaviyoHasOAuthToken] =
+    await Promise.all([
+      shopifyConfig ? hasSecret(shopifyConfig.access_token_ref) : Promise.resolve(false),
+      shopifyConfig
+        ? hasSecret(
+            shopifyConfig.shopify_customer_account_client_secret_ref ??
+              shopifyCustomerAccountClientSecretRef(customerId),
+          )
+        : Promise.resolve(false),
+      resolveKlaviyoHasOAuthToken(klaviyoTokenRef),
+    ]);
+
   if (shopifyConfig) {
-    resolvedShopifyConfig = await maybeRefreshShopProfile(customerId, shopifyConfig);
+    if (!shopifyConfig.webhook_tenant_key) {
+      void shopifyConfigRepo.ensureWebhookTenantKey(customerId, shopifyConfig).catch(() => {});
+    }
+    if (!shopifyConfig.shop_name || !shopifyConfig.shop_email) {
+      void maybeRefreshShopProfile(customerId, shopifyConfig).catch(() => {});
+    }
   }
 
-  const shopify = resolvedShopifyConfig
+  if (klaviyoConfig && klaviyoHasOAuthToken && !klaviyoConfig.account_name && !klaviyoConfig.account_email) {
+    void maybeRefreshKlaviyoProfile(customerId, klaviyoConfig).catch(() => {});
+  }
+
+  const shopify = shopifyConfig
     ? {
-        authType: resolvedShopifyConfig.auth_type,
-        shopDomain: resolvedShopifyConfig.shop_domain,
-        shopifyShopId: resolvedShopifyConfig.shopify_shop_id,
-        shopName: resolvedShopifyConfig.shop_name,
-        shopEmail: resolvedShopifyConfig.shop_email,
-        shopifyCustomerAccountClientId: resolvedShopifyConfig.shopify_customer_account_client_id,
+        authType: shopifyConfig.auth_type,
+        shopDomain: shopifyConfig.shop_domain,
+        shopifyShopId: shopifyConfig.shopify_shop_id,
+        shopName: shopifyConfig.shop_name,
+        shopEmail: shopifyConfig.shop_email,
+        shopifyCustomerAccountClientId: shopifyConfig.shopify_customer_account_client_id,
         oauthAppConfigured: isShopifyOAuthAppConfigured(),
-        accessTokenRef: resolvedShopifyConfig.access_token_ref,
-        apiVersion: resolvedShopifyConfig.api_version,
-        scopes: resolvedShopifyConfig.scopes,
-        status: resolvedShopifyConfig.status,
-        hasAccessToken: await hasSecret(resolvedShopifyConfig.access_token_ref),
-        hasShopifyCustomerAccountClientSecret: await hasSecret(
-          resolvedShopifyConfig.shopify_customer_account_client_secret_ref ??
-            shopifyCustomerAccountClientSecretRef(customerId),
-        ),
+        accessTokenRef: shopifyConfig.access_token_ref,
+        apiVersion: shopifyConfig.api_version,
+        scopes: shopifyConfig.scopes,
+        status: shopifyConfig.status,
+        hasAccessToken,
+        hasShopifyCustomerAccountClientSecret,
       }
     : null;
 
-  const klaviyoHasOAuthToken = await resolveKlaviyoHasOAuthToken(
-    klaviyoConfig?.oauth_token_ref ?? (klaviyoConfig ? klaviyoOauthTokenRef(customerId) : null),
-  );
-
-  let resolvedKlaviyoConfig = klaviyoConfig;
-  if (klaviyoConfig && klaviyoHasOAuthToken) {
-    resolvedKlaviyoConfig = await maybeRefreshKlaviyoProfile(customerId, klaviyoConfig);
-  }
-
-  const klaviyo = mapKlaviyoConfig(resolvedKlaviyoConfig, klaviyoHasOAuthToken);
+  const klaviyo = mapKlaviyoConfig(klaviyoConfig, klaviyoHasOAuthToken);
 
   return {
     customerId,

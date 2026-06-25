@@ -5,7 +5,7 @@ import { AuthError } from "../lib/auth/errors.js";
 import { extractBrandColors, extractPageHtml } from "../brand-collect/lib/brandColorExtractor.js";
 import { getConfiguredInfo } from "../brand-collect/lib/config.js";
 import { saveBrandInfo } from "../brand-collect/lib/saveBrandInfo.js";
-import { updateAllMagnetBrandParams } from "../brand-collect/lib/magnetBrandParam.js";
+import { updateBrandInfoMagnetBrandParams } from "../brand-collect/lib/magnetBrandParam.js";
 import { saveProduct, listProducts } from "../brand-collect/lib/products.js";
 import { isSupabaseConfigured } from "../brand-collect/lib/supabase.js";
 import { isImageStorageConfigured, uploadImage } from "../brand-collect/lib/storage.js";
@@ -213,7 +213,7 @@ export async function handlePostBrand(
       accentColor,
     } = body ?? {};
 
-    const result = await updateAllMagnetBrandParams({
+    const result = await updateBrandInfoMagnetBrandParams({
       brandName,
       website: brandWebsite,
       brandLogo,

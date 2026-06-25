@@ -4,6 +4,9 @@ import { uploadImage } from './storage.js';
 const BRAND_PARAM_SELECT =
   'id, magnet_sn, magnet_id, brand_name, brand_logo, primary_color, secondary_color, website, store_website';
 
+/** Brand Info 页面保存时仅更新这两条 magnet 的品牌参数 */
+export const BRAND_INFO_MAGNET_SNS = ['DA9V3EG9QG', 'E2V5TQGYE8'];
+
 function buildUpdatePayload(fields) {
   const payload = {};
 
@@ -49,7 +52,9 @@ async function getMagnetIdsForCustomer(customerId) {
   return (data ?? []).map((row) => row.id);
 }
 
-async function updateMagnetBrandParamRows(updatePayload, customerId) {
+async function updateMagnetBrandParamRows(updatePayload, options = {}) {
+  const { customerId, magnetSns } = options;
+
   if (!Object.keys(updatePayload).length) {
     throw new Error('没有可更新的字段');
   }
@@ -61,7 +66,15 @@ async function updateMagnetBrandParamRows(updatePayload, customerId) {
     .from('magnet_brand_param')
     .select('id, magnet_sn, magnet_id');
 
-  if (magnetIds) {
+  if (magnetSns?.length) {
+    selectQuery = selectQuery.in('magnet_sn', magnetSns);
+    if (magnetIds) {
+      if (!magnetIds.length) {
+        return { updatedCount: 0, records: [] };
+      }
+      selectQuery = selectQuery.in('magnet_id', magnetIds);
+    }
+  } else if (magnetIds) {
     if (!magnetIds.length) {
       return { updatedCount: 0, records: [] };
     }
@@ -120,13 +133,42 @@ export async function updateAllMagnetBrandParams(input) {
     updatePayload.brand_logo = await uploadImage(brandLogo, 'logos');
   }
 
-  return updateMagnetBrandParamRows(updatePayload, customerId);
+  return updateMagnetBrandParamRows(updatePayload, { customerId });
+}
+
+export async function updateBrandInfoMagnetBrandParams(input) {
+  const {
+    brandName,
+    website,
+    brandLogo,
+    primaryColor,
+    secondaryColor,
+    storeWebsite,
+    customerId,
+  } = input;
+
+  const updatePayload = buildUpdatePayload({
+    brandName,
+    website,
+    primaryColor,
+    secondaryColor,
+    storeWebsite,
+  });
+
+  if (brandLogo !== undefined) {
+    updatePayload.brand_logo = await uploadImage(brandLogo, 'logos');
+  }
+
+  return updateMagnetBrandParamRows(updatePayload, {
+    customerId,
+    magnetSns: BRAND_INFO_MAGNET_SNS,
+  });
 }
 
 export async function updateMagnetBrandParamStoreWebsite(storeWebsite, customerId) {
   return updateMagnetBrandParamRows(
     buildUpdatePayload({ storeWebsite }),
-    customerId
+    { customerId }
   );
 }
 

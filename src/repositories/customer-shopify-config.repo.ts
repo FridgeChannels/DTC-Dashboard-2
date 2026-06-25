@@ -34,8 +34,9 @@ export async function getShopifyConfigByWebhookTenantKey(
 
 export async function ensureWebhookTenantKey(
   customerId: number,
+  existingConfig?: CustomerShopifyConfig | null,
 ): Promise<string> {
-  const existing = await getShopifyConfigByCustomerId(customerId);
+  const existing = existingConfig ?? (await getShopifyConfigByCustomerId(customerId));
   if (!existing) {
     throw new Error(`Shopify not configured for customer: ${customerId}`);
   }

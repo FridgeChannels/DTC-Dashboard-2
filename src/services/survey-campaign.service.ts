@@ -434,23 +434,47 @@ async function finalizeCampaignDetail(
 // Time-based auto transitions (§12.3 §12.6)
 // =====================================================================
 
+async function applyTimeBasedTransitionForRow(
+  customerId: number,
+  campaign: QSurveyCampaignRow,
+): Promise<boolean> {
+  const now = Date.now();
+  let newStatus: SurveyStatus | null = null;
+
+  if (campaign.status === "scheduled" && campaign.start_at && Date.parse(campaign.start_at) <= now) {
+    newStatus = "open";
+  } else if (
+    campaign.status === "open" &&
+    campaign.end_at &&
+    Date.parse(campaign.end_at) <= now
+  ) {
+    newStatus = "closed";
+  }
+
+  if (!newStatus) return false;
+
+  await campaignRepo.updateSurveyCampaignById(customerId, campaign.id, { status: newStatus });
+  return true;
+}
+
 async function applyTimeBasedTransitions(
   customerId: number,
   campaignId: string,
 ): Promise<void> {
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, campaignId);
   if (!campaign) return;
-  const now = Date.now();
+  await applyTimeBasedTransitionForRow(customerId, campaign);
+}
 
-  if (campaign.status === "scheduled" && campaign.start_at && Date.parse(campaign.start_at) <= now) {
-    await campaignRepo.updateSurveyCampaignById(customerId, campaignId, { status: "open" });
-  } else if (
-    campaign.status === "open" &&
-    campaign.end_at &&
-    Date.parse(campaign.end_at) <= now
-  ) {
-    await campaignRepo.updateSurveyCampaignById(customerId, campaignId, { status: "closed" });
-  }
+async function applyTimeBasedTransitionsForCampaigns(
+  customerId: number,
+  campaigns: QSurveyCampaignRow[],
+): Promise<boolean> {
+  if (campaigns.length === 0) return false;
+  const results = await Promise.all(
+    campaigns.map((campaign) => applyTimeBasedTransitionForRow(customerId, campaign)),
+  );
+  return results.some(Boolean);
 }
 
 // =====================================================================
@@ -478,13 +502,12 @@ export async function listSurveyCampaignsForCustomer(
 ): Promise<SurveyCampaignSummary[]> {
   const campaigns = await campaignRepo.listSurveyCampaignsByCustomerId(customerId);
   const campaignIds = campaigns.map((c) => c.id);
+  if (campaignIds.length === 0) return [];
 
-  // 应用时间自动状态转换
-  for (const c of campaigns) {
-    await applyTimeBasedTransitions(customerId, c.id);
-  }
-
-  const refreshed = await campaignRepo.listSurveyCampaignsByCustomerId(customerId);
+  const anyStatusChanged = await applyTimeBasedTransitionsForCampaigns(customerId, campaigns);
+  const refreshed = anyStatusChanged
+    ? await campaignRepo.listSurveyCampaignsByCustomerId(customerId)
+    : campaigns;
 
   const [questionCounts, allSegments, responseCounts] = await Promise.all([
     campaignRepo.countActiveQuestionsByCampaignIds(campaignIds),

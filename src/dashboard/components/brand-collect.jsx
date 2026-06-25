@@ -129,7 +129,7 @@ function BrandCollectPage() {
       if (result.records?.[0]) {
         applyServerConfig(result.records[0]);
       }
-      showNotice(`Brand info updated (${result.updatedCount} magnet_brand_param record${result.updatedCount === 1 ? "" : "s"}).`);
+      showNotice(`Brand info updated (${result.updatedCount} magnet${result.updatedCount === 1 ? "" : "s"}).`);
     } catch (err) {
       setError(err.message || "Failed to save brand info.");
     } finally {

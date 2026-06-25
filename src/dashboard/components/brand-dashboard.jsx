@@ -1,6 +1,6 @@
 // ============================================================
 // Brand Dashboard — 收入优先版（按 docs/礼包版本dashboard PRD 实现）
-// 1 时间筛选 / 2 收入概览 / 3 优惠券收入漏斗 / 4 优惠券表现 / 5 收入趋势
+// 1 时间筛选 / 2 收入概览 / 3 物理触点表现 / 4 优惠券收入漏斗 / 5 优惠券表现 / 6 收入趋势
 // ============================================================
 const { useState: useStateBD, useEffect: useEffectBD, useCallback: useCallbackBD } = React;
 
@@ -47,6 +47,20 @@ function bdPct(v) {
   if (v == null || !Number.isFinite(Number(v))) return "—";
   return window.FCFmt.fmtPct(v, 1);
 }
+// 平均次数等小数指标，保留 1 位小数
+function bdNum(v) {
+  if (v == null || !Number.isFinite(Number(v))) return "—";
+  return Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+// 停留时长（秒）→ 友好展示，如 1m 20s / 45s
+function bdDuration(v) {
+  if (v == null || !Number.isFinite(Number(v))) return "—";
+  const s = Math.round(Number(v));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem ? `${m}m ${rem}s` : `${m}m`;
+}
 
 // 标记尚未接入数据源（待埋点）的指标
 function NoDataSourcePill() {
@@ -59,10 +73,29 @@ function NoDataSourcePill() {
 
 // 收入概览卡片：支持「A / B」斜杠合并展示（primary 在上，secondary 在下）
 // pending=true 表示该指标暂无数据源（待埋点），展示 — 与标识
-function RevenueCard({ title, value, secondary, delta, sub, pending }) {
+// breakdown=[{label,value}]：在卡片底部展示一行小分解（如 frequency 的 Daily/Weekly/Monthly）
+function RevenueCard({ title, value, secondary, delta, sub, pending, help, breakdown }) {
+  const [tipOpen, setTipOpen] = useStateBD(false);
   return (
     <div className="cell">
-      <div className="cell-title">{title}</div>
+      <div className="cell-title">
+        <span>{title}</span>
+        {help && (
+          <span className="cell-info-wrap" onMouseLeave={() => setTipOpen(false)}>
+            <span
+              className="info"
+              role="button"
+              tabIndex={0}
+              aria-label="How this is calculated"
+              onMouseEnter={() => setTipOpen(true)}
+              onFocus={() => setTipOpen(true)}
+              onBlur={() => setTipOpen(false)}
+              onClick={() => setTipOpen((v) => !v)}
+            >i</span>
+            {tipOpen && <div className="info-tip cell-info-tip">{help}</div>}
+          </span>
+        )}
+      </div>
       <div className="cell-value">{pending ? "—" : value}</div>
       {secondary && (
         <div className="cell-foot">
@@ -78,6 +111,11 @@ function RevenueCard({ title, value, secondary, delta, sub, pending }) {
           {sub && <span className="mono muted">{sub}</span>}
         </div>
       )}
+      {breakdown && (
+        <div className="cell-breakdown mono muted">
+          {breakdown.map((b) => `${b.label} ${b.value}`).join("   ·   ")}
+        </div>
+      )}
     </div>
   );
 }
@@ -91,24 +129,64 @@ function RevenueOverview({ overview }) {
           title="Challenge attributed revenue / Coupon revenue"
           value={bdMoney(o.challengeAttributedRevenue)}
           secondary={{ label: "Coupon revenue", value: bdMoney(o.couponRevenue) }}
+          help="Revenue attributed to the challenge. Today this equals coupon revenue — the total value of orders placed with a challenge coupon, counting each Shopify order once."
         />
-        <RevenueCard title="Repeat customer revenue" value={bdMoney(o.repeatCustomerRevenue)} sub="From repeat customers" />
+        <RevenueCard title="Repeat customer revenue" value={bdMoney(o.repeatCustomerRevenue)} sub="From repeat customers"
+          help="Total coupon revenue from customers who placed 2 or more separate orders in this period." />
         <RevenueCard
-          title="Revenue per active user / Active users"
+          title="Revenue per magnet / Active magnets"
           value={bdMoney(o.revenuePerActiveUser)}
-          secondary={{ label: "Active users", value: bdInt(o.activeUsers) }}
+          secondary={{ label: "Active magnets", value: bdInt(o.activeUsers) }}
+          help="Coupon revenue ÷ active magnets. Active magnets = the number of distinct users who earned a coupon in this period."
         />
-        <RevenueCard title="Revenue growth" value={bdPct(o.revenueGrowth)} delta={o.revenueGrowth} sub="vs previous period" />
-        <RevenueCard
-          title="Coupon order revenue / Orders"
-          value={bdMoney(o.couponOrderRevenue)}
-          secondary={{ label: "Orders", value: bdInt(o.orders) }}
-        />
+        <RevenueCard title="Revenue growth" value={bdPct(o.revenueGrowth)} delta={o.revenueGrowth} sub="vs previous period"
+          help="Change in coupon revenue vs. the previous period of equal length: (current − previous) ÷ previous." />
       </div>
       <div className="summary" style={{ marginTop: 12 }}>
-        <RevenueCard title="Repeat purchase rate" value={bdPct(o.repeatPurchaseRate)} sub="This period" />
-        <RevenueCard title="30-day retention" value={bdPct(o.retention30d)} sub="30-day retention" pending={o.retention30d == null} />
-        <RevenueCard title="Winback rate" value={bdPct(o.winbackRate)} sub="Returning users" pending={o.winbackRate == null} />
+        <RevenueCard title="Repeat purchase rate" value={bdPct(o.repeatPurchaseRate)} sub="This period"
+          help="Share of purchasing customers who placed 2 or more orders: repeat customers ÷ all purchasing customers." />
+        <RevenueCard title="30-day retention" value={bdPct(o.retention30d)} sub="30-day retention" pending={o.retention30d == null}
+          help="Share of new customers who purchase again within 30 days. No data source yet — pending instrumentation." />
+        <RevenueCard title="Winback rate" value={bdPct(o.winbackRate)} sub="Returning users" pending={o.winbackRate == null}
+          help="Share of previously lapsed customers who purchase again. No data source yet — pending instrumentation." />
+      </div>
+    </CfgSection>
+  );
+}
+
+// 物理触点表现：冰箱贴（magnet）作为物理入口的触达 / 频率 / 停留表现
+// 指标暂无数据源（待埋点）→ 统一以 pending 占位展示
+function PhysicalTouchpointPerformance({ touchpoints }) {
+  const t = touchpoints || {};
+  return (
+    <CfgSection title="Physical Touchpoint Performance" sub="How the fridge magnet performs as a physical entry point">
+      <div className="summary">
+        <RevenueCard
+          title="Magnet exposure"
+          value={bdInt(t.magnetExposure)}
+          sub="Magnet touches / activations"
+          pending={t.magnetExposure == null}
+          help="Total number of times magnets were tapped or activated in this period (count of tap events). No data source yet — pending instrumentation."
+        />
+        <RevenueCard
+          title="Magnet frequency"
+          value={bdNum(t.magnetFrequency)}
+          sub="Avg touches per device this period"
+          pending={t.magnetFrequency == null}
+          help="Average taps per device = total taps ÷ distinct active magnets, broken down by day / week / month. No data source yet — pending instrumentation."
+          breakdown={[
+            { label: "Daily", value: bdNum(t.interactionsDaily) },
+            { label: "Weekly", value: bdNum(t.interactionsWeekly) },
+            { label: "Monthly", value: bdNum(t.interactionsMonthly) },
+          ]}
+        />
+        <RevenueCard
+          title="Magnet dwell time"
+          value={bdDuration(t.magnetDwellTime)}
+          sub="Avg time spent per touch"
+          pending={t.magnetDwellTime == null}
+          help="Average time spent on the page per tap = total dwell seconds ÷ number of taps. No data source yet — pending instrumentation."
+        />
       </div>
     </CfgSection>
   );
@@ -316,6 +394,7 @@ function BrandDashboardPage() {
         ) : (
           <>
             <RevenueOverview overview={dashboard.overview} />
+            <PhysicalTouchpointPerformance touchpoints={dashboard.touchpoints} />
             <CouponRevenueFunnel funnel={dashboard.funnel} />
             <CouponPerformanceTable rows={dashboard.couponPerformance} />
             <RevenueTrend trend={dashboard.revenueTrend} />

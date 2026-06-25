@@ -19,13 +19,14 @@ Brand Dashboard 用来帮助品牌判断这套挑战机制是否带来真实经�
 
 ## 2. 页面结构
 
-Dashboard 分为 5 个模块：
+Dashboard 分为 6 个模块：
 
 1. 时间筛选
 2. 收入概览
-3. 优惠券收入漏斗
-4. 优惠券表现
-5. 收入趋势
+3. 物理触点表现（Physical Touchpoint Performance）
+4. 优惠券收入漏斗
+5. 优惠券表现
+6. 收入趋势
 
 ---
 
@@ -61,9 +62,8 @@ Dashboard 分为 5 个模块：
 | --------------------------------------------- | ------------------------- |
 | Challenge attributed revenue / Coupon revenue | 挑战机制带来的总归因收入 / 使用优惠券产生的收入 |
 | Repeat customer revenue                       | 复购用户贡献的收入                 |
-| Revenue per active user / Active users        | 每个活跃参与用户平均带来的收入 / 活跃参与用户数 |
+| Revenue per magnet / Active magnets           | 每个活跃 magnet 平均带来的收入 / 活跃 magnet 数 |
 | Revenue growth                                | 当前周期相较上一周期的收入增长           |
-| Coupon order revenue / Orders                 | 使用挑战优惠券完成订单带来的收入 / 对应订单数  |
 | Repeat purchase rate                          | 当前周期复购率                   |
 | 30-day retention                              | 当前周期 30 日留存               |
 | Winback rate                                  | 当前周期回流用户比例                |
@@ -76,9 +76,8 @@ Dashboard 分为 5 个模块：
 | --------------------------------------------- | ---------- |
 | Challenge attributed revenue / Coupon revenue | 最核心收入结果    |
 | Repeat customer revenue                       | 复购收入       |
-| Revenue per active user / Active users        | 人均收入与活跃规模  |
+| Revenue per magnet / Active magnets           | 人均收入与活跃规模  |
 | Revenue growth                                | 收入增长       |
-| Coupon order revenue / Orders                 | 用券订单收入与订单数 |
 
 复购、留存、回流指标展示在同一个 Revenue Overview 模块的第二行：
 
@@ -97,8 +96,7 @@ Dashboard 分为 5 个模块：
 | 卡片                                            | 展示方式                    |
 | --------------------------------------------- | ----------------------- |
 | Challenge attributed revenue / Coupon revenue | 上方展示挑战归因总收入，下方展示其中优惠券收入 |
-| Coupon order revenue / Orders                 | 上方展示优惠券订单收入，下方展示对应订单数   |
-| Revenue per active user / Active users        | 上方展示人均收入，下方展示活跃参与用户数    |
+| Revenue per magnet / Active magnets           | 上方展示人均收入，下方展示活跃 magnet 数（去重领券用户数） |
 
 ### 4.4 不放在收入概览里的指标
 
@@ -118,11 +116,86 @@ Dashboard 分为 5 个模块：
 
 这些数据只用于解释收入来源，不作为首屏收入指标。
 
+### 4.5 指标计算规则提示（info tooltip）
+
+读者是使用我们系统的品牌方，不一定清楚每个指标怎么算。因此每个指标卡片都要让品牌随手看到它的计算规则。
+
+规则：
+
+* 每个指标卡片标题右上角带一个小 info 图标（ⓘ）。
+* 鼠标 hover（或点击 / 键盘聚焦，便于移动端与无障碍）即弹出该指标的计算规则说明，用平实的英文描述口径，面向品牌方而非工程师。
+* 暂无数据源的指标（pending），提示文案需明确写明「No data source yet — pending instrumentation」，避免品牌误以为是 0。
+* 本规则适用于所有指标卡片，包括 Revenue Overview 与 Physical Touchpoint Performance 两个模块。
+
+各指标的提示文案即本 PRD 中对应的「计算规则」口径（见 §4.1 与 §5.2）。
+
 ---
 
-## 5. 优惠券收入漏斗
+## 5. 物理触点表现（Physical Touchpoint Performance）
 
 ### 5.1 模块目标
+
+收入概览回答「赚了多少钱」，物理触点表现回答「冰箱贴这个物理入口被用得怎么样」。
+
+它衡量 magnet（冰箱贴）作为线下物理入口的：被触达规模、触达频率、停留质量。用于判断 magnet 是「一次性流量」还是「能沉淀下来的习惯入口」。
+
+位置：放在 Revenue Overview 下方、优惠券收入漏斗上方。
+
+### 5.2 指标与计算规则
+
+模块为 3 个核心卡片。Daily / Weekly / Monthly 不单独成卡，作为 Magnet frequency 卡片底部的一行分解展示：
+
+| 卡片 | 字段 | 计算规则 | 回答的问题 |
+| ---- | ---- | -------- | --------- |
+| Magnet exposure（物理触达量） | `magnetExposure` | 时间段内 magnet 被触发 / 激活的总次数 = `count(tap events)`。每次 NFC / 扫码打开页面计 1 次 | 有多少物理入口被用起来 |
+| Magnet frequency（触达频率） | `magnetFrequency` | 每台设备平均触达次数 = 总触达次数 ÷ 去重设备数 = `count(tap events) / count(distinct magnet_id)`。卡片底部按日 / 周 / 月分解展示 | 是一次性流量还是习惯入口 |
+| Magnet dwell time（平均停留时间） | `magnetDwellTime` | 每次触发后页面平均停留时长（秒）= `sum(session_duration) / count(sessions)`；前端展示自动转 `45s` / `1m 20s` | 用户有没有被内容留住 |
+
+Magnet frequency 卡片底部分解（同一份 tap event 埋点，仅按时间粒度归一，不是独立指标）：
+
+| 分解项 | 字段 | 计算规则 |
+| ---- | ---- | -------- |
+| Daily | `interactionsDaily` | 每台设备日均触达 = 总触达次数 ÷ 去重设备数 ÷ 周期天数 |
+| Weekly | `interactionsWeekly` | 每台设备周均触达 = 日均 × 7（或按自然周聚合） |
+| Monthly | `interactionsMonthly` | 每台设备月均触达 = 日均 × 30（或按自然月聚合） |
+
+### 5.3 数据源依赖（埋点需求）
+
+> **当前状态：以上 6 个指标尚无数据源，前端统一以 `—` + 「No data source」占位展示（pending）。** 待埋点接入后由后端填充 `BrandDashboard.touchpoints` 即可点亮。
+
+仓库现有数据无法支撑本模块：`magnet` 表只是注册表（`id, customer_id, sn, url, role, stage`），不含触达 / 停留事件；唯一与 magnet 相关的活动是扫码发券（落在 `fc_coupon_assignment`），只反映「发券」，不反映「曝光 / 频率 / 停留」。
+
+需要新增一张 magnet 触达事件表，建议字段：
+
+| 字段 | 说明 |
+| ---- | ---- |
+| `magnet_id` | 触发的 magnet（设备）主键 |
+| `customer_id` | 所属品牌 |
+| `ts` | 触发时间戳（用于按时间筛选与日 / 周 / 月归一） |
+| `session_id` | 单次会话标识（用于去重与停留计算） |
+| `dwell_seconds` | 本次会话停留时长（进入页面记开始，离开 / 心跳记结束）→ 支撑 Magnet dwell time |
+
+有了「每次触达一行」的事件表，除 dwell time 需额外的停留时长字段外，其余 5 个指标均可由该表聚合得出。
+
+### 5.4 后端返回结构（待实现）
+
+```ts
+interface BrandDashboardTouchpoints {
+  magnetExposure: number | null;      // 总触达次数
+  magnetFrequency: number | null;     // 每设备平均触达
+  magnetDwellTime: number | null;     // 平均停留秒数
+  interactionsDaily: number | null;   // 每设备日均
+  interactionsWeekly: number | null;  // 每设备周均
+  interactionsMonthly: number | null; // 每设备月均
+}
+// 挂在 BrandDashboard.touchpoints；无数据源时各字段返回 null → 前端 pending
+```
+
+---
+
+## 6. 优惠券收入漏斗
+
+### 6.1 模块目标
 
 优惠券收入漏斗用来解释收入是怎么来的。
 
@@ -130,7 +203,7 @@ Dashboard 分为 5 个模块：
 
 这些收入来自多少设备、多少参与用户、多少优惠券、多少订单。
 
-### 5.2 漏斗阶段
+### 6.2 漏斗阶段
 
 | 阶段             | 含义                |
 | -------------- | ----------------- |
@@ -141,7 +214,7 @@ Dashboard 分为 5 个模块：
 | Orders         | 使用优惠券产生的订单        |
 | Coupon revenue | 使用优惠券产生的收入        |
 
-### 5.3 Active devices 规则
+### 6.3 Active devices 规则
 
 Active devices 是漏斗的起点，用来告诉品牌：
 
@@ -157,7 +230,7 @@ Active devices 用来帮助品牌判断：
 | Active devices 少，但收入高             | 设备覆盖少，但单设备质量高    |
 | Active devices 多，收入低              | 设备覆盖足够，但后续转化弱    |
 
-### 5.4 展示规则
+### 6.4 展示规则
 
 漏斗每一层展示：
 
@@ -167,7 +240,7 @@ Active devices 用来帮助品牌判断：
 
 其中 Coupon revenue 是金额结果，不需要展示转化率，只展示收入金额。
 
-### 5.5 关键规则
+### 6.5 关键规则
 
 获得优惠券就代表用户已经拿到 coupon code。
 
@@ -197,7 +270,7 @@ Active devices 用来帮助品牌判断：
 | Orders         | 用券订单     |
 | Coupon revenue | 用券收入     |
 
-### 5.6 运营判断
+### 6.6 运营判断
 
 | 现象                                | 说明                      |
 | --------------------------------- | ----------------------- |
@@ -210,13 +283,13 @@ Active devices 用来帮助品牌判断：
 
 ---
 
-## 6. 优惠券表现
+## 7. 优惠券表现
 
-### 6.1 模块目标
+### 7.1 模块目标
 
 让品牌知道哪一档优惠券真正带来了收入。
 
-### 6.2 表格维度
+### 7.2 表格维度
 
 | Coupon  | Earned | Used | Orders | Revenue | Use rate |
 | ------- | -----: | ---: | -----: | ------: | -------: |
@@ -225,11 +298,11 @@ Active devices 用来帮助品牌判断：
 | 20% OFF |     92 |   45 |     41 |  $1,980 |      49% |
 | 25% OFF |     31 |   19 |     18 |    $920 |      61% |
 
-### 6.3 排序规则
+### 7.3 排序规则
 
 默认按照优惠力度从低到高展示。
 
-### 6.4 品牌可以判断
+### 7.4 品牌可以判断
 
 1. 哪一档券带来的收入最高。
 2. 哪一档券带来的订单最多。
@@ -239,13 +312,13 @@ Active devices 用来帮助品牌判断：
 
 ---
 
-## 7. 收入趋势
+## 8. 收入趋势
 
-### 7.1 模块目标
+### 8.1 模块目标
 
 展示当前时间段内收入变化。
 
-### 7.2 展示内容
+### 8.2 展示内容
 
 收入趋势优先展示：
 
@@ -259,7 +332,7 @@ Active devices 用来帮助品牌判断：
 
 图表主轴必须是收入，不以用券数作为主指标。
 
-### 7.3 目的
+### 8.3 目的
 
 帮助品牌判断：
 
@@ -270,23 +343,23 @@ Active devices 用来帮助品牌判断：
 
 ---
 
-## 8. 旧版 Dashboard 数据处理
+## 9. 旧版 Dashboard 数据处理
 
 旧版音频 / CTA Dashboard 中的数据按以下规则处理。
 
-### 8.1 保留并前置到 Revenue Overview
+### 9.1 保留并前置到 Revenue Overview
 
 | 旧版指标                    | 新版处理                                                    |
 | ----------------------- | ------------------------------------------------------- |
 | FC Attributed Revenue   | 改为 Challenge attributed revenue，放入收入概览                  |
 | Coupon Redeemed Revenue | 改为 Coupon revenue，和 Challenge attributed revenue 放在同一卡片 |
 | Repeat Customer Revenue | 保留为 Repeat customer revenue，放入收入概览                      |
-| Revenue / Active HH     | 改为 Revenue per active user / Active users，放入收入概览        |
+| Revenue / Active HH     | 改为 Revenue per magnet / Active magnets，放入收入概览（计算口径不变：Coupon revenue ÷ 去重领券用户数） |
 | Repeat Purchase Rate    | 保留为 Repeat purchase rate，放入收入概览第二行                      |
 | 30-day Retention        | 保留为 30-day retention，放入收入概览第二行                          |
 | Winback Rate            | 保留为 Winback rate，放入收入概览第二行                              |
 
-### 8.2 删除
+### 9.2 删除
 
 | 旧版指标                        | 处理  |
 | --------------------------- | --- |
@@ -305,26 +378,26 @@ Active devices 用来帮助品牌判断：
 
 ---
 
-## 9. 空状态
+## 10. 空状态
 
-### 9.1 没有任何活动
+### 10.1 没有任何活动
 
 No activity yet.
 Once devices become active and users join the challenge, revenue and coupon data will appear here.
 
-### 9.2 有激活设备但没有参与
+### 10.2 有激活设备但没有参与
 
 Devices are active, but no users have joined the challenge yet.
 
-### 9.3 有参与但没有收入
+### 10.3 有参与但没有收入
 
 Users have started joining the challenge, but no coupon revenue has been generated yet.
 
-### 9.4 有获得券但没有使用
+### 10.4 有获得券但没有使用
 
 Coupons have been earned, but none have been used yet.
 
-### 9.5 Shopify 未连接
+### 10.5 Shopify 未连接
 
 Connect Shopify to track coupon usage, orders, and revenue.
 
@@ -332,9 +405,9 @@ Connect Shopify to track coupon usage, orders, and revenue.
 
 ---
 
-## 10. 页面操作
+## 11. 页面操作
 
-### 10.1 Export
+### 11.1 Export
 
 保留 Export。
 
@@ -350,7 +423,7 @@ Connect Shopify to track coupon usage, orders, and revenue.
 * 收入
 * 使用率
 
-### 10.2 View orders
+### 11.2 View orders
 
 Shopify 已连接时，可以从订单数字进入订单明细。
 
@@ -365,7 +438,7 @@ Shopify 已连接时，可以从订单数字进入订单明细。
 
 ---
 
-## 11. 本期范围
+## 12. 本期范围
 
 本期必须完成：
 
@@ -398,7 +471,7 @@ Shopify 已连接时，可以从订单数字进入订单明细。
 
 ---
 
-## 12. 最终页面信息架构
+## 13. 最终页面信息架构
 
 新版 Brand Dashboard 最终结构为：
 
@@ -408,14 +481,19 @@ Shopify 已连接时，可以从订单数字进入订单明细。
 
    * Challenge attributed revenue / Coupon revenue
    * Repeat customer revenue
-   * Revenue per active user / Active users
+   * Revenue per magnet / Active magnets
    * Revenue growth
-   * Coupon order revenue / Orders
    * Repeat purchase rate
    * 30-day retention
    * Winback rate
 
-3. Coupon Revenue Funnel
+3. Physical Touchpoint Performance
+
+   * Magnet exposure
+   * Magnet frequency（底部分解：Daily / Weekly / Monthly）
+   * Magnet dwell time
+
+4. Coupon Revenue Funnel
 
    * Active devices
    * Participants
@@ -424,18 +502,18 @@ Shopify 已连接时，可以从订单数字进入订单明细。
    * Orders
    * Coupon revenue
 
-4. Coupon Performance
+5. Coupon Performance
 
    * By coupon tier
 
-5. Revenue Trend
+6. Revenue Trend
 
    * Challenge attributed revenue
    * Coupon revenue
 
 ---
 
-## 13. 验收标准
+## 14. 验收标准
 
 1. 首屏必须优先展示收入相关指标。
 2. Repeat purchase rate、30-day retention、Winback rate 必须合并展示在 Revenue Overview，不再单独成模块。
@@ -450,3 +528,5 @@ Shopify 已连接时，可以从订单数字进入订单明细。
 11. 品牌可以按优惠券档位查看 earned、used、orders、revenue、use rate。
 12. 品牌可以看到收入趋势。
 13. 未连接 Shopify 时，不展示订单和收入假数据，只展示连接提示。
+14. Physical Touchpoint Performance 模块展示在 Revenue Overview 下方、Coupon Revenue Funnel 上方；其指标在埋点接入前以 `—` + 「No data source」占位，不展示假数据。
+15. 每个指标卡片右上角提供 info 图标，hover / 点击可查看该指标的计算规则，文案面向品牌方（见 §4.5）。

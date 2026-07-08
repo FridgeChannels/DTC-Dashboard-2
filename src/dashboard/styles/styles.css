@@ -1131,10 +1131,53 @@ table.data td.tag {
   color: var(--ink);
   font-weight: 500;
 }
+.funnel-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.funnel-label .info {
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  border: 1px solid var(--ink-4);
+  color: var(--ink-4);
+  font-size: 10px;
+  display: inline-grid;
+  place-items: center;
+  cursor: help;
+  font-style: italic;
+  font-family: var(--font-serif);
+  line-height: 1;
+  flex: none;
+}
+.funnel-label .info:hover,
+.funnel-label .info:focus-visible {
+  color: var(--ink-2);
+  border-color: var(--ink-2);
+  outline: none;
+}
+.funnel-info-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.funnel-info-tip {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.funnel-info-tip::after {
+  left: 50%;
+  transform: translateX(-50%);
+}
 .funnel-row .sub {
   font-size: 13px;
   color: var(--ink-3);
   margin-top: 2px;
+}
+.funnel-row .funnel-unit {
+  color: var(--ink-4);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
 }
 .funnel-bar {
   height: 38px;
@@ -1169,6 +1212,102 @@ table.data td.tag {
   text-align: right;
 }
 .funnel-row .drop b { color: var(--neg); font-weight: 500; }
+
+.segment-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 14px;
+  width: 100%;
+}
+.segment-filter-select {
+  position: relative;
+}
+.segment-filter-trigger {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 320px;
+  padding: 6px 10px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-elev);
+  color: var(--ink);
+  box-shadow: 0 1px 0 oklch(0.92 0.006 75 / 0.45);
+  font: inherit;
+  cursor: pointer;
+}
+.segment-filter-trigger:hover,
+.segment-filter-select.open .segment-filter-trigger {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px oklch(0.58 0.14 38 / 0.12);
+}
+.segment-filter-label {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  font-weight: 400;
+}
+.segment-filter-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.segment-filter-trigger svg {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  opacity: 0.55;
+}
+.segment-filter-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 7px);
+  right: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: 320px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-2);
+}
+.segment-filter-option {
+  width: 100%;
+  display: block;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.segment-filter-option:hover,
+.segment-filter-option.selected {
+  background: var(--accent-soft);
+}
+.segment-filter-option.selected {
+  font-weight: 700;
+}
+.data td.is-sorted-metric {
+  background: oklch(0.92 0.04 38 / 0.35);
+  font-weight: 700;
+  color: var(--ink);
+}
 
 /* ratio gauge */
 .gauge-wrap {
@@ -4091,4 +4230,86 @@ input:checked + .survey-slider:before {
 .brand-dashboard-page .cfg-section + .cfg-section {
   margin-top: 40px;
   padding-top: 40px;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .admin-app {
+    display: block;
+    min-height: auto;
+    background: #fff;
+  }
+
+  .admin-sidebar,
+  .survey-dashboard-head-actions,
+  .segment-table-actions,
+  .cfg-section-action,
+  .btn {
+    display: none !important;
+  }
+
+  .admin-main,
+  .dashboard-view {
+    display: block;
+    background: #fff;
+  }
+
+  .admin-content {
+    max-width: none;
+    padding: 0;
+    background: #fff;
+  }
+
+  .survey-dashboard-head {
+    margin-bottom: 18px;
+  }
+
+  .cfg-section,
+  .summary {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .cfg-section + .cfg-section,
+  .brand-dashboard-page .cfg-section + .cfg-section {
+    margin-top: 22px;
+    padding-top: 22px;
+  }
+
+  .table-wrap {
+    overflow: visible !important;
+  }
+
+  table.data {
+    min-width: 0;
+    width: 100%;
+    font-size: 11px;
+  }
+
+  table.data th,
+  table.data td {
+    padding: 8px 10px;
+  }
+
+  .funnel-row {
+    grid-template-columns: 130px 1fr 88px 70px;
+    gap: 10px;
+  }
+
+  .funnel-bar {
+    height: 30px;
+  }
 }

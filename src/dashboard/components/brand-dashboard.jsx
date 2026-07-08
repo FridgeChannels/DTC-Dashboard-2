@@ -71,6 +71,30 @@ function NoDataSourcePill() {
   );
 }
 
+function FunnelInfoLabel({ label, help }) {
+  const [tipOpen, setTipOpen] = useStateBD(false);
+  return (
+    <div className="label funnel-label">
+      <span>{label}</span>
+      {help && (
+        <span className="funnel-info-wrap" onMouseLeave={() => setTipOpen(false)}>
+          <span
+            className="info"
+            role="button"
+            tabIndex={0}
+            aria-label={`How ${label} is calculated`}
+            onMouseEnter={() => setTipOpen(true)}
+            onFocus={() => setTipOpen(true)}
+            onBlur={() => setTipOpen(false)}
+            onClick={() => setTipOpen((v) => !v)}
+          >i</span>
+          {tipOpen && <div className="info-tip funnel-info-tip">{help}</div>}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // 收入概览卡片：支持「A / B」斜杠合并展示（primary 在上，secondary 在下）
 // pending=true 表示该指标暂无数据源（待埋点），展示 — 与标识
 // breakdown=[{label,value}]：在卡片底部展示一行小分解（如 frequency 的 Daily/Weekly/Monthly）
@@ -126,25 +150,26 @@ function RevenueOverview({ overview }) {
     <CfgSection title="Revenue Overview" sub="Business results driven by the challenge">
       <div className="summary">
         <RevenueCard
-          title="Challenge attributed revenue / Coupon revenue"
-          value={bdMoney(o.challengeAttributedRevenue)}
+          title="Coupon-attributed revenue / Coupon revenue"
+          value={bdMoney(o.couponAttributedRevenue)}
           secondary={{ label: "Coupon revenue", value: bdMoney(o.couponRevenue) }}
-          help="Revenue attributed to the challenge. Today this equals coupon revenue — the total value of orders placed with a challenge coupon, counting each Shopify order once."
+          help="Revenue attributed through coupon redemptions. Today this equals coupon revenue — the total value of orders placed with a challenge coupon, counting each Shopify order once."
         />
-        <RevenueCard title="Repeat customer revenue" value={bdMoney(o.repeatCustomerRevenue)} sub="From repeat customers"
-          help="Total coupon revenue from customers who placed 2 or more separate orders in this period." />
+        <RevenueCard title="Repeat magnet revenue" value={bdMoney(o.repeatMagnetRevenue)} sub="From repeat magnets"
+          help="Coupon redemption revenue attributed to magnets that brought 2 or more distinct Shopify orders in this period. Redemptions without order IDs still count toward revenue after the magnet qualifies, but do not count toward the order threshold." />
         <RevenueCard
           title="Revenue per magnet / Active magnets"
-          value={bdMoney(o.revenuePerActiveUser)}
-          secondary={{ label: "Active magnets", value: bdInt(o.activeUsers) }}
-          help="Coupon revenue ÷ active magnets. Active magnets = the number of distinct users who earned a coupon in this period."
+          value={bdMoney(o.revenuePerMagnet)}
+          secondary={{ label: "Active magnets", value: bdInt(o.activeMagnets) }}
+          pending={o.revenuePerMagnet == null}
+          help="Magnet-attributed coupon revenue ÷ active magnets. Revenue is attributed through redemption assignment_id → coupon assignment magnet_id; unassigned redemptions stay in total coupon revenue but are excluded from the per-magnet numerator."
         />
         <RevenueCard title="Revenue growth" value={bdPct(o.revenueGrowth)} delta={o.revenueGrowth} sub="vs previous period"
           help="Change in coupon revenue vs. the previous period of equal length: (current − previous) ÷ previous." />
       </div>
       <div className="summary" style={{ marginTop: 12 }}>
         <RevenueCard title="Repeat purchase rate" value={bdPct(o.repeatPurchaseRate)} sub="This period"
-          help="Share of purchasing customers who placed 2 or more orders: repeat customers ÷ all purchasing customers." />
+          help="Repeat magnets ÷ purchasing magnets. Purchasing magnets are magnets with attributable redemptions; repeat magnets have 2 or more distinct Shopify orders in this period." />
         <RevenueCard title="30-day retention" value={bdPct(o.retention30d)} sub="30-day retention" pending={o.retention30d == null}
           help="Share of new customers who purchase again within 30 days. No data source yet — pending instrumentation." />
         <RevenueCard title="Winback rate" value={bdPct(o.winbackRate)} sub="Returning users" pending={o.winbackRate == null}
@@ -194,19 +219,52 @@ function PhysicalTouchpointPerformance({ touchpoints }) {
 
 function CouponRevenueFunnel({ funnel }) {
   const f = funnel;
-  // 可计数阶段（不含金额）。Active devices 暂无数据源 → value 为 null
+  // 可计数阶段（不含金额）。Active Magnets 暂无数据源 → value 为 null
   const countStages = [
-    { key: "active", label: "Active devices", value: f.activeDevices, pending: f.activeDevices == null },
-    { key: "participants", label: "Participants", value: f.participants },
-    { key: "earned", label: "Coupons earned", value: f.couponsEarned },
-    { key: "used", label: "Coupons used", value: f.couponsUsed },
-    { key: "orders", label: "Orders", value: f.orders },
+    {
+      key: "active",
+      label: "Active Magnets",
+      value: f.activeMagnets,
+      unit: "magnets",
+      pending: f.activeMagnets == null,
+      help: "Distinct magnets with activity in the selected period. No data source yet; this needs magnet tap or activation events.",
+    },
+    {
+      key: "participants",
+      label: "Participants",
+      value: f.participants,
+      unit: "users",
+      help: "Distinct users who earned at least one coupon in the selected period, counted from coupon assignments.",
+    },
+    {
+      key: "earned",
+      label: "Coupons claimed",
+      value: f.couponsEarned,
+      unit: "coupons",
+      help: "Total number of coupons claimed or assigned in the selected period, filtered by assigned_at.",
+    },
+    {
+      key: "used",
+      label: "Coupons used",
+      value: f.couponsUsed,
+      unit: "coupons",
+      help: "Total coupon redemption records in the selected period, filtered by redeemed_at.",
+    },
+    {
+      key: "orders",
+      label: "Orders",
+      value: f.orders,
+      unit: "orders",
+      help: "Distinct Shopify orders tied to coupon redemptions in the selected period. Each shopify_order_id is counted once.",
+    },
   ];
-  // 总转化率基准 = 第一个有效数值（优先 Active devices，其次 Participants）
+  const couponRevenueHelp =
+    "Total order value from coupon redemptions in the selected period. Each Shopify order is counted once by shopify_order_id.";
+  // 总转化率基准 = 第一个有效数值（优先 Active Magnets，其次 Participants）
   const base = countStages.find((s) => s.value != null && s.value > 0)?.value ?? null;
   let prevValue = null;
   return (
-    <CfgSection title="Coupon Revenue Funnel" sub="Devices → participants → coupons → orders → revenue">
+    <CfgSection title="Coupon Revenue Funnel" sub="Magnets → participants → coupons → orders → revenue">
       <div className="funnel">
         {countStages.map((s) => {
           const val = s.value;
@@ -216,7 +274,8 @@ function CouponRevenueFunnel({ funnel }) {
           const row = (
             <div className="funnel-row" key={s.key}>
               <div>
-                <div className="label">{s.label}</div>
+                <FunnelInfoLabel label={s.label} help={s.help} />
+                <div className="sub funnel-unit">Unit: {s.unit}</div>
                 {s.pending ? <div className="sub"><NoDataSourcePill /></div> : s.sub && <div className="sub">{s.sub}</div>}
               </div>
               <div className="funnel-bar">
@@ -235,7 +294,11 @@ function CouponRevenueFunnel({ funnel }) {
         })}
         {/* Coupon revenue：金额结果，不展示转化率 */}
         <div className="funnel-row brand-funnel-revenue">
-          <div><div className="label">Coupon revenue</div><div className="sub">Revenue from coupon orders</div></div>
+          <div>
+            <FunnelInfoLabel label="Coupon revenue" help={couponRevenueHelp} />
+            <div className="sub funnel-unit">Unit: USD</div>
+            <div className="sub">Revenue from coupon orders</div>
+          </div>
           <div className="funnel-bar"><div style={{ width: "100%", background: "var(--accent)" }}>{bdMoney(f.couponRevenue)}</div></div>
           <div className="ratio"><span className="muted">—</span></div>
           <div className="drop"><span className="muted">—</span></div>
@@ -285,10 +348,141 @@ function CouponPerformanceTable({ rows }) {
   );
 }
 
+function SegmentTableSelect({ label, value, options, onChange }) {
+  const [open, setOpen] = useStateBD(false);
+  const selected = options.find((opt) => opt.value === value) ?? options[0];
+  return (
+    <div
+      className={`segment-filter-select${open ? " open" : ""}`}
+      tabIndex={-1}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        className="segment-filter-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="segment-filter-label">{label}</span>
+        <span className="segment-filter-value">{selected?.label}</span>
+        <I.chevDown />
+      </button>
+      {open && (
+        <div className="segment-filter-menu" role="listbox">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`segment-filter-option${opt.value === value ? " selected" : ""}`}
+              role="option"
+              aria-selected={opt.value === value}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SegmentCouponPerformanceTable({ rows }) {
+  const [segmentFilter, setSegmentFilter] = useStateBD("all");
+  const [couponFilter, setCouponFilter] = useStateBD("all");
+  const [sortBy, setSortBy] = useStateBD("useRate");
+
+  if (!rows?.length) {
+    return (
+      <CfgSection title="Segment Coupon Performance" sub="Use rate by segment-coupon binding">
+        <EmptyState title="No segment coupon bindings yet" note="Bind coupons to Klaviyo segments to compare usage by segment." compact />
+      </CfgSection>
+    );
+  }
+
+  const segments = [...new Map(rows.map((r) => [r.segmentId, { id: r.segmentId, name: r.segmentName }])).values()];
+  const coupons = [...new Map(rows.map((r) => [r.campaignId, { id: r.campaignId, label: r.couponLabel }])).values()];
+  const filteredRows = rows.filter(
+    (r) =>
+      (segmentFilter === "all" || r.segmentId === segmentFilter) &&
+      (couponFilter === "all" || r.campaignId === couponFilter),
+  );
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    if (sortBy === "revenue") return (Number(b.revenue) || 0) - (Number(a.revenue) || 0);
+    return (Number(b.useRate) || -1) - (Number(a.useRate) || -1);
+  });
+
+  return (
+    <CfgSection
+      title="Segment Coupon Performance"
+      sub="Each row is one segment-coupon binding · assignment-level segment attribution pending"
+    >
+      <div className="segment-table-actions">
+        <SegmentTableSelect
+          label="Segment"
+          value={segmentFilter}
+          onChange={setSegmentFilter}
+          options={[{ value: "all", label: "All segments" }, ...segments.map((s) => ({ value: s.id, label: s.name }))]}
+        />
+        <SegmentTableSelect
+          label="Coupon"
+          value={couponFilter}
+          onChange={setCouponFilter}
+          options={[{ value: "all", label: "All coupons" }, ...coupons.map((c) => ({ value: c.id, label: c.label }))]}
+        />
+        <SegmentTableSelect
+          label="Sort"
+          value={sortBy}
+          onChange={setSortBy}
+          options={[
+            { value: "useRate", label: "Use rate high to low" },
+            { value: "revenue", label: "Revenue high to low" },
+          ]}
+        />
+      </div>
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            <tr>
+              <th>Segment</th>
+              <th>Coupon</th>
+              <th className="num">Claimed</th>
+              <th className="num">Used</th>
+              <th className="num">Orders</th>
+              <th className="num">Revenue</th>
+              <th className="num">Use rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows.map((r) => (
+              <tr key={`${r.segmentId}-${r.campaignId}`}>
+                <td><strong>{r.segmentName}</strong></td>
+                <td>{r.couponLabel}</td>
+                <td className="num">{bdInt(r.earned)}</td>
+                <td className="num">{bdInt(r.used)}</td>
+                <td className="num">{bdInt(r.orders)}</td>
+                <td className={`num${sortBy === "revenue" ? " is-sorted-metric" : ""}`}>{bdMoney(r.revenue)}</td>
+                <td className={`num${sortBy === "useRate" ? " is-sorted-metric" : ""}`}>{bdPct(r.useRate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </CfgSection>
+  );
+}
+
 function RevenueTrend({ trend }) {
   const hasData = Array.isArray(trend) && trend.length > 0;
   return (
-    <CfgSection title="Revenue Trend" sub="Revenue is the primary axis: Challenge / Coupon revenue">
+    <CfgSection title="Revenue Trend" sub="Daily coupon-attributed revenue over the selected period">
       {hasData ? (
         <AreaChart
           data={trend.map((p) => p.couponRevenue)}
@@ -312,7 +506,7 @@ function exportBrandDashboardCsv(dashboard, rangeLabel) {
   };
   const lines = [];
   lines.push(["Date range", rangeLabel].map(esc).join(","));
-  lines.push(["Active devices", dashboard.funnel.activeDevices ?? "N/A"].map(esc).join(","));
+  lines.push(["Active Magnets", dashboard.funnel.activeMagnets ?? "N/A"].map(esc).join(","));
   lines.push(["Participants", dashboard.funnel.participants].map(esc).join(","));
   lines.push([]);
   lines.push(["Coupon", "Earned", "Used", "Orders", "Revenue", "Use rate"].map(esc).join(","));
@@ -330,6 +524,18 @@ function exportBrandDashboardCsv(dashboard, rangeLabel) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(a.href);
+}
+
+function exportBrandDashboardPdf(rangeLabel) {
+  const previousTitle = document.title;
+  const safeRange = String(rangeLabel || "dashboard").replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "");
+  document.title = `brand-dashboard-${safeRange || Date.now()}`;
+  const restore = () => {
+    document.title = previousTitle;
+    window.removeEventListener("afterprint", restore);
+  };
+  window.addEventListener("afterprint", restore);
+  window.print();
 }
 
 function BrandDashboardPage() {
@@ -369,7 +575,11 @@ function BrandDashboardPage() {
             </select>
             <button type="button" className="btn" disabled={!dashboard || !dashboard.hasActivity}
               onClick={() => dashboard && exportBrandDashboardCsv(dashboard, rangeLabel)}>
-              <I.download /> Export
+              <I.download /> Export CSV
+            </button>
+            <button type="button" className="btn" disabled={!dashboard || !dashboard.hasActivity}
+              onClick={() => dashboard && exportBrandDashboardPdf(rangeLabel)}>
+              <I.download /> Export PDF
             </button>
           </div>
         </div>
@@ -397,6 +607,7 @@ function BrandDashboardPage() {
             <PhysicalTouchpointPerformance touchpoints={dashboard.touchpoints} />
             <CouponRevenueFunnel funnel={dashboard.funnel} />
             <CouponPerformanceTable rows={dashboard.couponPerformance} />
+            <SegmentCouponPerformanceTable rows={dashboard.segmentCouponPerformance} />
             <RevenueTrend trend={dashboard.revenueTrend} />
           </>
         )}

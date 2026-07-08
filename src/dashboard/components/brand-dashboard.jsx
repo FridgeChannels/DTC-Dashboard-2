@@ -566,17 +566,13 @@ function BrandDashboardPage() {
         <div className="survey-dashboard-head-meta">
           <div className="survey-dashboard-head-context">
             <div>
-              <h2 className="module-title survey-detail-title">Revenue overview</h2>
+              <h2 className="module-title survey-detail-title">Dashboard</h2>
             </div>
           </div>
           <div className="survey-dashboard-head-actions">
             <select className="cfg-input" value={dateRange} onChange={(e) => setDateRange(e.target.value)} aria-label="Date range">
               {BD_DATE_RANGES.map((opt) => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
             </select>
-            <button type="button" className="btn" disabled={!dashboard || !dashboard.hasActivity}
-              onClick={() => dashboard && exportBrandDashboardCsv(dashboard, rangeLabel)}>
-              <I.download /> Export CSV
-            </button>
             <button type="button" className="btn" disabled={!dashboard || !dashboard.hasActivity}
               onClick={() => dashboard && exportBrandDashboardPdf(rangeLabel)}>
               <I.download /> Export PDF

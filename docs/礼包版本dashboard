@@ -124,7 +124,7 @@ Dashboard 分为 6 个模块：
 
 * 每个指标卡片标题右上角带一个小 info 图标（ⓘ）。
 * 鼠标 hover（或点击 / 键盘聚焦，便于移动端与无障碍）即弹出该指标的计算规则说明，用平实的英文描述口径，面向品牌方而非工程师。
-* 暂无数据源的指标（pending），提示文案需明确写明「No data source yet — pending instrumentation」，避免品牌误以为是 0。
+* 未填充的指标可在数值旁使用「No Data」状态占位；info tooltip 只写计算口径或业务定义，不写数据状态。
 * 本规则适用于所有指标卡片，包括 Revenue Overview 与 Physical Touchpoint Performance 两个模块。
 
 各指标的提示文案即本 PRD 中对应的「计算规则」口径（见 §4.1 与 §5.2）。
@@ -161,7 +161,7 @@ Magnet frequency 卡片底部分解（同一份 tap event 埋点，仅按时间�
 
 ### 5.3 数据源依赖（埋点需求）
 
-> **当前状态：以上 6 个指标尚无数据源，前端统一以 `—` + 「No data source」占位展示（pending）。** 待埋点接入后由后端填充 `BrandDashboard.touchpoints` 即可点亮。
+> **当前状态：以上 6 个指标尚无数据源，前端统一以 `—` + 「No Data」占位展示（pending）。** 待埋点接入后由后端填充 `BrandDashboard.touchpoints` 即可点亮。
 
 仓库现有数据无法支撑本模块：`magnet` 表只是注册表（`id, customer_id, sn, url, role, stage`），不含触达 / 停留事件；唯一与 magnet 相关的活动是扫码发券（落在 `fc_coupon_assignment`），只反映「发券」，不反映「曝光 / 频率 / 停留」。
 
@@ -528,5 +528,5 @@ Shopify 已连接时，可以从订单数字进入订单明细。
 11. 品牌可以按优惠券档位查看 earned、used、orders、revenue、use rate。
 12. 品牌可以看到收入趋势。
 13. 未连接 Shopify 时，不展示订单和收入假数据，只展示连接提示。
-14. Physical Touchpoint Performance 模块展示在 Revenue Overview 下方、Coupon Revenue Funnel 上方；其指标在埋点接入前以 `—` + 「No data source」占位，不展示假数据。
+14. Physical Touchpoint Performance 模块展示在 Revenue Overview 下方、Coupon Revenue Funnel 上方；其指标在埋点接入前以 `—` + 「No Data」占位，不展示假数据。
 15. 每个指标卡片右上角提供 info 图标，hover / 点击可查看该指标的计算规则，文案面向品牌方（见 §4.5）。

@@ -62,11 +62,11 @@ function bdDuration(v) {
   return rem ? `${m}m ${rem}s` : `${m}m`;
 }
 
-// 标记尚未接入数据源（待埋点）的指标
+// 标记当前未填充的指标
 function NoDataSourcePill() {
   return (
-    <span className="cfg-pill" title="No data source yet — add tracking to populate this metric.">
-      <span className="d" />No data source
+    <span className="cfg-pill" title="This metric is not populated for the selected period.">
+      <span className="d" />No Data
     </span>
   );
 }
@@ -155,7 +155,7 @@ function RevenueOverview({ overview }) {
           secondary={{ label: "Coupon revenue", value: bdMoney(o.couponRevenue) }}
           help="Revenue attributed through coupon redemptions. Today this equals coupon revenue — the total value of orders placed with a challenge coupon, counting each Shopify order once."
         />
-        <RevenueCard title="Repeat magnet revenue" value={bdMoney(o.repeatMagnetRevenue)} sub="From repeat magnets"
+        <RevenueCard title="Repeat magnet revenue" value={bdMoney(o.repeatMagnetRevenue)}
           help="Coupon redemption revenue attributed to magnets that brought 2 or more distinct Shopify orders in this period. Redemptions without order IDs still count toward revenue after the magnet qualifies, but do not count toward the order threshold." />
         <RevenueCard
           title="Revenue per magnet / Active magnets"
@@ -171,16 +171,16 @@ function RevenueOverview({ overview }) {
         <RevenueCard title="Repeat purchase rate" value={bdPct(o.repeatPurchaseRate)} sub="This period"
           help="Repeat magnets ÷ purchasing magnets. Purchasing magnets are magnets with attributable redemptions; repeat magnets have 2 or more distinct Shopify orders in this period." />
         <RevenueCard title="30-day retention" value={bdPct(o.retention30d)} sub="30-day retention" pending={o.retention30d == null}
-          help="Share of new customers who purchase again within 30 days. No data source yet — pending instrumentation." />
+          help="Share of new customers who purchase again within 30 days." />
         <RevenueCard title="Winback rate" value={bdPct(o.winbackRate)} sub="Returning users" pending={o.winbackRate == null}
-          help="Share of previously lapsed customers who purchase again. No data source yet — pending instrumentation." />
+          help="Share of previously lapsed customers who purchase again." />
       </div>
     </CfgSection>
   );
 }
 
 // 物理触点表现：冰箱贴（magnet）作为物理入口的触达 / 频率 / 停留表现
-// 指标暂无数据源（待埋点）→ 统一以 pending 占位展示
+// 指标未填充时统一以 pending 占位展示
 function PhysicalTouchpointPerformance({ touchpoints }) {
   const t = touchpoints || {};
   return (
@@ -191,14 +191,14 @@ function PhysicalTouchpointPerformance({ touchpoints }) {
           value={bdInt(t.magnetExposure)}
           sub="Magnet touches / activations"
           pending={t.magnetExposure == null}
-          help="Total number of times magnets were tapped or activated in this period (count of tap events). No data source yet — pending instrumentation."
+          help="Total number of times magnets were tapped or activated in this period."
         />
         <RevenueCard
           title="Magnet frequency"
           value={bdNum(t.magnetFrequency)}
           sub="Avg touches per device this period"
           pending={t.magnetFrequency == null}
-          help="Average taps per device = total taps ÷ distinct active magnets, broken down by day / week / month. No data source yet — pending instrumentation."
+          help="Average taps per magnet = total taps divided by distinct active magnets, broken down by day, week, and month."
           breakdown={[
             { label: "Daily", value: bdNum(t.interactionsDaily) },
             { label: "Weekly", value: bdNum(t.interactionsWeekly) },
@@ -210,7 +210,7 @@ function PhysicalTouchpointPerformance({ touchpoints }) {
           value={bdDuration(t.magnetDwellTime)}
           sub="Avg time spent per touch"
           pending={t.magnetDwellTime == null}
-          help="Average time spent on the page per tap = total dwell seconds ÷ number of taps. No data source yet — pending instrumentation."
+          help="Average time spent on the page per tap = total dwell seconds divided by number of taps."
         />
       </div>
     </CfgSection>
@@ -219,7 +219,7 @@ function PhysicalTouchpointPerformance({ touchpoints }) {
 
 function CouponRevenueFunnel({ funnel }) {
   const f = funnel;
-  // 可计数阶段（不含金额）。Active Magnets 暂无数据源 → value 为 null
+  // 可计数阶段（不含金额）。Active Magnets 未填充时 value 为 null
   const countStages = [
     {
       key: "active",
@@ -227,7 +227,7 @@ function CouponRevenueFunnel({ funnel }) {
       value: f.activeMagnets,
       unit: "magnets",
       pending: f.activeMagnets == null,
-      help: "Distinct magnets with activity in the selected period. No data source yet; this needs magnet tap or activation events.",
+      help: "Distinct magnet_id count among magnets with at least one tap or exposure event in the selected period.",
     },
     {
       key: "participants",

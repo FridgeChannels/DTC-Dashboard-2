@@ -1,11 +1,19 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, json, errorJson, toErrorMessage } from "./http.js";
-import { getRequestCustomerId } from "./tenant-context.js";
+import {
+  assertRequestCanWriteBrandInfo,
+  assertRequestCanWriteConfig,
+  getRequestBrandInfoContext,
+  getRequestCustomerId,
+} from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import { extractBrandColors, extractPageHtml } from "../brand-collect/lib/brandColorExtractor.js";
 import { getConfiguredInfo } from "../brand-collect/lib/config.js";
 import { saveBrandInfo } from "../brand-collect/lib/saveBrandInfo.js";
-import { updateBrandInfoMagnetBrandParams } from "../brand-collect/lib/magnetBrandParam.js";
+import {
+  updateBrandInfoMagnetBrandParams,
+  updateCustomerBrandInfoMagnetBrandParams,
+} from "../brand-collect/lib/magnetBrandParam.js";
 import { saveProduct, listProducts } from "../brand-collect/lib/products.js";
 import { isSupabaseConfigured } from "../brand-collect/lib/supabase.js";
 import { isImageStorageConfigured, uploadImage } from "../brand-collect/lib/storage.js";
@@ -62,7 +70,7 @@ export async function handlePostBrandColors(
   res: ServerResponse,
 ): Promise<void> {
   try {
-    await getRequestCustomerId(req, res);
+    await assertRequestCanWriteBrandInfo(req, res);
     const body = await readJsonBody<{
       url?: string;
       format?: string;
@@ -95,7 +103,7 @@ export async function handlePostPageHtml(
   res: ServerResponse,
 ): Promise<void> {
   try {
-    await getRequestCustomerId(req, res);
+    await assertRequestCanWriteBrandInfo(req, res);
     const body = await readJsonBody<{
       url?: string;
       saveOutput?: boolean;
@@ -129,8 +137,11 @@ export async function handleGetBrandCollectConfig(
   }
 
   try {
-    const customerId = await getRequestCustomerId(req, res);
-    const config = await getConfiguredInfo(customerId);
+    const brandInfoContext = await getRequestBrandInfoContext(req, res);
+    const config = await getConfiguredInfo(
+      brandInfoContext.customerId,
+      { customerScopedBrandInfo: brandInfoContext.customerScopedBrandInfo },
+    );
     json(res, 200, config);
   } catch (err) {
     console.error("Load brand collect config failed:", err);
@@ -148,9 +159,14 @@ export async function handlePostBrandInfo(
   }
 
   try {
-    const customerId = await getRequestCustomerId(req, res);
+    await assertRequestCanWriteBrandInfo(req, res);
+    const brandInfoContext = await getRequestBrandInfoContext(req, res);
     const body = await readJsonBody(req);
-    const result = await saveBrandInfo({ ...(body ?? {}), customerId });
+    const result = await saveBrandInfo({
+      ...(body ?? {}),
+      customerId: brandInfoContext.customerId,
+      customerScopedBrandInfo: brandInfoContext.customerScopedBrandInfo,
+    });
     json(res, 200, result);
   } catch (err) {
     console.error("Save brand info failed:", err);
@@ -168,7 +184,7 @@ export async function handlePostUploadImage(
   }
 
   try {
-    await getRequestCustomerId(req, res);
+    await assertRequestCanWriteBrandInfo(req, res);
     const body = await readJsonBodyWithLimit<{
       image?: string;
       folder?: string;
@@ -194,7 +210,8 @@ export async function handlePostBrand(
   }
 
   try {
-    const customerId = await getRequestCustomerId(req, res);
+    await assertRequestCanWriteBrandInfo(req, res);
+    const brandInfoContext = await getRequestBrandInfoContext(req, res);
     const body = await readJsonBody<{
       brandName?: string;
       brandWebsite?: string;
@@ -213,13 +230,17 @@ export async function handlePostBrand(
       accentColor,
     } = body ?? {};
 
-    const result = await updateBrandInfoMagnetBrandParams({
+    const updateBrandInfo = brandInfoContext.customerScopedBrandInfo
+      ? updateCustomerBrandInfoMagnetBrandParams
+      : updateBrandInfoMagnetBrandParams;
+
+    const result = await updateBrandInfo({
       brandName,
       website: brandWebsite,
       brandLogo,
       primaryColor,
       secondaryColor: secondaryColor || accentColor,
-      customerId,
+      customerId: brandInfoContext.customerId,
     });
 
     json(res, 200, result);
@@ -265,6 +286,7 @@ export async function handlePostProduct(
   }
 
   try {
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const body = await readJsonBodyWithLimit<{
       name?: string;

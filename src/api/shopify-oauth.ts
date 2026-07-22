@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { env } from "../config/env.js";
 import { readJsonBody, json, errorJson } from "./http.js";
-import { getRequestCustomerId } from "./tenant-context.js";
+import { assertRequestCanWriteConfig, getRequestCustomerId } from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import {
   hasSecret,
@@ -102,63 +102,64 @@ export async function handleShopifyOAuthStart(
   res: ServerResponse,
 ): Promise<void> {
   try {
-  const body = await readJsonBody<{ shop?: string }>(req);
-  const shop = normalizeShopDomain(body.shop ?? "");
-  const customerId = await getRequestCustomerId(req, res);
+    const body = await readJsonBody<{ shop?: string }>(req);
+    await assertRequestCanWriteConfig(req, res);
+    const shop = normalizeShopDomain(body.shop ?? "");
+    const customerId = await getRequestCustomerId(req, res);
 
-  if (!isValidShopDomain(shop)) {
-    errorJson(res, 400, "Invalid Shopify URL. Use https://your-store.myshopify.com.");
-    return;
-  }
+    if (!isValidShopDomain(shop)) {
+      errorJson(res, 400, "Invalid Shopify URL. Use https://your-store.myshopify.com.");
+      return;
+    }
 
-  let oauthConfig: Awaited<ReturnType<typeof getOAuthAppConfig>>;
-  try {
-    oauthConfig = await getOAuthAppConfig(customerId);
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "OAuth setup incomplete.";
-    errorJson(res, 400, message);
-    return;
-  }
+    let oauthConfig: Awaited<ReturnType<typeof getOAuthAppConfig>>;
+    try {
+      oauthConfig = await getOAuthAppConfig(customerId);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "OAuth setup incomplete.";
+      errorJson(res, 400, message);
+      return;
+    }
 
-  if (oauthConfig.config.shop_domain !== shop) {
-    const existing = oauthConfig.config;
-    await shopifyConfigRepo.upsertShopifyConfig({
-      customerId,
-      shopDomain: shop,
-      shopifyShopId:
-        existing.shop_domain === shop ? existing.shopify_shop_id ?? null : null,
-      shopName: existing.shop_domain === shop ? existing.shop_name ?? null : null,
-      shopEmail: existing.shop_domain === shop ? existing.shop_email ?? null : null,
-      authType: existing.auth_type ?? "oauth",
-      shopifyAppClientId: null,
-      shopifyAppClientSecretRef: null,
-      shopifyCustomerAccountClientId: existing.shopify_customer_account_client_id,
-      shopifyCustomerAccountClientSecretRef:
-        existing.shopify_customer_account_client_secret_ref,
-      accessTokenRef:
-        existing.access_token_ref ?? shopifyAccessTokenRef(customerId),
-      webhookSecretRef: existing.webhook_secret_ref,
-      scopes: existing.scopes ?? [],
-      apiVersion: existing.api_version ?? env.shopifyApiVersion,
-      status: existing.status === "revoked" ? "active" : (existing.status ?? "active"),
+    if (oauthConfig.config.shop_domain !== shop) {
+      const existing = oauthConfig.config;
+      await shopifyConfigRepo.upsertShopifyConfig({
+        customerId,
+        shopDomain: shop,
+        shopifyShopId:
+          existing.shop_domain === shop ? existing.shopify_shop_id ?? null : null,
+        shopName: existing.shop_domain === shop ? existing.shop_name ?? null : null,
+        shopEmail: existing.shop_domain === shop ? existing.shop_email ?? null : null,
+        authType: existing.auth_type ?? "oauth",
+        shopifyAppClientId: null,
+        shopifyAppClientSecretRef: null,
+        shopifyCustomerAccountClientId: existing.shopify_customer_account_client_id,
+        shopifyCustomerAccountClientSecretRef:
+          existing.shopify_customer_account_client_secret_ref,
+        accessTokenRef:
+          existing.access_token_ref ?? shopifyAccessTokenRef(customerId),
+        webhookSecretRef: existing.webhook_secret_ref,
+        scopes: existing.scopes ?? [],
+        apiVersion: existing.api_version ?? env.shopifyApiVersion,
+        status: existing.status === "revoked" ? "active" : (existing.status ?? "active"),
+      });
+    }
+
+    const state = randomBytes(24).toString("hex");
+    oauthStates.set(state, { customerId, shop, createdAt: Date.now() });
+
+    const redirectUri = `${env.shopifyAppHost}/api/shopify/oauth/callback`;
+    const params = new URLSearchParams({
+      client_id: oauthConfig.clientId,
+      scope: oauthConfig.config.scopes.join(","),
+      redirect_uri: redirectUri,
+      state,
     });
-  }
 
-  const state = randomBytes(24).toString("hex");
-  oauthStates.set(state, { customerId, shop, createdAt: Date.now() });
-
-  const redirectUri = `${env.shopifyAppHost}/api/shopify/oauth/callback`;
-  const params = new URLSearchParams({
-    client_id: oauthConfig.clientId,
-    scope: oauthConfig.config.scopes.join(","),
-    redirect_uri: redirectUri,
-    state,
-  });
-
-  json(res, 200, {
-    authorizeUrl: `https://${shop}/admin/oauth/authorize?${params.toString()}`,
-  });
+    json(res, 200, {
+      authorizeUrl: `https://${shop}/admin/oauth/authorize?${params.toString()}`,
+    });
   } catch (err) {
     const status = err instanceof AuthError ? 401 : 500;
     errorJson(res, status, err instanceof Error ? err.message : "Failed to start OAuth");
@@ -260,6 +261,7 @@ export async function handleShopifyOAuthDisconnect(
   res: ServerResponse,
 ): Promise<void> {
   try {
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const config = await disconnectShopifyAuthorization(customerId);
     json(res, 200, config);

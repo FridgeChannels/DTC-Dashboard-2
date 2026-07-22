@@ -13,7 +13,7 @@ function BrandField({ label, hint, children, fullRow }) {
   );
 }
 
-function BrandCollectPage() {
+function BrandCollectPage({ readOnly = false } = {}) {
   const [brandName, setBrandName] = useState("");
   const [brandWebsite, setBrandWebsite] = useState("");
   const [brandLogo, setBrandLogo] = useState("");
@@ -64,6 +64,7 @@ function BrandCollectPage() {
   };
 
   const handleExtractColors = async () => {
+    if (readOnly) return;
     if (!bcIsValidUrl(brandWebsite.trim())) {
       setError("Enter a valid website URL first.");
       return;
@@ -97,6 +98,7 @@ function BrandCollectPage() {
   };
 
   const handleLogoFile = async (file) => {
+    if (readOnly) return;
     if (!file) return;
     setError("");
     setLogoUploading(true);
@@ -113,6 +115,7 @@ function BrandCollectPage() {
   };
 
   const handleSave = async () => {
+    if (readOnly) return;
     if (!brandName.trim()) {
       setError("Brand name is required.");
       return;
@@ -157,6 +160,11 @@ function BrandCollectPage() {
               <I.info /> {notice}
             </div>
           )}
+          {readOnly && (
+            <div className="cfg-alert warn" style={{ marginBottom: 16 }}>
+              <I.info /> This account can view Brand Info only.
+            </div>
+          )}
           {error && (
             <div className="cfg-alert warn" style={{ marginBottom: 16 }}>
               <I.info /> {error}
@@ -170,6 +178,7 @@ function BrandCollectPage() {
                 type="text"
                 placeholder="Gymshark"
                 value={brandName}
+                disabled={readOnly}
                 onChange={(e) => setBrandName(e.target.value)}
               />
             </BrandField>
@@ -186,12 +195,13 @@ function BrandCollectPage() {
                   inputMode="url"
                   placeholder="https://gymshark.com"
                   value={brandWebsite}
+                  disabled={readOnly}
                   onChange={(e) => setBrandWebsite(e.target.value)}
                 />
                 <button
                   type="button"
                   className="btn"
-                  disabled={extracting || !bcIsValidUrl(brandWebsite.trim())}
+                  disabled={readOnly || extracting || !bcIsValidUrl(brandWebsite.trim())}
                   onClick={handleExtractColors}
                 >
                   {extracting ? "Extracting…" : "Extract colors"}
@@ -211,6 +221,7 @@ function BrandCollectPage() {
                   inputMode="url"
                   placeholder="https://example.com/logo.png"
                   value={brandLogo.startsWith("data:") ? "" : brandLogo}
+                  disabled={readOnly}
                   onChange={(e) => setBrandLogo(e.target.value)}
                 />
                 <label className="btn cfg-upload-btn">
@@ -219,7 +230,7 @@ function BrandCollectPage() {
                     type="file"
                     accept="image/*"
                     hidden
-                    disabled={logoUploading}
+                    disabled={readOnly || logoUploading}
                     onChange={(e) => handleLogoFile(e.target.files?.[0])}
                   />
                 </label>
@@ -229,7 +240,7 @@ function BrandCollectPage() {
                   <>
                     <img src={brandLogo} alt="Brand logo preview" onError={() => setBrandLogo("")} />
                     <div className="cfg-image-actions">
-                      <button type="button" className="btn" onClick={() => setBrandLogo("")}>
+                      <button type="button" className="btn" disabled={readOnly} onClick={() => setBrandLogo("")}>
                         Remove logo
                       </button>
                     </div>
@@ -243,8 +254,8 @@ function BrandCollectPage() {
             <div className="cfg-subgroup" style={{ gridColumn: "1 / -1" }}>
               <div className="cfg-scopes-title">Brand colors</div>
               <div className="cfg-form grid grid-2" style={{ marginTop: 12 }}>
-                <ColorField label="Primary" colorKey="primary" value={colors.primary} onChange={setColor} />
-                <ColorField label="Accent" colorKey="accent" value={colors.accent} onChange={setColor} />
+                <ColorField label="Primary" colorKey="primary" value={colors.primary} onChange={readOnly ? () => {} : setColor} />
+                <ColorField label="Accent" colorKey="accent" value={colors.accent} onChange={readOnly ? () => {} : setColor} />
               </div>
             </div>
 
@@ -252,7 +263,7 @@ function BrandCollectPage() {
               <button
                 type="button"
                 className="btn primary"
-                disabled={saving || extracting || logoUploading}
+                disabled={readOnly || saving || extracting || logoUploading}
                 onClick={handleSave}
               >
                 {saving ? "Saving…" : "Save brand info"}

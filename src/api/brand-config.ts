@@ -1,6 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, json, errorJson } from "./http.js";
-import { getRequestCustomerId } from "./tenant-context.js";
+import {
+  assertRequestCanWriteConfig,
+  getRequestConfigCustomerId,
+  getRequestCustomerId,
+} from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import {
   getBrandConfig,
@@ -14,7 +18,7 @@ export async function handleGetBrandConfig(
   _url: URL,
 ): Promise<void> {
   try {
-    const customerId = await getRequestCustomerId(_req, res);
+    const customerId = await getRequestConfigCustomerId(_req, res);
     const config = await getBrandConfig(customerId);
     json(res, 200, config);
   } catch (err) {
@@ -29,6 +33,7 @@ export async function handlePutBrandConfig(
 ): Promise<void> {
   try {
     const body = await readJsonBody<SaveBrandConfigInput>(req);
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const config = await saveBrandConfig({ ...body, customerId });
     json(res, 200, config);
@@ -37,4 +42,3 @@ export async function handlePutBrandConfig(
     errorJson(res, status, err instanceof Error ? err.message : "Failed to save config");
   }
 }
-

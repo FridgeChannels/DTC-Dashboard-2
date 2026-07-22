@@ -1,6 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, json, errorJson, toErrorMessage } from "./http.js";
-import { getRequestCustomerId } from "./tenant-context.js";
+import {
+  assertRequestCanWriteConfig,
+  getRequestConfigCustomerId,
+  getRequestCustomerId,
+} from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import {
   listSurveyCampaignsForCustomer,
@@ -52,7 +56,7 @@ export async function handleListSurveyCampaigns(
   res: ServerResponse,
 ): Promise<void> {
   try {
-    const customerId = await getRequestCustomerId(req, res);
+    const customerId = await getRequestConfigCustomerId(req, res);
     const campaigns = await listSurveyCampaignsForCustomer(customerId);
     json(res, 200, { campaigns });
   } catch (err) {
@@ -71,7 +75,7 @@ export async function handleGetSurveyCampaignDetail(
   try {
     const campaignId = url.searchParams.get("id")?.trim();
     if (!campaignId) throw new Error("id is required");
-    const customerId = await getRequestCustomerId(req, res);
+    const customerId = await getRequestConfigCustomerId(req, res);
     const campaign = await getSurveyCampaignDetailForCustomer(customerId, campaignId);
     json(res, 200, { campaign });
   } catch (err) {
@@ -90,7 +94,7 @@ export async function handleGetSurveyPublishCheck(
   try {
     const campaignId = url.searchParams.get("id")?.trim();
     if (!campaignId) throw new Error("id is required");
-    const customerId = await getRequestCustomerId(req, res);
+    const customerId = await getRequestConfigCustomerId(req, res);
     const result = await runPublishCheck(customerId, campaignId);
     json(res, 200, result);
   } catch (err) {
@@ -106,7 +110,7 @@ export async function handleListSurveyKlaviyoSegments(
   res: ServerResponse,
 ): Promise<void> {
   try {
-    const customerId = await getRequestCustomerId(req, res);
+    const customerId = await getRequestConfigCustomerId(req, res);
     const [segments, connected] = await Promise.all([
       listKlaviyoSegmentOptions(customerId),
       isKlaviyoConnected(customerId),
@@ -141,6 +145,7 @@ export async function handleCreateSurveyCampaign(
         priority?: number;
       }>;
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const input: CreateSurveyCampaignRequest = {
       surveyName: body.survey_name,
@@ -159,7 +164,7 @@ export async function handleCreateSurveyCampaign(
       })),
     };
 
-    const customerId = await getRequestCustomerId(req, res);
+    const customerId = await getRequestConfigCustomerId(req, res);
     const campaign = await createSurveyCampaignForCustomer(customerId, input);
     json(res, 201, { campaign });
   } catch (err) {
@@ -192,6 +197,7 @@ export async function handleUpdateSurveyCampaign(
         priority?: number;
       }>;
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const input: UpdateSurveyCampaignRequest = {
       campaignId: body.campaign_id ?? "",
@@ -228,6 +234,7 @@ export async function handlePublishSurveyCampaign(
 ): Promise<void> {
   try {
     const body = await readJsonBody<{ campaign_id?: string }>(req);
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const campaign = await publishSurveyCampaignForCustomer(customerId, body.campaign_id ?? "");
     json(res, 200, { campaign });
@@ -253,6 +260,7 @@ export async function handleTransitionSurveyCampaign(
 ): Promise<void> {
   try {
     const body = await readJsonBody<{ campaign_id?: string; action?: string }>(req);
+    await assertRequestCanWriteConfig(req, res);
     const action = body.action as SurveyCampaignTransition | undefined;
     if (!action || !VALID_TRANSITIONS.includes(action)) {
       throw new Error(`action must be one of: ${VALID_TRANSITIONS.join(", ")}`);
@@ -282,6 +290,7 @@ export async function handleDuplicateSurveyCampaign(
 ): Promise<void> {
   try {
     const body = await readJsonBody<{ campaign_id?: string }>(req);
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const campaign = await duplicateSurveyCampaignForCustomer(customerId, body.campaign_id ?? "");
     json(res, 201, { campaign });
@@ -316,6 +325,7 @@ export async function handleCreateSurveyQuestion(
         max_text_length?: number;
       }>;
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const input: CreateSurveyQuestionRequest = {
       surveyCampaignId: body.survey_campaign_id ?? "",
@@ -370,6 +380,7 @@ export async function handleReplaceSurveyQuestions(
         }>;
       }>;
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const questions: ReplaceSurveyQuestionInput[] = (body.questions ?? []).map((q) => ({
       id: q.id,
@@ -416,6 +427,7 @@ export async function handleUpdateSurveyQuestion(
       allow_skip?: boolean;
       status?: "active" | "inactive";
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const input: UpdateSurveyQuestionRequest = {
       questionId: body.question_id ?? "",
@@ -442,6 +454,7 @@ export async function handleDeleteSurveyQuestion(
 ): Promise<void> {
   try {
     const body = await readJsonBody<{ question_id?: string }>(req);
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const campaign = await deleteSurveyQuestionForCustomer(customerId, body.question_id ?? "");
     json(res, 200, { campaign });
@@ -469,6 +482,7 @@ export async function handleCreateSurveyOption(
       text_input_placeholder?: string | null;
       max_text_length?: number;
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const input: CreateSurveyOptionRequest = {
       surveyQuestionId: body.survey_question_id ?? "",
@@ -507,6 +521,7 @@ export async function handleUpdateSurveyOption(
       max_text_length?: number;
       status?: "active" | "inactive";
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const input: UpdateSurveyOptionRequest = {
       optionId: body.option_id ?? "",
@@ -521,7 +536,7 @@ export async function handleUpdateSurveyOption(
       status: body.status,
     };
 
-    const customerId = await getRequestCustomerId(req, res);
+    const customerId = await getRequestConfigCustomerId(req, res);
     const campaign = await updateSurveyOptionForCustomer(customerId, input);
     json(res, 200, { campaign });
   } catch (err) {
@@ -540,7 +555,7 @@ export async function handleGetSurveyCampaignDashboard(
   try {
     const campaignId = url.searchParams.get("campaign_id")?.trim();
     if (!campaignId) throw new Error("campaign_id is required");
-    const customerId = await getRequestCustomerId(req, res);
+    const customerId = await getRequestConfigCustomerId(req, res);
     const dashboard = await getSurveyCampaignDashboardForCustomer(
       customerId,
       campaignId,

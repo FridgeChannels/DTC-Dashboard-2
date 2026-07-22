@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, json, errorJson } from "./http.js";
-import { getRequestCustomerId } from "./tenant-context.js";
+import { assertRequestCanWriteConfig, getRequestCustomerId } from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import {
   createCampaignForCustomer,
@@ -36,6 +36,7 @@ export async function handleCreateCouponCampaign(
       buy_quantity?: number;
       get_quantity?: number;
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const input: CreateCampaignRequest = {
       campaignKey: body.campaign_key,
@@ -77,6 +78,7 @@ export async function handleUpdateCouponCampaign(
       status?: CampaignStatus;
       distribution_mode?: CouponDistributionMode;
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const input: UpdateCampaignRequest = {
       campaignId: body.campaign_id ?? "",
@@ -103,6 +105,7 @@ export async function handleSyncCouponCampaigns(
   res: ServerResponse,
 ): Promise<void> {
   try {
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const result = await syncCampaignsForCustomer(customerId);
     json(res, 200, result);

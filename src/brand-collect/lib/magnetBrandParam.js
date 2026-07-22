@@ -2,7 +2,7 @@ import { getSupabase } from './supabase.js';
 import { uploadImage } from './storage.js';
 
 const BRAND_PARAM_SELECT =
-  'id, magnet_sn, magnet_id, brand_name, brand_logo, primary_color, secondary_color, website, store_website';
+  'id, customer_id, magnet_sn, magnet_id, brand_name, brand_logo, primary_color, secondary_color, website, store_website';
 
 /** Brand Info 页面保存时仅更新这两条 magnet 的品牌参数 */
 export const BRAND_INFO_MAGNET_SNS = ['DA9V3EG9QG', 'E2V5TQGYE8'];
@@ -136,6 +136,50 @@ export async function updateAllMagnetBrandParams(input) {
   return updateMagnetBrandParamRows(updatePayload, { customerId });
 }
 
+export async function updateCustomerBrandInfoMagnetBrandParams(input) {
+  const {
+    brandName,
+    website,
+    brandLogo,
+    primaryColor,
+    secondaryColor,
+    storeWebsite,
+    customerId,
+  } = input;
+
+  if (!customerId) {
+    return { updatedCount: 0, records: [] };
+  }
+
+  const updatePayload = buildUpdatePayload({
+    brandName,
+    website,
+    primaryColor,
+    secondaryColor,
+    storeWebsite,
+  });
+
+  if (brandLogo !== undefined) {
+    updatePayload.brand_logo = await uploadImage(brandLogo, 'logos');
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('magnet_brand_param')
+    .update(updatePayload)
+    .eq('customer_id', customerId)
+    .select(BRAND_PARAM_SELECT);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return {
+    updatedCount: data?.length ?? 0,
+    records: (data ?? []).map(mapBrandParamRow),
+  };
+}
+
 export async function updateBrandInfoMagnetBrandParams(input) {
   const {
     brandName,
@@ -175,6 +219,7 @@ export async function updateMagnetBrandParamStoreWebsite(storeWebsite, customerI
 function mapBrandParamRow(row) {
   return {
     id: row.id,
+    customerId: row.customer_id,
     magnetSn: row.magnet_sn,
     magnetId: row.magnet_id,
     brandName: row.brand_name,
@@ -217,4 +262,23 @@ export async function getCurrentBrandConfig(customerId) {
   }
 
   return mapBrandParamRow(data);
+}
+
+export async function getFirstBrandConfigByCustomerId(customerId) {
+  if (!customerId) return null;
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('magnet_brand_param')
+    .select(BRAND_PARAM_SELECT)
+    .eq('customer_id', customerId)
+    .order('id', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ? mapBrandParamRow(data) : null;
 }

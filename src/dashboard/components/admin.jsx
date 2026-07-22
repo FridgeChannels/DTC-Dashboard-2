@@ -181,7 +181,7 @@ function AdminSidebar({ section, onSectionChange, connections }) {
 }
 
 // Accounts 二级布局：左侧子导航（Account / Integration → Shopify, Klaviyo）+ 右侧内容
-function AccountsPage({ section, user, connections, onSubChange, onLogout }) {
+function AccountsPage({ section, user, connections, onSubChange, onLogout, readOnly }) {
   const subItem = (sec, label, status, icon = null) => (
     <button
       type="button"
@@ -216,7 +216,7 @@ function AccountsPage({ section, user, connections, onSubChange, onLogout }) {
       <main className="admin-content accounts-body">
         {section === ACCOUNT_SECTION.id
           ? <FcAccountView user={user} onLogout={onLogout} />
-          : <BrandConfigPage section={section} />}
+          : <BrandConfigPage section={section} readOnly={readOnly} />}
       </main>
     </div>
   );
@@ -250,6 +250,9 @@ function AdminApp() {
   const [section, setSection] = useStateAdmin(parseSection);
   const [auth, setAuth] = useStateAdmin({ loading: true, user: null });
   const [connections, setConnections] = useStateAdmin({ shopifyReady: false, klaviyoReady: false });
+  const access = auth.user?.access ?? {};
+  const configReadOnly = auth.loading ? false : access.canWriteConfig === false;
+  const brandInfoReadOnly = auth.loading ? false : access.canWriteBrandInfo === false;
 
   useEffectAdmin(() => {
     if (window.location.pathname !== "/brand-config") return;
@@ -364,9 +367,9 @@ function AdminApp() {
           : section === DASHBOARD_PRE_SECTION.id
           ? <DashboardPage />
           : section === BRAND_COLLECT_SECTION.id
-            ? <BrandCollectPage />
+            ? <BrandCollectPage readOnly={brandInfoReadOnly} />
             : section === PRODUCT_ADD_SECTION.id
-              ? <ProductAddPage />
+              ? <ProductAddPage readOnly={configReadOnly} />
               : ACCOUNT_MATCH.includes(section)
             ? (
               <AccountsPage
@@ -375,15 +378,16 @@ function AdminApp() {
                 connections={connections}
                 onSubChange={handleSectionChange}
                 onLogout={handleLogout}
+                readOnly={configReadOnly}
               />
             )
             : (
               <main className="admin-content">
                 {section === SEGMENT_CONFIG_SECTION.id
-                  ? <SegmentConfigPage />
+                  ? <SegmentConfigPage readOnly={configReadOnly} />
                   : section === SURVEY_CAMPAIGNS_SECTION.id
-                    ? <SurveyCampaignsPage />
-                    : <BrandConfigPage section={section} />}
+                    ? <SurveyCampaignsPage readOnly={configReadOnly} />
+                    : <BrandConfigPage section={section} readOnly={configReadOnly} />}
               </main>
             )}
       </div>

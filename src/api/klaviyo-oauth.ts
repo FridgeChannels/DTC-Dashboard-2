@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { env } from "../config/env.js";
 import { json, errorJson } from "./http.js";
-import { getRequestCustomerId } from "./tenant-context.js";
+import { assertRequestCanWriteConfig, getRequestCustomerId } from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import {
   storeSecret,
@@ -106,6 +106,7 @@ export async function handleKlaviyoOAuthStart(
   res: ServerResponse,
 ): Promise<void> {
   try {
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
 
     let appCredentials: ReturnType<typeof getKlaviyoOAuthAppCredentials>;
@@ -227,6 +228,7 @@ export async function handleKlaviyoOAuthDisconnect(
   res: ServerResponse,
 ): Promise<void> {
   try {
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const config = await disconnectKlaviyoAuthorization(customerId);
     json(res, 200, config);

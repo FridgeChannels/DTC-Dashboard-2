@@ -1,4 +1,7 @@
-import { updateBrandInfoMagnetBrandParams } from './magnetBrandParam.js';
+import {
+  updateBrandInfoMagnetBrandParams,
+  updateCustomerBrandInfoMagnetBrandParams,
+} from './magnetBrandParam.js';
 import { saveProduct } from './products.js';
 
 export async function saveBrandInfo(input) {
@@ -12,7 +15,11 @@ export async function saveBrandInfo(input) {
     colors = {},
   } = input;
 
-  const magnetBrandParam = await updateBrandInfoMagnetBrandParams({
+  const updateBrandInfo = input.customerScopedBrandInfo
+    ? updateCustomerBrandInfoMagnetBrandParams
+    : updateBrandInfoMagnetBrandParams;
+
+  const magnetBrandParam = await updateBrandInfo({
     brandName,
     website: brandWebsite,
     brandLogo,

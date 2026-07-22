@@ -879,7 +879,7 @@ function CampaignEditForm({ form, saving, error, onChange, onSubmit }) {
 
 const DISCOUNTS_PAGE_SIZE = 10;
 
-function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady }) {
+function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady, readOnly = false }) {
   const [pageIndex, setPageIndex] = useStateBC(0);
 
   const totalPages = Math.max(1, Math.ceil(campaigns.length / DISCOUNTS_PAGE_SIZE));
@@ -960,12 +960,12 @@ function CampaignTable({ campaigns, onEdit, onAddCodes, shopifyReady }) {
                 <td><StatusPill status={c.status} /></td>
                 <td className="row-actions">
                   {EDIT_DISCOUNT_ENABLED && c.fcCreated && (
-                    <button type="button" className="btn" onClick={() => onEdit(c)}>Edit</button>
+                    <button type="button" className="btn" disabled={readOnly} onClick={() => onEdit(c)}>Edit</button>
                   )}
                   <button
                     type="button"
                     className="btn"
-                    disabled={!shopifyReady || !c.shopifyDiscountNodeId}
+                    disabled={readOnly || !shopifyReady || !c.shopifyDiscountNodeId}
                     title={
                       !c.shopifyDiscountNodeId
                         ? "Link this coupon to Shopify first"
@@ -1664,7 +1664,7 @@ function AddCodesModal({ campaign, onClose, onUpdated }) {
   );
 }
 
-function BrandConfigPage({ section = "shopify" }) {
+function BrandConfigPage({ section = "shopify", readOnly = false }) {
   const [config, setConfig] = useStateBC(null);
   const [loading, setLoading] = useStateBC(true);
   const [saving, setSaving] = useStateBC(false);
@@ -1756,6 +1756,7 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const updateShopify = (key, value) => {
+    if (readOnly) return;
     patch((prev) => ({ ...prev, shopify: { ...prev.shopify, [key]: value } }));
   };
 
@@ -1778,6 +1779,7 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const handleConnectKlaviyo = async () => {
+    if (readOnly) return;
     setError(null);
     setOauthNotice(null);
     setKlaviyoConnectNotice(null);
@@ -1808,6 +1810,7 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const handleDisconnectKlaviyo = async () => {
+    if (readOnly) return;
     setError(null);
     setOauthNotice(null);
     setKlaviyoConnectNotice(null);
@@ -1829,6 +1832,7 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const handleSaveShopifyConfig = async () => {
+    if (readOnly) return;
     setError(null);
     setOauthNotice(null);
     setSaving(true);
@@ -1849,6 +1853,7 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const handleConnectShopify = async () => {
+    if (readOnly) return;
     setError(null);
     setOauthNotice(null);
 
@@ -1883,6 +1888,7 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const handleDisconnectShopify = async () => {
+    if (readOnly) return;
     const shopDomain = config?.shopify?.shopDomain || "";
     const hasCustomerAccount = Boolean(
       config?.shopify?.shopifyCustomerAccountClientId?.trim()
@@ -1918,16 +1924,19 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const updateCampaignForm = (key, value) => {
+    if (readOnly) return;
     setCampaignForm((prev) => ({ ...prev, [key]: value }));
     setCampaignError(null);
   };
 
   const updateEditForm = (key, value) => {
+    if (readOnly) return;
     setEditForm((prev) => (prev ? { ...prev, [key]: value } : prev));
     setCampaignError(null);
   };
 
   const handleEditCampaign = (campaign) => {
+    if (readOnly) return;
     if (!campaign?.fcCreated) return;
     setShowCampaignCreate(false);
     setCreateWizardStep(1);
@@ -1936,6 +1945,7 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const handleUpdateCampaign = async () => {
+    if (readOnly) return;
     if (!editForm) return;
     setCampaignSaving(true);
     setCampaignError(null);
@@ -1979,6 +1989,7 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const handleSyncCampaigns = async () => {
+    if (readOnly) return;
     setCampaignSyncing(true);
     setSyncNotice(null);
     setCampaignError(null);
@@ -2017,6 +2028,7 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const openCreateDiscount = () => {
+    if (readOnly) return;
     setEditForm(null);
     setCampaignForm(createDefaultCouponCampaignForm());
     setCreateWizardStep(1);
@@ -2032,6 +2044,7 @@ function BrandConfigPage({ section = "shopify" }) {
   };
 
   const handleCreateCampaign = async () => {
+    if (readOnly) return;
     setCampaignCreating(true);
     setCampaignError(null);
     try {
@@ -2121,6 +2134,11 @@ function BrandConfigPage({ section = "shopify" }) {
           <I.info /> {error}
         </div>
       )}
+      {readOnly && (
+        <div className="cfg-alert warn" style={{ marginTop: 16 }}>
+          <I.info /> This account can view this configuration only.
+        </div>
+      )}
 
       <OauthNoticeBanner notice={oauthNotice} />
 
@@ -2159,8 +2177,8 @@ function BrandConfigPage({ section = "shopify" }) {
                 value={shopify.shopDomain}
                 onChange={(e) => updateShopify("shopDomain", e.target.value)}
                 placeholder="https://brand-name.myshopify.com"
-                disabled={shopify.hasAccessToken}
-                readOnly={shopify.hasAccessToken}
+                disabled={readOnly || shopify.hasAccessToken}
+                readOnly={readOnly || shopify.hasAccessToken}
               />
             </ConfigField>
           </div>
@@ -2169,7 +2187,7 @@ function BrandConfigPage({ section = "shopify" }) {
             <button
               type="button"
               className={`btn${shopify.hasAccessToken ? "" : " primary"}`}
-              disabled={saving || connecting || disconnecting}
+              disabled={readOnly || saving || connecting || disconnecting}
               onClick={shopify.hasAccessToken ? () => setShowDisconnectConfirm(true) : handleConnectShopify}
             >
               <I.shopify />
@@ -2221,6 +2239,7 @@ function BrandConfigPage({ section = "shopify" }) {
                 value={shopify.shopifyCustomerAccountClientId}
                 onChange={(e) => updateShopify("shopifyCustomerAccountClientId", e.target.value)}
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                disabled={readOnly}
               />
             </ConfigField>
             <ConfigField
@@ -2238,7 +2257,7 @@ function BrandConfigPage({ section = "shopify" }) {
                 type="password"
                 value={config.shopifyCustomerAccountClientSecret}
                 onChange={(e) =>
-                  patch((prev) => ({ ...prev, shopifyCustomerAccountClientSecret: e.target.value }))
+                  !readOnly && patch((prev) => ({ ...prev, shopifyCustomerAccountClientSecret: e.target.value }))
                 }
                 placeholder={
                   shopify.hasShopifyCustomerAccountClientSecret
@@ -2246,6 +2265,7 @@ function BrandConfigPage({ section = "shopify" }) {
                     : "Customer Account client secret"
                 }
                 autoComplete="off"
+                disabled={readOnly}
               />
             </ConfigField>
           </div>
@@ -2253,7 +2273,7 @@ function BrandConfigPage({ section = "shopify" }) {
             <button
               type="button"
               className="btn"
-              disabled={saving}
+              disabled={readOnly || saving}
               onClick={handleSaveShopifyConfig}
             >
               {saving ? "Saving…" : "Save Customer Account credentials"}
@@ -2332,7 +2352,7 @@ function BrandConfigPage({ section = "shopify" }) {
               <button
                 type="button"
                 className="btn"
-                disabled={saving || klaviyoConnecting || klaviyoDisconnecting}
+                disabled={readOnly || saving || klaviyoConnecting || klaviyoDisconnecting}
                 onClick={() => setShowKlaviyoDisconnectConfirm(true)}
               >
                 <I.klaviyo />
@@ -2342,7 +2362,7 @@ function BrandConfigPage({ section = "shopify" }) {
               <button
                 type="button"
                 className="btn primary"
-                disabled={saving || klaviyoConnecting || klaviyoDisconnecting}
+                disabled={readOnly || saving || klaviyoConnecting || klaviyoDisconnecting}
                 onClick={handleConnectKlaviyo}
               >
                 <I.klaviyo />
@@ -2390,7 +2410,7 @@ function BrandConfigPage({ section = "shopify" }) {
                   <button
                     type="button"
                     className="btn"
-                    disabled={!shopifyReady || campaignSyncing}
+                    disabled={readOnly || !shopifyReady || campaignSyncing}
                     title={!shopifyReady ? "Connect Shopify before syncing coupons" : undefined}
                     onClick={handleSyncCampaigns}
                   >
@@ -2433,7 +2453,7 @@ function BrandConfigPage({ section = "shopify" }) {
                   <button
                     type="button"
                     className="btn"
-                    disabled={!shopifyReady || campaignSyncing}
+                    disabled={readOnly || !shopifyReady || campaignSyncing}
                     title={!shopifyReady ? "Connect Shopify before syncing coupons" : undefined}
                     onClick={handleSyncCampaigns}
                   >
@@ -2443,6 +2463,7 @@ function BrandConfigPage({ section = "shopify" }) {
                     <button
                       type="button"
                       className="btn primary"
+                      disabled={readOnly}
                       onClick={openCreateDiscount}
                     >
                       Create coupon
@@ -2462,6 +2483,7 @@ function BrandConfigPage({ section = "shopify" }) {
               shopifyReady={shopifyReady}
               onEdit={handleEditCampaign}
               onAddCodes={setAddCodesCampaign}
+              readOnly={readOnly}
             />
           </>
         )}

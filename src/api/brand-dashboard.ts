@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { json, errorJson, toErrorMessage } from "./http.js";
-import { getRequestCustomerId } from "./tenant-context.js";
+import { getRequestConfigCustomerId } from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import { getBrandDashboardForCustomer } from "../services/brand-dashboard.service.js";
 
@@ -14,7 +14,7 @@ export async function handleGetBrandDashboard(
   url: URL,
 ): Promise<void> {
   try {
-    const customerId = await getRequestCustomerId(req, res);
+    const customerId = await getRequestConfigCustomerId(req, res);
     const dashboard = await getBrandDashboardForCustomer(customerId, {
       startAt: url.searchParams.get("start_at")?.trim() || null,
       endAt: url.searchParams.get("end_at")?.trim() || null,

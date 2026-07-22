@@ -13,7 +13,7 @@ function ProductField({ label, hint, children, fullRow }) {
   );
 }
 
-function ProductAddPage() {
+function ProductAddPage({ readOnly = false } = {}) {
   const [brandName, setBrandName] = useState("");
   const [productName, setProductName] = useState("");
   const [productPrice, setProductPrice] = useState("");
@@ -55,6 +55,7 @@ function ProductAddPage() {
   }, []);
 
   const handleImageFile = async (file) => {
+    if (readOnly) return;
     if (!file) return;
     setError("");
     setImageUploading(true);
@@ -71,6 +72,7 @@ function ProductAddPage() {
   };
 
   const handleSave = async () => {
+    if (readOnly) return;
     if (!productName.trim()) {
       setError("Product name is required.");
       return;
@@ -97,6 +99,7 @@ function ProductAddPage() {
   };
 
   const handleReset = () => {
+    if (readOnly) return;
     setProductName("");
     setProductPrice("");
     setProductImage("");
@@ -129,6 +132,11 @@ function ProductAddPage() {
               <I.info /> {error}
             </div>
           )}
+          {readOnly && (
+            <div className="cfg-alert warn" style={{ marginBottom: 16 }}>
+              <I.info /> This account can view product information only.
+            </div>
+          )}
 
           <div className="cfg-form grid grid-2">
             {brandName && (
@@ -143,6 +151,7 @@ function ProductAddPage() {
                 type="text"
                 placeholder="Flex Leggings"
                 value={productName}
+                disabled={readOnly}
                 onChange={(e) => setProductName(e.target.value)}
               />
             </ProductField>
@@ -154,6 +163,7 @@ function ProductAddPage() {
                 inputMode="decimal"
                 placeholder="$49.00"
                 value={productPrice}
+                disabled={readOnly}
                 onChange={(e) => setProductPrice(e.target.value)}
               />
             </ProductField>
@@ -170,6 +180,7 @@ function ProductAddPage() {
                   inputMode="url"
                   placeholder="https://example.com/product.jpg"
                   value={productImage.startsWith("data:") ? "" : productImage}
+                  disabled={readOnly}
                   onChange={(e) => setProductImage(e.target.value)}
                 />
                 <label className="btn cfg-upload-btn">
@@ -178,7 +189,7 @@ function ProductAddPage() {
                     type="file"
                     accept="image/*"
                     hidden
-                    disabled={imageUploading}
+                    disabled={readOnly || imageUploading}
                     onChange={(e) => handleImageFile(e.target.files?.[0])}
                   />
                 </label>
@@ -190,6 +201,7 @@ function ProductAddPage() {
                     <button
                       type="button"
                       className="btn"
+                      disabled={readOnly}
                       onClick={() => setProductImage("")}
                     >
                       Remove image
@@ -203,7 +215,7 @@ function ProductAddPage() {
               <button
                 type="button"
                 className="btn"
-                disabled={saving || imageUploading}
+                disabled={readOnly || saving || imageUploading}
                 onClick={handleReset}
               >
                 Reset
@@ -211,7 +223,7 @@ function ProductAddPage() {
               <button
                 type="button"
                 className="btn primary"
-                disabled={saving || imageUploading}
+                disabled={readOnly || saving || imageUploading}
                 onClick={handleSave}
               >
                 {saving ? "Saving…" : "Save product"}

@@ -797,7 +797,7 @@ function RowActionMenu({ items }) {
 
 const SURVEY_PAGE_SIZE = 8;
 
-function SurveyCampaignTable({ campaigns, onAction, statusFilter }) {
+function SurveyCampaignTable({ campaigns, onAction, statusFilter, readOnly = false }) {
   const [page, setPage] = useStateSV(1);
 
   const filteredCampaigns = statusFilter === "all"
@@ -842,7 +842,7 @@ function SurveyCampaignTable({ campaigns, onAction, statusFilter }) {
           </thead>
           <tbody>
             {pageRows.map((c) => {
-              const items = statusActions(c, onAction);
+              const items = statusActions(c, onAction, readOnly);
               return (
                 <tr key={c.id}>
                   <td><strong>{c.surveyName || c.name || "Untitled"}</strong></td>
@@ -905,9 +905,19 @@ function SurveyTablePager({ page, pageCount, onPage }) {
 }
 
 // §13 / §14 状态与操作对应关系 — 返回该状态下所有可执行操作的扁平列表
-function statusActions(c, onAction) {
+function statusActions(c, onAction, readOnly = false) {
   const s = c.status;
   const dispatch = (action) => () => onAction(action, c);
+
+  if (readOnly) {
+    if (s === "open" || s === "closed") {
+      return [
+        { label: "View responses", onClick: dispatch("dashboard") },
+        { label: "Preview", onClick: dispatch("preview") },
+      ];
+    }
+    return [{ label: "Preview", onClick: dispatch("preview") }];
+  }
 
   if (s === "draft") {
     return [
@@ -1260,7 +1270,7 @@ function StepPreview({
 // =====================================================================
 // Main page
 // =====================================================================
-function SurveyCampaignsPage() {
+function SurveyCampaignsPage({ readOnly = false } = {}) {
   const [view, setView] = useStateSV("list");
   const [campaigns, setCampaigns] = useStateSV([]);
   const [segments, setSegments] = useStateSV([]);
@@ -1299,7 +1309,10 @@ function SurveyCampaignsPage() {
 
   useEffectSV(() => { loadList(); }, [loadList]);
 
-  const patchForm = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const patchForm = (key, value) => {
+    if (readOnly) return;
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
 
   const refreshSegments = async () => {
     const segmentData = await SurveyAPI.listSegments();
@@ -1323,6 +1336,7 @@ function SurveyCampaignsPage() {
     setDraftDirty(false);
   };
   const mutateDraft = (updater) => {
+    if (readOnly) return;
     setDraftQuestions((prev) => updater(prev));
     setDraftDirty(true);
   };
@@ -1342,6 +1356,7 @@ function SurveyCampaignsPage() {
   });
 
   const openCreate = async () => {
+    if (readOnly) return;
     setPreviewMode(false);
     setError(null); setNotice(null);
     setPublishCheck(null);
@@ -1591,6 +1606,7 @@ function SurveyCampaignsPage() {
 
   // ---------- Wizard navigation ----------
   const handleWizardContinue = async () => {
+    if (readOnly) return;
     if (!detail) return;
     if (detail.isLocalDraft) {
       const next = Math.min(WIZARD_STEPS.length, wizardStep + 1);
@@ -1638,6 +1654,7 @@ function SurveyCampaignsPage() {
 
   // ---------- Publish ----------
   const handlePublish = async () => {
+    if (readOnly) return;
     if (!detail) return;
     setBusy(true); setError(null);
     try {
@@ -1727,6 +1744,7 @@ function SurveyCampaignsPage() {
     if (action === "edit") return openEdit(campaign);
     if (action === "preview") return openPreview(campaign);
     if (action === "dashboard") return openDashboard(campaign);
+    if (readOnly) return;
     if (action === "schedule") {
       // 跳到 configure step 调整 start_later
       await openEdit(campaign);
@@ -1798,9 +1816,11 @@ function SurveyCampaignsPage() {
   const activeQuestions = (detail?.questions || []).filter((q) => q.status === "active");
   const hasResponses = (detail?.responseCount ?? 0) > 0;
   const canEditQuestions =
-    detail?.isLocalDraft ||
-    detail?.status === "draft" ||
-    (detail?.status === "open" && !hasResponses);
+    !readOnly && (
+      detail?.isLocalDraft ||
+      detail?.status === "draft" ||
+      (detail?.status === "open" && !hasResponses)
+    );
   const buildValidation = validateBuildStep(draftQuestions);
   const configureValidation = validateConfigureStep(form, klaviyoConnected);
   const currentStepValidation = wizardStep === 1 ? buildValidation : configureValidation;
@@ -1850,7 +1870,7 @@ function SurveyCampaignsPage() {
                   ))}
                 </select>
               </label>
-              <button type="button" className="btn primary" onClick={openCreate} disabled={busy}>
+              <button type="button" className="btn primary" onClick={openCreate} disabled={readOnly || busy}>
                 Create Survey
               </button>
             </div>
@@ -1873,7 +1893,7 @@ function SurveyCampaignsPage() {
               <SurveyStatusPill status={detail.status} />
               {!previewMode && wizardStep < WIZARD_STEPS.length && (
                 <button type="button" className="btn primary"
-                  disabled={busy || !canContinue}
+                  disabled={readOnly || busy || !canContinue}
                   title={canContinue ? undefined : currentStepValidation.missing.join(", ")}
                   onClick={handleWizardContinue}>
                   {busy && !detail.isLocalDraft ? "Saving…" : "Continue"}
@@ -1881,7 +1901,7 @@ function SurveyCampaignsPage() {
               )}
               {detail.status === "draft" && wizardStep === 3 && !previewMode && (
                 <button type="button" className="btn primary"
-                  disabled={busy || !canPublish}
+                  disabled={readOnly || busy || !canPublish}
                   title={canPublish ? undefined : "Complete all required fields before publishing"}
                   onClick={handlePublish}>
                   {busy ? "Publishing…" : "Publish survey"}
@@ -1898,10 +1918,11 @@ function SurveyCampaignsPage() {
       )}
 
       {notice && (<div className="cfg-alert pos" style={{ marginBottom: 16 }}><I.info /> {notice}</div>)}
+      {readOnly && (<div className="cfg-alert warn" style={{ marginBottom: 16 }}><I.info /> This account can view surveys only.</div>)}
       {error && (<div className="cfg-alert warn" style={{ marginBottom: 16 }}><I.info /> {error}</div>)}
 
       {view === "list" && (
-        <SurveyCampaignTable campaigns={campaigns} onAction={handleAction} statusFilter={statusFilter} />
+        <SurveyCampaignTable campaigns={campaigns} onAction={handleAction} statusFilter={statusFilter} readOnly={readOnly} />
       )}
 
       {view === "edit" && detail && (
@@ -1930,7 +1951,7 @@ function SurveyCampaignsPage() {
               <StepConfigure
                 form={form} onChange={patchForm}
                 segments={segments} klaviyoConnected={klaviyoConnected}
-                disabled={busy}
+                disabled={readOnly || busy}
               />
             )}
             {wizardStep === 3 && (
@@ -1940,7 +1961,7 @@ function SurveyCampaignsPage() {
                 segments={segments}
                 publishCheck={effectivePublishCheck}
                 klaviyoConnected={klaviyoConnected}
-                readOnly={previewMode}
+                readOnly={previewMode || readOnly}
                 onEditQuestions={() => setWizardStep(1)}
                 onEditConfiguration={() => setWizardStep(2)}
               />

@@ -1,6 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, json, errorJson } from "./http.js";
-import { getRequestCustomerId } from "./tenant-context.js";
+import {
+  assertRequestCanWriteConfig,
+  getRequestConfigCustomerId,
+  getRequestCustomerId,
+} from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import {
   listCampaignCodesForSync,
@@ -34,7 +38,7 @@ export async function handleGetCouponCampaignCodes(
     const resumeAfter = url.searchParams.get("resume_after")?.trim() || null;
     const syncStatus = parseSyncStatusQuery(url.searchParams.get("sync_status"));
 
-    const customerId = await getRequestCustomerId(req, res);
+    const customerId = await getRequestConfigCustomerId(req, res);
     const data = await listCampaignCodesForSync(customerId, campaignId, {
       pageSize,
       after,
@@ -58,6 +62,7 @@ export async function handleSyncCouponCampaignCodes(
       imports?: Array<{ redeem_code_id?: string; code?: string }>;
       removes?: string[];
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const campaignId = body.campaign_id?.trim() ?? "";
     const imports = Array.isArray(body.imports)
@@ -98,6 +103,7 @@ export async function handleAddCouponCampaignCodes(
       campaign_id?: string;
       count?: number;
     }>(req);
+    await assertRequestCanWriteConfig(req, res);
 
     const campaignId = body.campaign_id?.trim() ?? "";
     const count = Number(body.count);

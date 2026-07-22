@@ -95,6 +95,16 @@ export async function handleAuthMe(
         email: current.authUser.email,
       },
       customer: current.customer,
+      access: {
+        status: Number(current.customer.status),
+        configCustomerId:
+          Number(current.customer.status) === 2 || Number(current.customer.status) === 3
+            ? 5
+            : Number(current.customer.id),
+        canWriteConfig: Number(current.customer.status) === 1,
+        canWriteBrandInfo:
+          Number(current.customer.status) === 1 || Number(current.customer.status) === 3,
+      },
     });
   } catch (err) {
     errorJson(res, 500, err instanceof Error ? err.message : "Failed to load user profile");

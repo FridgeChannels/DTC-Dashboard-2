@@ -273,7 +273,7 @@ function SegmentConfigTable({
   );
 }
 
-function SegmentConfigPage() {
+function SegmentConfigPage({ readOnly = false } = {}) {
   const [rows, setRows] = useStateSC([]);
   const [campaigns, setCampaigns] = useStateSC([]);
   const [loading, setLoading] = useStateSC(true);
@@ -309,6 +309,7 @@ function SegmentConfigPage() {
   const savableRows = getSavableRows(rows);
 
   const handleSaveAll = async () => {
+    if (readOnly) return;
     if (!savableRows.length) {
       setError("Choose coupons for at least one segment");
       setSaved(false);
@@ -339,6 +340,7 @@ function SegmentConfigPage() {
 
   // 切换默认项：乐观更新立即生效，后台串行保存最新目标（合并连点），不阻塞 UI
   const handleSetDefault = (segmentId) => {
+    if (readOnly) return;
     setError(null);
     setSaved(false);
     setRows((rs) => rs.map((r) => ({ ...r, isDefault: r.segmentId === segmentId })));
@@ -379,6 +381,11 @@ function SegmentConfigPage() {
           <I.info /> Configuration saved
         </div>
       )}
+      {readOnly && (
+        <div className="cfg-alert warn" style={{ marginBottom: 16 }}>
+          <I.info /> This account can view segment coupon configuration only.
+        </div>
+      )}
       <CfgSection
         title="Segment coupon configuration"
         desc="Bind coupons to each Klaviyo segment. A user's available coupons are resolved from the segments they belong to."
@@ -392,7 +399,7 @@ function SegmentConfigPage() {
           onChange={setRows}
           onSetDefault={handleSetDefault}
           settingDefaultId={settingDefaultId}
-          disabled={saving}
+          disabled={readOnly || saving}
         />
         {rows.length > 0 && (
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center", marginTop: 18 }}>
@@ -406,7 +413,7 @@ function SegmentConfigPage() {
               <button
                 type="button"
                 className="btn primary"
-                disabled={saving}
+                disabled={readOnly || saving}
                 onClick={handleSaveAll}
               >
                 {saving ? "Saving…" : "Save changes"}

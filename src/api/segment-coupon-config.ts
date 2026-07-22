@@ -1,6 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, json, errorJson, toErrorMessage } from "./http.js";
-import { getRequestCustomerId } from "./tenant-context.js";
+import {
+  assertRequestCanWriteConfig,
+  getRequestConfigCustomerId,
+  getRequestCustomerId,
+} from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import {
   listSegmentCouponConfig,
@@ -30,7 +34,7 @@ export async function handleGetSegmentCouponConfig(
   url: URL,
 ): Promise<void> {
   try {
-    const customerId = await getRequestCustomerId(req, res);
+    const customerId = await getRequestConfigCustomerId(req, res);
     const discountType = parseDiscountType(url);
     const data = await listSegmentCouponConfig(customerId, discountType);
     json(res, 200, data);
@@ -46,6 +50,7 @@ export async function handlePutSegmentCouponConfig(
 ): Promise<void> {
   try {
     const body = await readJsonBody<SaveSegmentCouponConfigInput>(req);
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const discountType = body.discountType ?? "percentage";
     if (!VALID_DISCOUNT_TYPES.has(discountType)) {
@@ -78,6 +83,7 @@ export async function handlePostSegmentCouponConfigDefault(
 ): Promise<void> {
   try {
     const body = await readJsonBody<SetDefaultSegmentCouponConfigBody>(req);
+    await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const discountType = body.discountType ?? "percentage";
     if (!VALID_DISCOUNT_TYPES.has(discountType)) {

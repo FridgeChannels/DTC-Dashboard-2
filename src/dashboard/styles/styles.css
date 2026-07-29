@@ -1784,6 +1784,11 @@ table.data td.tag {
   text-align: right;
   white-space: nowrap;
 }
+.data td.row-actions .btn {
+  justify-content: center;
+  min-width: 54px;
+  white-space: nowrap;
+}
 .data td.row-actions .btn + .btn {
   margin-left: 8px;
 }

@@ -18,6 +18,7 @@ import { saveProduct, listProducts } from "../brand-collect/lib/products.js";
 import { isSupabaseConfigured } from "../brand-collect/lib/supabase.js";
 import { isImageStorageConfigured, uploadImage } from "../brand-collect/lib/storage.js";
 import { productLog, productLogError } from "../brand-collect/lib/productDebug.js";
+import { isApiKeyValid } from "../lib/auth/api-key.js";
 
 const SERVICE_UNAVAILABLE = "服务暂不可用，请稍后重试";
 const JSON_LIMIT = Number(process.env.JSON_LIMIT ?? 25 * 1024 * 1024);
@@ -65,12 +66,20 @@ function respondRouteError(
   });
 }
 
+async function assertRequestCanWriteBrandInfoOrUseApiKey(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  if (isApiKeyValid(req)) return;
+  await assertRequestCanWriteBrandInfo(req, res);
+}
+
 export async function handlePostBrandColors(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
   try {
-    await assertRequestCanWriteBrandInfo(req, res);
+    await assertRequestCanWriteBrandInfoOrUseApiKey(req, res);
     const body = await readJsonBody<{
       url?: string;
       format?: string;
@@ -184,7 +193,7 @@ export async function handlePostUploadImage(
   }
 
   try {
-    await assertRequestCanWriteBrandInfo(req, res);
+    await assertRequestCanWriteBrandInfoOrUseApiKey(req, res);
     const body = await readJsonBodyWithLimit<{
       image?: string;
       folder?: string;

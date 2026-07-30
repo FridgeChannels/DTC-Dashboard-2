@@ -1,6 +1,11 @@
 import * as klaviyoSegmentRepo from "../repositories/klaviyo-segment.repo.js";
+import type { KlaviyoSegmentRow } from "../repositories/klaviyo-segment.repo.js";
 import * as campaignSegmentRepo from "../repositories/coupon-campaign-segment.repo.js";
 import * as segmentConfigRepo from "../repositories/segment-coupon-config.repo.js";
+import {
+  SYNTHETIC_SEGMENT_ALL_ID,
+} from "../constants/package-segment.js";
+import { usesPresenceSegmentMode } from "./customer-package.service.js";
 import {
   listSegmentBindableCampaignsForCustomer,
   type SegmentBindableCampaignSummary,
@@ -40,9 +45,12 @@ export interface SegmentCouponConfigItem {
   };
 }
 
+export type SegmentCouponConfigMode = "all_only" | "klaviyo";
+
 export interface SegmentCouponConfigListResponse {
   customerId: number;
   discountType: SegmentDiscountType;
+  segmentMode: SegmentCouponConfigMode;
   campaigns: SegmentCouponCampaignOption[];
   items: SegmentCouponConfigItem[];
 }
@@ -121,11 +129,65 @@ function compareSegmentCouponConfigItems(
   a: SegmentCouponConfigItem,
   b: SegmentCouponConfigItem,
 ): number {
+  const aIsAll = a.segmentId === SYNTHETIC_SEGMENT_ALL_ID;
+  const bIsAll = b.segmentId === SYNTHETIC_SEGMENT_ALL_ID;
+  if (aIsAll !== bIsAll) return aIsAll ? -1 : 1;
+
   const statusDiff =
     segmentStatusSortOrder(a.segmentActive, a.isProcessing) -
     segmentStatusSortOrder(b.segmentActive, b.isProcessing);
   if (statusDiff !== 0) return statusDiff;
   return (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" });
+}
+
+function withoutSyntheticAllConfigs(
+  configs: SegmentCouponConfigRow[],
+): SegmentCouponConfigRow[] {
+  return configs.filter((c) => c.segment_id !== SYNTHETIC_SEGMENT_ALL_ID);
+}
+
+/**
+ * IHRA/PPM：Presence 种子可能让 fc:all 仍为 default；从 UI 隐藏并改由 Klaviyo segment 承担 default。
+ */
+async function reconcileKlaviyoModeDefaults(
+  customerId: number,
+  discountType: SegmentDiscountType,
+  configs: SegmentCouponConfigRow[],
+): Promise<SegmentCouponConfigRow[]> {
+  const klaviyoConfigs = withoutSyntheticAllConfigs(configs);
+  const fcAllConfig = configs.find((c) => c.segment_id === SYNTHETIC_SEGMENT_ALL_ID);
+  const fcAllIsDefault = fcAllConfig?.is_default === true;
+  const hasKlaviyoDefault = klaviyoConfigs.some((c) => c.is_default);
+
+  let needsReload = false;
+
+  if (fcAllIsDefault) {
+    await segmentConfigRepo.upsertSegmentCouponConfig({
+      customerId,
+      segmentId: SYNTHETIC_SEGMENT_ALL_ID,
+      discountType,
+      isDefault: false,
+    });
+    needsReload = true;
+  }
+
+  if (!hasKlaviyoDefault && klaviyoConfigs.length > 0) {
+    const current = needsReload
+      ? await segmentConfigRepo.listConfigsByCustomerId(customerId, discountType)
+      : configs;
+    await ensureDefaultSegmentConfig(
+      customerId,
+      withoutSyntheticAllConfigs(current),
+      discountType,
+    );
+    return segmentConfigRepo.listConfigsByCustomerId(customerId, discountType);
+  }
+
+  if (needsReload) {
+    return segmentConfigRepo.listConfigsByCustomerId(customerId, discountType);
+  }
+
+  return configs;
 }
 
 /** 有已保存配置时保证恰好有一个默认 segment（按 created_at 最早者优先） */
@@ -152,19 +214,51 @@ async function ensureDefaultSegmentConfig(
   return segmentConfigRepo.listConfigsByCustomerId(customerId, discountType);
 }
 
+async function loadConfigurableSegments(
+  customerId: number,
+  presenceMode: boolean,
+): Promise<KlaviyoSegmentRow[]> {
+  if (presenceMode) {
+    const allSegment = await klaviyoSegmentRepo.ensureSyntheticAllSegment(customerId);
+    return [allSegment];
+  }
+
+  const segments = await klaviyoSegmentRepo.listKlaviyoSegmentsByCustomerId(customerId);
+  return segments.filter((segment) => segment.segment_id !== SYNTHETIC_SEGMENT_ALL_ID);
+}
+
+async function ensurePresenceAllDefault(
+  customerId: number,
+  discountType: SegmentDiscountType,
+): Promise<void> {
+  await segmentConfigRepo.clearDefaultSegmentCouponConfig(customerId, discountType);
+  await segmentConfigRepo.upsertSegmentCouponConfig({
+    customerId,
+    segmentId: SYNTHETIC_SEGMENT_ALL_ID,
+    discountType,
+    isActive: true,
+    isDefault: true,
+  });
+}
+
 export async function listSegmentCouponConfig(
   customerId: number,
   discountType: SegmentDiscountType = "percentage",
 ): Promise<SegmentCouponConfigListResponse> {
+  const presenceMode = await usesPresenceSegmentMode(customerId);
   const [segments, configs, campaigns, bindings] = await Promise.all([
-    klaviyoSegmentRepo.listKlaviyoSegmentsByCustomerId(customerId),
+    loadConfigurableSegments(customerId, presenceMode),
     segmentConfigRepo.listConfigsByCustomerId(customerId, discountType),
     listSegmentBindableCampaignsForCustomer(customerId),
     campaignSegmentRepo.listCampaignSegmentsByCustomerId(customerId),
   ]);
 
-  const resolvedConfigs =
-    (await ensureDefaultSegmentConfig(customerId, configs, discountType)) ?? configs;
+  const resolvedConfigs = presenceMode
+    ? await (async () => {
+        await ensurePresenceAllDefault(customerId, discountType);
+        return segmentConfigRepo.listConfigsByCustomerId(customerId, discountType);
+      })()
+    : await reconcileKlaviyoModeDefaults(customerId, discountType, configs);
 
   const configBySegment = new Map(resolvedConfigs.map((c) => [c.segment_id, c]));
   const selectableCampaignIds = new Set(campaigns.map((campaign) => campaign.id));
@@ -177,7 +271,9 @@ export async function listSegmentCouponConfig(
     campaignIdsBySegment.set(binding.klaviyo_segment_id, next);
   }
 
-  const items: SegmentCouponConfigItem[] = segments.map((seg) => {
+  const items: SegmentCouponConfigItem[] = segments
+    .filter((seg) => presenceMode || seg.segment_id !== SYNTHETIC_SEGMENT_ALL_ID)
+    .map((seg) => {
     const cfg = configBySegment.get(seg.segment_id);
     return {
       segmentId: seg.segment_id,
@@ -200,11 +296,16 @@ export async function listSegmentCouponConfig(
 
   items.sort(compareSegmentCouponConfigItems);
 
+  const visibleItems = presenceMode
+    ? items
+    : items.filter((item) => item.segmentId !== SYNTHETIC_SEGMENT_ALL_ID);
+
   return {
     customerId,
     discountType,
+    segmentMode: presenceMode ? "all_only" : "klaviyo",
     campaigns: campaigns.map(toSegmentCouponCampaignOption),
-    items,
+    items: visibleItems,
   };
 }
 
@@ -212,8 +313,9 @@ export async function saveSegmentCouponConfig(
   input: SaveSegmentCouponConfigInput,
 ): Promise<SegmentCouponConfigListResponse> {
   const discountType = input.discountType ?? "percentage";
+  const presenceMode = await usesPresenceSegmentMode(input.customerId);
   const [segments, campaigns] = await Promise.all([
-    klaviyoSegmentRepo.listKlaviyoSegmentsByCustomerId(input.customerId),
+    loadConfigurableSegments(input.customerId, presenceMode),
     listSegmentBindableCampaignsForCustomer(input.customerId),
   ]);
   const ownedSegmentIds = new Set(segments.map((s) => s.segment_id));
@@ -271,6 +373,11 @@ export async function setDefaultSegmentCouponConfig(
   segmentId: string,
   discountType: SegmentDiscountType = "percentage",
 ): Promise<SetDefaultSegmentCouponConfigResult> {
+  const presenceMode = await usesPresenceSegmentMode(customerId);
+  if (!presenceMode && segmentId === SYNTHETIC_SEGMENT_ALL_ID) {
+    throw new Error("All segment is not available for your package.");
+  }
+
   // 仅 2 次远程数据库往返：
   //   1) 清掉旧默认（含自身）
   //   2) upsert 当前项为 active + default（行不存在也会创建）

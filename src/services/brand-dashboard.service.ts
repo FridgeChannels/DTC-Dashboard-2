@@ -1,5 +1,7 @@
 import * as repo from "../repositories/brand-dashboard.repo.js";
 import { getShopifyConfigByCustomerId } from "../repositories/customer-shopify-config.repo.js";
+import { SYNTHETIC_SEGMENT_ALL_ID } from "../constants/package-segment.js";
+import { usesPresenceSegmentMode } from "./customer-package.service.js";
 
 export interface BrandDashboardQuery {
   startAt?: string | null;
@@ -165,7 +167,7 @@ export async function getBrandDashboardForCustomer(
   const dateFilter = { startAt: query.startAt ?? null, endAt: query.endAt ?? null };
   const prev = previousPeriod(dateFilter.startAt, dateFilter.endAt);
 
-  const [shopifyConfig, assignments, redemptions, campaigns, codes, segmentBindings, prevRedemptions] = await Promise.all([
+  const [shopifyConfig, assignments, redemptions, campaigns, codes, segmentBindings, prevRedemptions, presenceSegmentMode] = await Promise.all([
     getShopifyConfigByCustomerId(customerId),
     repo.listAssignmentsInRange(customerId, dateFilter),
     repo.listRedemptionsInRange(customerId, dateFilter),
@@ -173,6 +175,7 @@ export async function getBrandDashboardForCustomer(
     repo.listCouponCodes(customerId),
     repo.listCampaignSegments(customerId),
     prev ? repo.listRedemptionsInRange(customerId, prev) : Promise.resolve([]),
+    usesPresenceSegmentMode(customerId),
   ]);
   const redemptionAssignments = await repo.listAssignmentsByIds(
     customerId,
@@ -272,6 +275,10 @@ export async function getBrandDashboardForCustomer(
   // Current assignments do not store segment_id, so this is a binding-based view,
   // not a per-assignment matched-segment attribution.
   const segmentCouponPerformance: SegmentCouponPerformanceRow[] = segmentBindings
+    .filter(
+      (binding) =>
+        presenceSegmentMode || binding.klaviyo_segment_id !== SYNTHETIC_SEGMENT_ALL_ID,
+    )
     .map((binding) => {
       const c = campaignById.get(binding.campaign_id);
       const reds = redemptionsByCampaign.get(binding.campaign_id) ?? [];
@@ -291,6 +298,9 @@ export async function getBrandDashboardForCustomer(
       };
     })
     .sort((a, b) => {
+      const aIsAll = a.segmentId === SYNTHETIC_SEGMENT_ALL_ID;
+      const bIsAll = b.segmentId === SYNTHETIC_SEGMENT_ALL_ID;
+      if (aIsAll !== bIsAll) return aIsAll ? -1 : 1;
       const segmentSort = a.segmentName.localeCompare(b.segmentName);
       if (segmentSort !== 0) return segmentSort;
       return a.couponLabel.localeCompare(b.couponLabel);

@@ -16,6 +16,10 @@ vi.mock("../../src/repositories/customer-shopify-config.repo.js", () => ({
   getShopifyConfigByCustomerId: vi.fn(),
 }));
 
+vi.mock("../../src/services/customer-package.service.js", () => ({
+  usesPresenceSegmentMode: vi.fn().mockResolvedValue(false),
+}));
+
 describe("brand dashboard repeat magnet metrics", () => {
   beforeEach(() => {
     vi.clearAllMocks();

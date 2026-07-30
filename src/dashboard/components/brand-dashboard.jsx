@@ -407,7 +407,12 @@ function SegmentCouponPerformanceTable({ rows }) {
     );
   }
 
-  const segments = [...new Map(rows.map((r) => [r.segmentId, { id: r.segmentId, name: r.segmentName }])).values()];
+  const segments = [...new Map(rows.map((r) => [r.segmentId, { id: r.segmentId, name: r.segmentName }])).values()]
+    .sort((a, b) => {
+      if (a.id === "fc:all") return -1;
+      if (b.id === "fc:all") return 1;
+      return a.name.localeCompare(b.name);
+    });
   const coupons = [...new Map(rows.map((r) => [r.campaignId, { id: r.campaignId, label: r.couponLabel }])).values()];
   const filteredRows = rows.filter(
     (r) =>

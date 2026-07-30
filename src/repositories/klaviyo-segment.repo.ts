@@ -1,4 +1,8 @@
 import { getSupabase } from "../clients/supabase.client.js";
+import {
+  SYNTHETIC_SEGMENT_ALL_ID,
+  SYNTHETIC_SEGMENT_ALL_NAME,
+} from "../constants/package-segment.js";
 
 export interface KlaviyoSegmentRow {
   segment_id: string;
@@ -18,7 +22,9 @@ export async function listKlaviyoSegmentsByCustomerId(
     .order("name", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as KlaviyoSegmentRow[];
+  return ((data ?? []) as KlaviyoSegmentRow[]).filter(
+    (row) => row.segment_id !== SYNTHETIC_SEGMENT_ALL_ID,
+  );
 }
 
 export async function listKlaviyoSegmentsByIds(
@@ -34,5 +40,31 @@ export async function listKlaviyoSegmentsByIds(
     .in("segment_id", segmentIds);
 
   if (error) throw error;
-  return (data ?? []) as KlaviyoSegmentRow[];
+  return ((data ?? []) as KlaviyoSegmentRow[]).filter(
+    (row) => row.segment_id !== SYNTHETIC_SEGMENT_ALL_ID,
+  );
+}
+
+export async function ensureSyntheticAllSegment(
+  customerId: number,
+): Promise<KlaviyoSegmentRow> {
+  const now = new Date().toISOString();
+  const { data, error } = await getSupabase()
+    .from("klaviyo_segment")
+    .upsert(
+      {
+        customer_id: customerId,
+        segment_id: SYNTHETIC_SEGMENT_ALL_ID,
+        name: SYNTHETIC_SEGMENT_ALL_NAME,
+        is_active: true,
+        is_processing: false,
+        synced_at: now,
+      },
+      { onConflict: "customer_id,segment_id" },
+    )
+    .select("segment_id, name, is_active, is_processing, synced_at")
+    .single();
+
+  if (error) throw error;
+  return data as KlaviyoSegmentRow;
 }

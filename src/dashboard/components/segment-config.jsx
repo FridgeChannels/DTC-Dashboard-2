@@ -37,8 +37,15 @@ const SegmentAPI = {
   },
 };
 
-function apiToLocalRows(items) {
-  return items.map((item) => ({
+const SYNTHETIC_ALL_SEGMENT_ID = "fc:all";
+
+function apiToLocalRows(items, segmentMode = "klaviyo") {
+  const visibleItems =
+    segmentMode === "all_only"
+      ? items
+      : items.filter((item) => item.segmentId !== SYNTHETIC_ALL_SEGMENT_ID);
+
+  return visibleItems.map((item) => ({
     segmentId: item.segmentId,
     name: item.name,
     segmentActive: item.segmentActive,
@@ -139,6 +146,7 @@ function SegmentConfigTable({
   rows,
   campaigns,
   klaviyoConnected,
+  allOnlyMode,
   refreshing,
   onRefresh,
   onChange,
@@ -147,9 +155,12 @@ function SegmentConfigTable({
   disabled,
 }) {
   const [openCampaignSegmentId, setOpenCampaignSegmentId] = useStateSC(null);
+  const displayRows = allOnlyMode
+    ? rows
+    : rows.filter((row) => row.segmentId !== SYNTHETIC_ALL_SEGMENT_ID);
 
-  if (!rows.length) {
-    if (!klaviyoConnected) {
+  if (!displayRows.length) {
+    if (!allOnlyMode && !klaviyoConnected) {
       return (
         <div className="segment-empty-state integration-required">
           <div className="segment-empty-icon" aria-hidden="true">
@@ -171,8 +182,9 @@ function SegmentConfigTable({
       );
     }
 
-    return (
-      <div className="segment-empty-state sync-required">
+    if (!allOnlyMode) {
+      return (
+        <div className="segment-empty-state sync-required">
         <div className="segment-empty-icon" aria-hidden="true">
           <I.settings />
         </div>
@@ -194,6 +206,9 @@ function SegmentConfigTable({
         </button>
       </div>
     );
+    }
+
+    return null;
   }
 
   const updateRow = (segmentId, patch) => {
@@ -218,35 +233,37 @@ function SegmentConfigTable({
       <table className="data segment-config-table">
         <thead>
           <tr>
-            <th className="table-default-col">Default</th>
+            {!allOnlyMode && <th className="table-default-col">Default</th>}
             <th>Segment</th>
             <th>Status</th>
             <th>Coupons</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {displayRows.map((row) => (
             <tr
               key={row.segmentId}
               className={`segment-default-row${row.dirty ? " row-dirty" : ""}${row.isDefault ? " is-default" : ""}`}
-              onClick={() => handleDefaultSelect(row)}
-              title={row.isDefault ? "Default segment" : "Click to set as default segment"}
+              onClick={allOnlyMode ? undefined : () => handleDefaultSelect(row)}
+              title={allOnlyMode ? undefined : row.isDefault ? "Default segment" : "Click to set as default segment"}
             >
-              <td className="table-default-col">
-                <label
-                  className="table-default-radio"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <input
-                    type="radio"
-                    name="default-segment"
-                    checked={row.isDefault}
-                    disabled={disabled}
-                    onChange={() => handleDefaultSelect(row)}
-                  />
-                  {row.isDefault && <span className="table-default-label">Default</span>}
-                </label>
-              </td>
+              {!allOnlyMode && (
+                <td className="table-default-col">
+                  <label
+                    className="table-default-radio"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="radio"
+                      name="default-segment"
+                      checked={row.isDefault}
+                      disabled={disabled}
+                      onChange={() => handleDefaultSelect(row)}
+                    />
+                    {row.isDefault && <span className="table-default-label">Default</span>}
+                  </label>
+                </td>
+              )}
               <td><strong>{row.name || "—"}</strong></td>
               <td><SegmentStatusBadge active={row.segmentActive} processing={row.isProcessing} /></td>
               <td onClick={(e) => e.stopPropagation()}>
@@ -276,6 +293,7 @@ function SegmentConfigTable({
 function SegmentConfigPage({ readOnly = false } = {}) {
   const [rows, setRows] = useStateSC([]);
   const [campaigns, setCampaigns] = useStateSC([]);
+  const [segmentMode, setSegmentMode] = useStateSC("klaviyo");
   const [loading, setLoading] = useStateSC(true);
   const [saving, setSaving] = useStateSC(false);
   const [settingDefaultId, setSettingDefaultId] = useStateSC(null);
@@ -293,8 +311,10 @@ function SegmentConfigPage({ readOnly = false } = {}) {
         SegmentAPI.list("percentage"),
         SegmentAPI.getKlaviyoConnection(),
       ]);
-      setRows(apiToLocalRows(data.items));
+      const mode = data.segmentMode === "all_only" ? "all_only" : "klaviyo";
+      setRows(apiToLocalRows(data.items, mode));
       setCampaigns(data.campaigns ?? []);
+      setSegmentMode(mode);
       setKlaviyoConnected(klaviyoConnection.connected);
       setSaved(false);
     } catch (err) {
@@ -307,6 +327,7 @@ function SegmentConfigPage({ readOnly = false } = {}) {
   useEffectSC(() => { load(); }, [load]);
 
   const savableRows = getSavableRows(rows);
+  const allOnlyMode = segmentMode === "all_only";
 
   const handleSaveAll = async () => {
     if (readOnly) return;
@@ -328,7 +349,8 @@ function SegmentConfigPage({ readOnly = false } = {}) {
         })),
       };
       const data = await SegmentAPI.save(payload);
-      setRows(apiToLocalRows(data.items));
+      const mode = data.segmentMode === "all_only" ? "all_only" : "klaviyo";
+      setRows(apiToLocalRows(data.items, mode));
       setCampaigns(data.campaigns ?? []);
       setSaved(true);
     } catch (err) {
@@ -388,12 +410,15 @@ function SegmentConfigPage({ readOnly = false } = {}) {
       )}
       <CfgSection
         title="Segment coupon configuration"
-        desc="Bind coupons to each Klaviyo segment. A user's available coupons are resolved from the segments they belong to."
+        desc={allOnlyMode
+          ? "Choose which coupons all users can receive. Your package uses a single All audience instead of Klaviyo segments."
+          : "Bind coupons to each Klaviyo segment. A user's available coupons are resolved from the segments they belong to."}
       >
         <SegmentConfigTable
           rows={rows}
           campaigns={campaigns}
           klaviyoConnected={klaviyoConnected}
+          allOnlyMode={allOnlyMode}
           refreshing={loading}
           onRefresh={load}
           onChange={setRows}

@@ -57,6 +57,11 @@ import {
 } from "./api/survey-campaigns.js";
 import { handleGetBrandDashboard } from "./api/brand-dashboard.js";
 import {
+  handleGetActiveFcOrderSummary,
+  handleGetFcOrderDetail,
+  handleListFcOrders,
+} from "./api/fc-orders.js";
+import {
   handleGetSurveyAvailability,
   handleGetSurveyQuestions,
   handlePostSurveyAnswers,
@@ -357,6 +362,25 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/brand-dashboard") {
     await handleGetBrandDashboard(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/fc-orders") {
+    await handleListFcOrders(req, res, url);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    pathname === "/api/fc-orders/active-summary"
+  ) {
+    await handleGetActiveFcOrderSummary(req, res);
+    return;
+  }
+
+  const fcOrderDetailMatch = /^\/api\/fc-orders\/([^/]+)$/.exec(pathname);
+  if (req.method === "GET" && fcOrderDetailMatch) {
+    await handleGetFcOrderDetail(req, res, fcOrderDetailMatch[1] ?? "");
     return;
   }
 

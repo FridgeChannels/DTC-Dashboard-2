@@ -32,15 +32,18 @@ function parseOrderFilter(url: URL): OrderFilter {
   return value as OrderFilter;
 }
 
-function parseOrderId(rawOrderId: string): number {
-  if (!/^[1-9]\d*$/.test(rawOrderId)) {
-    throw new RangeError("Invalid order ID");
+function parseOrderNumber(rawOrderNumber: string): string {
+  const orderNumber = decodeURIComponent(rawOrderNumber).trim();
+  // Public identifiers only — reject numeric DB ids and unsafe path characters.
+  if (
+    !orderNumber ||
+    orderNumber.length > 64 ||
+    /^\d+$/.test(orderNumber) ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(orderNumber)
+  ) {
+    throw new RangeError("Invalid order number");
   }
-  const orderId = Number(rawOrderId);
-  if (!Number.isSafeInteger(orderId)) {
-    throw new RangeError("Invalid order ID");
-  }
-  return orderId;
+  return orderNumber;
 }
 
 export async function handleListFcOrders(
@@ -76,12 +79,12 @@ export async function handleGetActiveFcOrderSummary(
 export async function handleGetFcOrderDetail(
   req: IncomingMessage,
   res: ServerResponse,
-  rawOrderId: string,
+  rawOrderNumber: string,
 ): Promise<void> {
   try {
     const customerId = await getRequestCustomerId(req, res);
-    const orderId = parseOrderId(rawOrderId);
-    const detail = await getFcOrderDetail(customerId, orderId);
+    const orderNumber = parseOrderNumber(rawOrderNumber);
+    const detail = await getFcOrderDetail(customerId, orderNumber);
     if (!detail) {
       errorJson(res, 404, "Order not found");
       return;

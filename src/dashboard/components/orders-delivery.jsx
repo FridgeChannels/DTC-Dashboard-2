@@ -526,19 +526,19 @@ function OrderDetail({ detail, loading, error, onRetry, onBack }) {
 }
 
 function OrdersDeliveryPage() {
-  const initialOrderId = new URLSearchParams(window.location.search).get("order");
+  const initialOrderNumber = new URLSearchParams(window.location.search).get("order");
   const [filter, setFilter] = useStateOrders("active");
   const [orders, setOrders] = useStateOrders([]);
-  const [selectedId, setSelectedId] = useStateOrders(initialOrderId);
-  const [detailOpen, setDetailOpen] = useStateOrders(Boolean(initialOrderId));
+  const [selectedOrderNumber, setSelectedOrderNumber] = useStateOrders(initialOrderNumber);
+  const [detailOpen, setDetailOpen] = useStateOrders(Boolean(initialOrderNumber));
   const [detail, setDetail] = useStateOrders(null);
   const [listLoading, setListLoading] = useStateOrders(true);
-  const [detailLoading, setDetailLoading] = useStateOrders(Boolean(initialOrderId));
+  const [detailLoading, setDetailLoading] = useStateOrders(Boolean(initialOrderNumber));
   const [listError, setListError] = useStateOrders(false);
   const [detailError, setDetailError] = useStateOrders(false);
 
-  const loadDetail = useCallbackOrders(async (orderId) => {
-    if (!orderId) {
+  const loadDetail = useCallbackOrders(async (orderNumber) => {
+    if (!orderNumber) {
       setDetail(null);
       setDetailLoading(false);
       setDetailError(false);
@@ -547,7 +547,7 @@ function OrdersDeliveryPage() {
     setDetailLoading(true);
     setDetailError(false);
     try {
-      const response = await fetch(`/api/fc-orders/${encodeURIComponent(orderId)}`);
+      const response = await fetch(`/api/fc-orders/${encodeURIComponent(orderNumber)}`);
       if (!response.ok) throw new Error("detail");
       const data = await response.json();
       setDetail(data);
@@ -571,7 +571,7 @@ function OrdersDeliveryPage() {
       const nextOrders = Array.isArray(data.orders) ? data.orders : [];
       setOrders(nextOrders);
       if (!options.keepSelection) {
-        setSelectedId(null);
+        setSelectedOrderNumber(null);
         setDetail(null);
       }
     } catch {
@@ -582,35 +582,35 @@ function OrdersDeliveryPage() {
   }, []);
 
   useEffectOrders(() => {
-    loadList("active", { keepSelection: Boolean(initialOrderId) });
-    if (initialOrderId) loadDetail(initialOrderId);
+    loadList("active", { keepSelection: Boolean(initialOrderNumber) });
+    if (initialOrderNumber) loadDetail(initialOrderNumber);
   }, []);
 
   useEffectOrders(() => {
     const syncOrderFromHistory = () => {
-      const orderId = new URLSearchParams(window.location.search).get("order");
-      setSelectedId(orderId);
-      setDetailOpen(Boolean(orderId));
-      loadDetail(orderId);
+      const orderNumber = new URLSearchParams(window.location.search).get("order");
+      setSelectedOrderNumber(orderNumber);
+      setDetailOpen(Boolean(orderNumber));
+      loadDetail(orderNumber);
     };
     window.addEventListener("popstate", syncOrderFromHistory);
     return () => window.removeEventListener("popstate", syncOrderFromHistory);
   }, [loadDetail]);
 
   const selectOrder = (order) => {
-    setSelectedId(order.id);
+    setSelectedOrderNumber(order.orderNumber);
     setDetailOpen(true);
     const params = new URLSearchParams(window.location.search);
-    params.set("order", order.id);
+    params.set("order", order.orderNumber);
     window.history.pushState({}, "", `/orders-delivery?${params.toString()}`);
-    loadDetail(order.id);
+    loadDetail(order.orderNumber);
   };
 
   const changeFilter = (nextFilter) => {
     if (nextFilter === filter && !listError) return;
     setFilter(nextFilter);
     setDetailOpen(false);
-    setSelectedId(null);
+    setSelectedOrderNumber(null);
     setDetail(null);
     window.history.replaceState({}, "", "/orders-delivery");
     loadList(nextFilter);
@@ -618,7 +618,7 @@ function OrdersDeliveryPage() {
 
   const showAllOrders = () => {
     setDetailOpen(false);
-    setSelectedId(null);
+    setSelectedOrderNumber(null);
     setDetail(null);
     const params = new URLSearchParams(window.location.search);
     params.delete("order");
@@ -633,7 +633,7 @@ function OrdersDeliveryPage() {
             detail={detail}
             loading={detailLoading}
             error={detailError}
-            onRetry={() => loadDetail(selectedId)}
+            onRetry={() => loadDetail(selectedOrderNumber)}
             onBack={showAllOrders}
           />
         </div>
@@ -669,9 +669,9 @@ function OrdersDeliveryPage() {
                 ) : (
                   orders.map((order) => (
                     <OrderListRow
-                      key={order.id}
+                      key={order.orderNumber}
                       order={order}
-                      selected={selectedId === order.id}
+                      selected={selectedOrderNumber === order.orderNumber}
                       onSelect={selectOrder}
                     />
                   ))

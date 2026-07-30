@@ -120,19 +120,19 @@ describe("FC orders API", () => {
   it("returns 404 for missing or other-brand orders", async () => {
     const out = response();
 
-    await handleGetFcOrderDetail(request(), out.res, "42");
+    await handleGetFcOrderDetail(request(), out.res, "ORD-MISSING-001");
 
-    expect(getFcOrderDetailMock).toHaveBeenCalledWith(7, 42);
+    expect(getFcOrderDetailMock).toHaveBeenCalledWith(7, "ORD-MISSING-001");
     expect(out.status()).toBe(404);
     expect(out.json()).toEqual({ error: "Order not found" });
   });
 
-  it("rejects malformed and non-positive order ids", async () => {
-    for (const id of ["abc", "0", "-1", "1.5"]) {
+  it("rejects numeric database ids and malformed order numbers", async () => {
+    for (const value of ["42", "0", "-1", "../x", "bad/no", "", " "]) {
       const out = response();
-      await handleGetFcOrderDetail(request(), out.res, id);
+      await handleGetFcOrderDetail(request(), out.res, value);
       expect(out.status()).toBe(400);
-      expect(out.json()).toEqual({ error: "Invalid order ID" });
+      expect(out.json()).toEqual({ error: "Invalid order number" });
     }
     expect(getFcOrderDetailMock).not.toHaveBeenCalled();
   });

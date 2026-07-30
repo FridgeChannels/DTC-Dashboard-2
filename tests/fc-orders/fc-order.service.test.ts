@@ -16,7 +16,7 @@ import {
 
 vi.mock("../../src/repositories/fc-order.repo.js", () => ({
   listOrdersByCustomerId: vi.fn(),
-  findOrderByIdForCustomer: vi.fn(),
+  findOrderByOrderNoForCustomer: vi.fn(),
   listOrderItemsByOrderIds: vi.fn(),
   listPaymentsByOrderIds: vi.fn(),
   listFinanceHandoffsByOrderIds: vi.fn(),
@@ -81,7 +81,7 @@ describe("FC order service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(repo.listOrdersByCustomerId).mockResolvedValue([]);
-    vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue(null);
+    vi.mocked(repo.findOrderByOrderNoForCustomer).mockResolvedValue(null);
     vi.mocked(repo.listOrderItemsByOrderIds).mockResolvedValue([]);
     vi.mocked(repo.listPaymentsByOrderIds).mockResolvedValue([]);
     vi.mocked(repo.listFinanceHandoffsByOrderIds).mockResolvedValue([]);
@@ -137,9 +137,9 @@ describe("FC order service", () => {
   });
 
   it("marks payment confirmed complete and advances paid orders to design", async () => {
-    vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue(baseOrder);
+    vi.mocked(repo.findOrderByOrderNoForCustomer).mockResolvedValue(baseOrder);
 
-    const detail = await getFcOrderDetail(7, 101);
+    const detail = await getFcOrderDetail(7, "FC-2026-001");
 
     expect(detail?.progress).toEqual(
       expect.arrayContaining([
@@ -204,7 +204,7 @@ describe("FC order service", () => {
   });
 
   it("builds a production detail from immutable price snapshots", async () => {
-    vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue(baseOrder);
+    vi.mocked(repo.findOrderByOrderNoForCustomer).mockResolvedValue(baseOrder);
     vi.mocked(repo.listOrderItemsByOrderIds).mockResolvedValue([
       {
         id: 1,
@@ -247,7 +247,7 @@ describe("FC order service", () => {
       formatted_address: "123 Main St, Austin, TX 78701, USA",
     });
 
-    const detail = await getFcOrderDetail(7, 101);
+    const detail = await getFcOrderDetail(7, "FC-2026-001");
 
     expect(detail?.order).toMatchObject({
       packageName: "Post-Purchase Moat",
@@ -277,7 +277,7 @@ describe("FC order service", () => {
   });
 
   it("preserves the last active stage while an order is on hold", async () => {
-    vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue(baseOrder);
+    vi.mocked(repo.findOrderByOrderNoForCustomer).mockResolvedValue(baseOrder);
     vi.mocked(repo.listFulfillmentsByCustomerAndOrderIds).mockResolvedValue([
       {
         ...productionFulfillment,
@@ -287,7 +287,7 @@ describe("FC order service", () => {
       },
     ]);
 
-    const detail = await getFcOrderDetail(7, 101);
+    const detail = await getFcOrderDetail(7, "FC-2026-001");
 
     expect(detail?.order.currentStage).toBe("shipped");
     expect(detail?.order.holdReason).toBe("Carrier pickup rescheduled.");
@@ -339,7 +339,7 @@ describe("FC order service", () => {
   );
 
   it("ends delivered details at Delivered and suppresses stale actions", async () => {
-    vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue(baseOrder);
+    vi.mocked(repo.findOrderByOrderNoForCustomer).mockResolvedValue(baseOrder);
     vi.mocked(repo.listFulfillmentsByCustomerAndOrderIds).mockResolvedValue([
       {
         ...productionFulfillment,
@@ -350,7 +350,7 @@ describe("FC order service", () => {
       },
     ]);
 
-    const detail = await getFcOrderDetail(7, 101);
+    const detail = await getFcOrderDetail(7, "FC-2026-001");
 
     expect(detail?.order).toMatchObject({
       fulfillmentStatus: "delivered",
@@ -375,7 +375,7 @@ describe("FC order service", () => {
   });
 
   it("returns only trusted tracking URLs", async () => {
-    vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue(baseOrder);
+    vi.mocked(repo.findOrderByOrderNoForCustomer).mockResolvedValue(baseOrder);
     vi.mocked(repo.listFulfillmentsByCustomerAndOrderIds).mockResolvedValue([
       {
         ...productionFulfillment,
@@ -387,14 +387,14 @@ describe("FC order service", () => {
       },
     ]);
 
-    const trusted = await getFcOrderDetail(7, 101);
+    const trusted = await getFcOrderDetail(7, "FC-2026-001");
     expect(trusted?.shipment.trackingUrl).toContain("ups.com");
   });
 
   it.each(REJECTED_TRACKING_URLS)(
     "rejects unsafe tracking URL %s",
     async (trackingUrl) => {
-      vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue(baseOrder);
+      vi.mocked(repo.findOrderByOrderNoForCustomer).mockResolvedValue(baseOrder);
       vi.mocked(repo.listFulfillmentsByCustomerAndOrderIds).mockResolvedValue([
         {
           ...productionFulfillment,
@@ -403,7 +403,7 @@ describe("FC order service", () => {
         },
       ]);
 
-      const detail = await getFcOrderDetail(7, 101);
+      const detail = await getFcOrderDetail(7, "FC-2026-001");
 
       expect(detail?.shipment.trackingUrl).toBeNull();
     },
@@ -412,7 +412,7 @@ describe("FC order service", () => {
   it.each(PRICE_SNAPSHOT_CASES)(
     "preserves immutable $currency price and discount snapshots",
     async (snapshot) => {
-      vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue({
+      vi.mocked(repo.findOrderByOrderNoForCustomer).mockResolvedValue({
         ...baseOrder,
         amount: String(snapshot.subtotal),
         shipping_fee: String(snapshot.shipping),
@@ -446,7 +446,7 @@ describe("FC order service", () => {
         productionFulfillment,
       ]);
 
-      const detail = await getFcOrderDetail(7, 101);
+      const detail = await getFcOrderDetail(7, "FC-2026-001");
 
       expect(detail?.priceSummary).toMatchObject(snapshot);
       expect(detail?.items.find(({ type }) => type === "discount")).toMatchObject({
@@ -456,12 +456,12 @@ describe("FC order service", () => {
   );
 
   it("never serializes repository-only payment or finance secrets", async () => {
-    vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue(baseOrder);
+    vi.mocked(repo.findOrderByOrderNoForCustomer).mockResolvedValue(baseOrder);
     vi.mocked(repo.listFulfillmentsByCustomerAndOrderIds).mockResolvedValue([
       productionFulfillment,
     ]);
 
-    const serialized = JSON.stringify(await getFcOrderDetail(7, 101));
+    const serialized = JSON.stringify(await getFcOrderDetail(7, "FC-2026-001"));
 
     for (const field of [
       "callback_data",

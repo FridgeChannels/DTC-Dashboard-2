@@ -7,7 +7,7 @@ vi.mock("../../src/clients/supabase.client.js", () => ({
 }));
 
 import {
-  findOrderByIdForCustomer,
+  findOrderByOrderNoForCustomer,
   findShippingAddressForCustomer,
   listFinanceHandoffsByOrderIds,
   listOrdersByCustomerId,
@@ -60,14 +60,14 @@ describe("FC order repository tenant isolation", () => {
     vi.clearAllMocks();
   });
 
-  it("requires both order id and customer id when loading a detail", async () => {
-    const query = singleQueryResult({ id: 42, customer_id: 7 });
+  it("requires both order number and customer id when loading a detail", async () => {
+    const query = singleQueryResult({ id: 42, order_no: "ORD-42", customer_id: 7 });
 
-    const result = await findOrderByIdForCustomer(7, 42);
+    const result = await findOrderByOrderNoForCustomer(7, "ORD-42");
 
     expect(result?.id).toBe(42);
     expect(query.from).toHaveBeenCalledWith("order");
-    expect(query.calls).toContainEqual(["eq:id", 42]);
+    expect(query.calls).toContainEqual(["eq:order_no", "ORD-42"]);
     expect(query.calls).toContainEqual(["eq:customer_id", 7]);
   });
 

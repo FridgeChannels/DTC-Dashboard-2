@@ -512,14 +512,17 @@ function buildActivity(
 
 export async function getFcOrderDetail(
   customerId: number,
-  orderId: number,
+  orderNumber: string,
 ): Promise<FcOrderDetailResponse | null> {
-  const order = await fcOrderRepo.findOrderByIdForCustomer(customerId, orderId);
+  const order = await fcOrderRepo.findOrderByOrderNoForCustomer(
+    customerId,
+    orderNumber,
+  );
   if (!order) return null;
 
   const [contexts, events, address] = await Promise.all([
     buildContexts([order]),
-    fcOrderRepo.listFulfillmentEventsForOrder(customerId, orderId),
+    fcOrderRepo.listFulfillmentEventsForOrder(customerId, order.id),
     order.shipping_address_id == null
       ? Promise.resolve(null)
       : fcOrderRepo.findShippingAddressForCustomer(

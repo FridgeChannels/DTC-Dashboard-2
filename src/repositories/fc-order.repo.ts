@@ -211,14 +211,14 @@ export async function listOrdersByCustomerId(
   return (data ?? []) as unknown as FcOrderRow[];
 }
 
-export async function findOrderByIdForCustomer(
+export async function findOrderByOrderNoForCustomer(
   customerId: number,
-  orderId: number,
+  orderNo: string,
 ): Promise<FcOrderRow | null> {
   const { data, error } = await getSupabase()
     .from("order")
     .select(ORDER_SELECT)
-    .eq("id", orderId)
+    .eq("order_no", orderNo)
     .eq("customer_id", customerId)
     .maybeSingle();
   throwIfError(error);

@@ -575,8 +575,8 @@ function bdOrderStageLabel(order) {
   return labels[order.currentStage] || String(order.fulfillmentStatus || "In progress").replaceAll("_", " ");
 }
 
-function navigateToFcOrders(orderId) {
-  const suffix = orderId ? `?order=${encodeURIComponent(orderId)}` : "";
+function navigateToFcOrders(orderNumber) {
+  const suffix = orderNumber ? `?order=${encodeURIComponent(orderNumber)}` : "";
   window.history.pushState({}, "", `/orders-delivery${suffix}`);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
@@ -600,7 +600,7 @@ function ActiveFcOrderSummary({ summary }) {
       <button
         type="button"
         className="bd-active-order-main"
-        onClick={() => navigateToFcOrders(order.id)}
+        onClick={() => navigateToFcOrders(order.orderNumber)}
         aria-label={`Open order ${order.orderNumber}`}
       >
         <span>

@@ -1,6 +1,6 @@
-# packages / features / package_features 数据库字典
+# packages / features / package_features / customer_packages 数据库字典
 
-本文档描述销售套餐、功能项、套餐功能矩阵 3 张表。
+本文档描述销售套餐、功能项、套餐功能矩阵、商户套餐订阅 4 张表。
 
 ## 1. packages - 销售套餐表
 
@@ -104,14 +104,62 @@
 | idx_package_features_package_id | package_id |
 | idx_package_features_feature_id | feature_id |
 
+## 4. customer_packages - 商户套餐订阅表
+
+**表名**：`public.customer_packages`
+
+**用途**：存储商户与套餐的订阅关系。用于判断某个 customer 当前生效套餐，并保留升降级历史。每个商户同时最多一条 `is_active = true` 的记录。
+
+**主键**：`id`
+
+| 字段 | 类型 | 是否必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| id | uuid | 是 | gen_random_uuid() | 主键 UUID |
+| customer_id | bigint | 是 | - | 关联商户 ID（customer.id） |
+| package_id | uuid | 是 | - | 关联套餐 ID（packages.id） |
+| starts_at | timestamptz | 是 | now() | 套餐生效开始时间 |
+| ends_at | timestamptz | 否 | - | 套餐失效时间；NULL 表示长期有效 |
+| is_active | boolean | 是 | true | 是否为当前生效订阅 |
+| notes | text | 否 | - | 备注（如升降级来源、试用说明等） |
+| created_at | timestamptz | 是 | now() | 记录创建时间 |
+| updated_at | timestamptz | 是 | now() | 记录最后更新时间 |
+
+**检查约束**
+
+| 约束名 | 规则 |
+| --- | --- |
+| customer_packages_ends_at_check | ends_at IS NULL OR ends_at > starts_at |
+
+**外键**
+
+| 字段 | 引用表 | 引用字段 | 删除行为 |
+| --- | --- | --- | --- |
+| customer_id | public.customer | id | ON DELETE CASCADE |
+| package_id | public.packages | id | ON DELETE RESTRICT |
+
+**索引**
+
+| 索引名 | 字段 | 说明 |
+| --- | --- | --- |
+| idx_customer_packages_one_active | customer_id | 部分唯一索引：`WHERE is_active = true`，保证每商户最多一条生效订阅 |
+| idx_customer_packages_customer_id | customer_id | - |
+| idx_customer_packages_package_id | package_id | - |
+
 ## 表关系
 
-`packages` 与 `features` 是多对多关系，通过 `package_features` 关联。
+`packages` 与 `features` 是多对多关系，通过 `package_features` 关联。  
+`customer` 与 `packages` 是一对多订阅关系，通过 `customer_packages` 关联（同时最多一条 active）。
 
 ```mermaid
 erDiagram
+  customer ||--o{ customer_packages : subscribes
+  packages ||--o{ customer_packages : assigned_to
   packages ||--o{ package_features : contains
   features ||--o{ package_features : mapped_by
+
+  customer {
+    bigint id PK
+  }
 
   packages {
     uuid id PK
@@ -139,6 +187,15 @@ erDiagram
     boolean included
     text notes
   }
+
+  customer_packages {
+    uuid id PK
+    bigint customer_id FK
+    uuid package_id FK
+    timestamptz starts_at
+    timestamptz ends_at
+    boolean is_active
+  }
 ```
 
 ## 当前套餐功能包含规则
@@ -158,4 +215,3 @@ erDiagram
 | PKG-PRESENCE | 30 | 8 | 22 |
 | PKG-IHRA | 30 | 22 | 8 |
 | PKG-PPM | 30 | 30 | 0 |
-

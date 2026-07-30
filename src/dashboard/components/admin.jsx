@@ -8,6 +8,7 @@ const DASHBOARD_SECTION = {
   id: "dashboard",
   label: "Dashboard",
 };
+const ORDERS_DELIVERY_SECTION = { id: "orders-delivery", label: "Orders & Delivery" };
 
 // 旧版（mock 数据）Dashboard，保留为 dashboard_pre
 const DASHBOARD_PRE_SECTION = {
@@ -35,6 +36,7 @@ const ACCOUNT_MATCH = [ACCOUNT_SECTION.id, SHOPIFY_SECTION.id, KLAVIYO_SECTION.i
 
 const ALL_SECTIONS = [
   DASHBOARD_SECTION,
+  ORDERS_DELIVERY_SECTION,
   BRAND_COLLECT_SECTION,
   PRODUCT_ADD_SECTION,
   COUPON_CAMPAIGNS_SECTION,
@@ -57,6 +59,7 @@ function buildNavGroups(conn) {
       items: [
         // dashboard_pre 暂时隐藏（保留 DASHBOARD_PRE_SECTION 与渲染分支，未删除）
         { ...DASHBOARD_SECTION, icon: I.navDashboard },
+        { ...ORDERS_DELIVERY_SECTION, icon: I.navOrders },
         { ...BRAND_COLLECT_SECTION, icon: I.navBrand },
         // Add Product 暂时隐藏（保留 PRODUCT_ADD_SECTION 与渲染分支，未删除）
       ],
@@ -92,6 +95,7 @@ function buildNavGroups(conn) {
 
 function parseSection() {
   if (window.location.pathname === "/" || window.location.pathname === "/dashboard") return DASHBOARD_SECTION.id;
+  if (window.location.pathname === "/orders-delivery") return ORDERS_DELIVERY_SECTION.id;
   if (window.location.pathname === "/dashboard-pre") return DASHBOARD_PRE_SECTION.id;
   if (window.location.pathname === "/brand-collect") return BRAND_COLLECT_SECTION.id;
   if (window.location.pathname === "/product-add") return PRODUCT_ADD_SECTION.id;
@@ -255,6 +259,12 @@ function AdminApp() {
   const brandInfoReadOnly = auth.loading ? false : access.canWriteBrandInfo === false;
 
   useEffectAdmin(() => {
+    const syncSectionFromHistory = () => setSection(parseSection());
+    window.addEventListener("popstate", syncSectionFromHistory);
+    return () => window.removeEventListener("popstate", syncSectionFromHistory);
+  }, []);
+
+  useEffectAdmin(() => {
     if (window.location.pathname !== "/brand-config") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("section") !== "campaigns") return;
@@ -317,6 +327,10 @@ function AdminApp() {
       window.history.replaceState({}, "", "/");
       return;
     }
+    if (nextSection === ORDERS_DELIVERY_SECTION.id) {
+      window.history.replaceState({}, "", "/orders-delivery");
+      return;
+    }
     if (nextSection === BRAND_COLLECT_SECTION.id) {
       window.history.replaceState({}, "", "/brand-collect");
       return;
@@ -364,6 +378,8 @@ function AdminApp() {
       <div className="admin-main">
         {section === DASHBOARD_SECTION.id
           ? <BrandDashboardPage />
+          : section === ORDERS_DELIVERY_SECTION.id
+          ? <OrdersDeliveryPage />
           : section === DASHBOARD_PRE_SECTION.id
           ? <DashboardPage />
           : section === BRAND_COLLECT_SECTION.id

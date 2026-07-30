@@ -65,6 +65,12 @@ const I = {
       <rect x="9" y="9" width="5" height="5" rx="1" />
     </svg>
   ),
+  navOrders: ({ size = 16 } = {}) => (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">
+      <path d="M2.2 5 8 2l5.8 3L8 8 2.2 5Z" />
+      <path d="M2.2 5v6L8 14l5.8-3V5M8 8v6" />
+    </svg>
+  ),
   navBrand: ({ size = 16 } = {}) => (
     <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">
       <path d="M8.5 2 H13 a1 1 0 0 1 1 1 V7.5 L8 13.5 a1 1 0 0 1-1.4 0 L2.5 9.4 a1 1 0 0 1 0-1.4 L8.5 2 Z" />

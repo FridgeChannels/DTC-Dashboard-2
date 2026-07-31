@@ -32,8 +32,8 @@
 ### 线上真实表结构已确认
 
 - `order.id/customer_id`：`bigint`；订单号字段是 `order_no`。
-- 订单金额快照：`amount`、`shipping_fee`、`tax_fee`、`total_amount`、`currency`。
-- `order_item` 已有 `item_type = product | discount | tax` 数据，可作为价格明细快照。
+- 订单金额快照：`amount`、`shipping_fee`、`total_amount`、`currency`。
+- `order_item` 已有商品与折扣数据，可作为价格明细快照。
 - `payment.status` 是 `smallint`；当前与 Pilot 订单关联的数据中成功记录为 `1`。
 - `finance_handoff.status` 为：
   `sent | viewed | payment_pending | paid | expired | revoked | preview`。
@@ -132,7 +132,7 @@
 ### 2.4 金额与商品
 
 - 列表和头部的总额只读 `order.total_amount`。
-- Subtotal、Discount、Shipping、Tax、Total 均读取订单和订单项快照。
+- Subtotal、Discount、Shipping、Total 均读取订单和订单项快照。
 - Discount 读取 `order_item.item_type = discount` 行，不根据当前价格计算。
 - Product/Package 优先使用订单商品快照 `order_item.item_name`；
   列表主名称可回退到 `magnet_pricing_plan.name`，再回退到 `FC order`。
@@ -373,7 +373,7 @@
    - Shipping address 下方存在可信 URL 时显示 Track shipment 外链；没有链接时显示 `Tracking information isn’t available yet. We’ll display it here as soon as it’s updated.`
 5. Order summary：
    - package、每个商品快照、unit price、quantity、subtotal
-   - discount、shipping、tax、total、currency
+   - discount、shipping、total、currency
    - payment method/time、invoice number（存在时）
 6. 不展示 Distribution 或 Activity timeline。
 7. 所有条件缺失时不渲染空横杠，改用 PRD 指定空状态或隐藏可选行。

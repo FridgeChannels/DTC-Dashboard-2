@@ -20,11 +20,12 @@ export const FULFILLMENT_STATUSES = [
 export type FulfillmentStatus = (typeof FULFILLMENT_STATUSES)[number];
 
 export const FULFILLMENT_STAGES = [
-  "order_placed",
   "payment_confirmed",
-  "design_production",
-  "shipped",
-  "delivered",
+  "design_locked",
+  "final_sample_approval",
+  "mass_production",
+  "bulk_shipment",
+  "completed",
 ] as const;
 
 export type FulfillmentStage = (typeof FULFILLMENT_STAGES)[number];
@@ -58,20 +59,20 @@ export interface PaymentEvidence {
 const DIRECT_STAGE_BY_STATUS: Partial<
   Record<FulfillmentStatus, FulfillmentStage>
 > = {
-  payment_pending: "order_placed",
-  order_confirmed: "design_production",
-  awaiting_brand_inputs: "design_production",
-  design_in_progress: "design_production",
-  awaiting_design_approval: "design_production",
-  design_approved: "design_production",
-  production: "design_production",
-  quality_check: "design_production",
-  ready_to_ship: "design_production",
-  shipped: "shipped",
-  delivered: "delivered",
-  distribution_planning: "delivered",
-  distributing: "delivered",
-  completed: "delivered",
+  payment_pending: "payment_confirmed",
+  order_confirmed: "design_locked",
+  awaiting_brand_inputs: "design_locked",
+  design_in_progress: "design_locked",
+  awaiting_design_approval: "design_locked",
+  design_approved: "final_sample_approval",
+  production: "mass_production",
+  quality_check: "mass_production",
+  ready_to_ship: "mass_production",
+  shipped: "bulk_shipment",
+  delivered: "completed",
+  distribution_planning: "completed",
+  distributing: "completed",
+  completed: "completed",
 };
 
 export function mapFulfillmentStatusToStage(
@@ -126,7 +127,9 @@ export interface FcOrderListItem {
   id: number;
   orderNumber: string;
   packageName: string;
+  productName: string;
   quantity: number;
+  additionalItemCount: number;
   currency: string;
   totalAmount: number;
   paymentStatus: PaymentStatus;
@@ -137,6 +140,7 @@ export interface FcOrderListItem {
   nextActionTitle: string | null;
   estimatedDeliveryStart: string | null;
   estimatedDeliveryEnd: string | null;
+  hasTracking: boolean;
   orderedAt: string | null;
   updatedAt: string | null;
 }
@@ -171,6 +175,28 @@ export interface FcOrderShipment {
   deliveredAt: string | null;
 }
 
+export type FcOrderShipmentType = "final_sample" | "bulk_order";
+export type FcOrderShipmentStatus = "preparing" | "shipped" | "delivered";
+export type FcOrderSampleApprovalStatus =
+  | "awaiting_review"
+  | "approved"
+  | "revision_requested";
+
+export interface FcOrderShipmentItem {
+  id: number | string;
+  type: FcOrderShipmentType;
+  roundNumber: number | null;
+  sequenceNumber: number;
+  quantity: number | null;
+  status: FcOrderShipmentStatus;
+  carrier: string | null;
+  trackingNumber: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  approvalStatus: FcOrderSampleApprovalStatus | null;
+  isVirtual: boolean;
+}
+
 export interface FcOrderAddress {
   recipientName: string;
   street: string;
@@ -195,7 +221,6 @@ export interface FcOrderPriceSummary {
   subtotal: number;
   discount: number;
   shipping: number;
-  tax: number;
   total: number;
   currency: string;
   paymentMethod: string | null;
@@ -221,6 +246,7 @@ export interface FcOrderDetailResponse {
   progress: FulfillmentProgressItem[];
   action: FcOrderAction;
   shipment: FcOrderShipment;
+  shipments: FcOrderShipmentItem[];
   shippingAddress: FcOrderAddress | null;
   items: FcOrderItem[];
   priceSummary: FcOrderPriceSummary;

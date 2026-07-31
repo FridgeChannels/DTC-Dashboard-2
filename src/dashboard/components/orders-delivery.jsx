@@ -7,10 +7,22 @@ const {
   useCallback: useCallbackOrders,
 } = React;
 
+const ORDER_TRACKING_URL = "https://www.17track.net/zh-cn";
+
+const PROGRESS_ACTIVITY_LABELS = {
+  payment_confirmed: "Designing artwork",
+  design_locked: "Final sample rounds",
+  final_sample_approval: "Bulk production",
+  mass_production: "Quality check & packing",
+  bulk_shipment: "In transit",
+};
+
 const ORDER_FILTERS = [
-  { id: "active", label: "Active" },
-  { id: "completed", label: "Completed" },
-  { id: "all", label: "All" },
+  { id: "all", label: "All status" },
+  { id: "preparing", label: "Preparing for shipment" },
+  { id: "shipped", label: "Shipped" },
+  { id: "delivered", label: "Delivered" },
+  { id: "cancelled", label: "Cancelled" },
 ];
 
 const ORDER_STATUS_META = {
@@ -136,6 +148,26 @@ function formatOrderMoney(value, currency = "USD") {
   }
 }
 
+function formatOrderListMoney(value, currency = "USD") {
+  const normalizedCurrency = currency || "USD";
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "—";
+  try {
+    const formatted = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: normalizedCurrency,
+      currencyDisplay: "narrowSymbol",
+      minimumFractionDigits: 2,
+    }).format(amount);
+    return `${normalizedCurrency} ${formatted}`;
+  } catch {
+    return `${normalizedCurrency} ${amount.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+}
+
 function formatOrderDate(value, includeYear = true) {
   if (!value) return "—";
   const date = new Date(value);
@@ -158,6 +190,11 @@ function formatOrderDateTime(value) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+}
+
+function formatOrderNumber(value) {
+  const orderNumber = String(value || "—");
+  return orderNumber.startsWith("#") ? orderNumber : `#${orderNumber}`;
 }
 
 function paymentStatusLabel(status) {
@@ -232,6 +269,22 @@ function OrderStatus({ status }) {
   return <span className={`od-status od-status--${meta.tone}`}>{meta.label}</span>;
 }
 
+function orderListStatusMeta(order) {
+  const status = order.fulfillmentStatus;
+  return status === "cancelled"
+    ? { id: "cancelled", label: "Cancelled", tone: "cancelled" }
+    : ["delivered", "distribution_planning", "distributing", "completed"].includes(status)
+      ? { id: "delivered", label: "Delivered", tone: "success" }
+      : order.hasTracking
+        ? { id: "shipped", label: "Shipped", tone: "shipped" }
+        : { id: "preparing", label: "Preparing for shipment", tone: "progress" };
+}
+
+function OrderListStatus({ order }) {
+  const meta = orderListStatusMeta(order);
+  return <span className={`od-status od-status--${meta.tone}`}>{meta.label}</span>;
+}
+
 function OrderStatusSummary({ status }) {
   const guidance = ORDER_STATUS_GUIDANCE[status] || {
     title: orderStatusMeta(status).label,
@@ -249,35 +302,101 @@ function OrderStatusSummary({ status }) {
 }
 
 function OrderListRow({ order, selected, onSelect }) {
+  const openOrder = () => onSelect(order);
+  const handleRowKeyDown = (event) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openOrder();
+    }
+  };
+  const productMeta = order.additionalItemCount > 0
+    ? `+${order.additionalItemCount} more ${order.additionalItemCount === 1 ? "item" : "items"}`
+    : `${order.quantity.toLocaleString()} ${Number(order.quantity) === 1 ? "unit" : "units"}`;
+
   return (
-    <button
-      type="button"
+    <div
       className={`od-order-row${selected ? " is-selected" : ""}`}
-      onClick={() => onSelect(order)}
+      role="row"
+      tabIndex="0"
+      aria-label={`View order ${order.orderNumber}`}
+      onClick={openOrder}
+      onKeyDown={handleRowKeyDown}
       aria-current={selected ? "true" : undefined}
     >
-      <span className="od-order-row-main">
-        <span className="od-order-number">{order.orderNumber}</span>
-        <span className="od-order-package">{order.packageName || "FridgeChannel order"}</span>
+      <span className="od-order-cell od-order-cell--order" role="cell">
+        <button
+          type="button"
+          className="od-order-number"
+          onClick={(event) => {
+            event.stopPropagation();
+            openOrder();
+          }}
+        >
+          {formatOrderNumber(order.orderNumber)}
+        </button>
       </span>
-      <span className="od-order-row-meta">
-        <OrderStatus status={order.fulfillmentStatus} />
-        <span className="od-order-total">{formatOrderMoney(order.totalAmount, order.currency)}</span>
+      <span className="od-order-cell od-order-cell--date" role="cell">
+        {formatOrderDate(order.orderedAt)}
       </span>
-      <span className="od-order-row-foot">
-        <span>{order.quantity} {Number(order.quantity) === 1 ? "unit" : "units"}</span>
-        <span>Updated {formatOrderDate(order.updatedAt, false)}</span>
+      <span className="od-order-cell od-order-cell--product" role="cell">
+        <strong>{order.productName || order.packageName || "FridgeChannel order"}</strong>
+        <span>{productMeta}</span>
       </span>
-    </button>
+      <span className="od-order-cell od-order-cell--total" role="cell">
+        {formatOrderListMoney(order.totalAmount, order.currency)}
+      </span>
+      <span className="od-order-cell od-order-cell--status" role="cell">
+        <OrderListStatus order={order} />
+      </span>
+      <span className="od-order-cell od-order-cell--action" role="cell">
+        <button
+          type="button"
+          className="od-view-action"
+          onClick={(event) => {
+            event.stopPropagation();
+            openOrder();
+          }}
+        >
+          View order
+        </button>
+      </span>
+    </div>
   );
 }
 
-function OrderProgress({ steps, status, holdReason, cancelReason }) {
+function shipmentStageForType(type) {
+  return type === "final_sample"
+    ? "final_sample_approval"
+    : "bulk_shipment";
+}
+
+function availableShipmentStages(shipments = []) {
+  return [...new Set(shipments.map((shipment) => shipmentStageForType(shipment.type)))];
+}
+
+function defaultShipmentStage(currentStage, shipments = []) {
+  const available = availableShipmentStages(shipments);
+  if (available.includes(currentStage)) return currentStage;
+  if (available.includes("bulk_shipment")) return "bulk_shipment";
+  return available[0] || null;
+}
+
+function OrderProgress({
+  steps,
+  status,
+  holdReason,
+  cancelReason,
+  selectableStages = [],
+  selectedStage,
+  onSelectStage,
+}) {
   const interruption = status === "on_hold"
     ? { title: "This order is on hold", detail: holdReason }
     : status === "cancelled"
       ? { title: "This order was cancelled", detail: cancelReason }
       : null;
+  const selectable = new Set(selectableStages);
 
   return (
     <section className="od-section">
@@ -289,17 +408,38 @@ function OrderProgress({ steps, status, holdReason, cancelReason }) {
         </div>
       )}
       <ol className="od-progress">
-        {(steps || []).map((step) => (
-          <li key={step.id} className={`od-progress-step is-${step.state}`}>
-            <span className="od-progress-marker" aria-hidden="true">
-              {step.state === "completed" ? "✓" : ""}
-            </span>
-            <span className="od-progress-copy">
-              <strong>{step.label}</strong>
-              {step.completedAt && <span>{formatOrderDate(step.completedAt, false)}</span>}
-            </span>
-          </li>
-        ))}
+        {(steps || []).map((step) => {
+          const canSelect = selectable.has(step.id);
+          const isSelected = selectedStage === step.id;
+          const activityLabel = PROGRESS_ACTIVITY_LABELS[step.id];
+          return (
+            <li
+              key={step.id}
+              className={`od-progress-step is-${step.state}${canSelect ? " is-selectable" : ""}${isSelected ? " is-selected" : ""}`}
+            >
+              <button
+                type="button"
+                className="od-progress-control"
+                disabled={!canSelect}
+                aria-pressed={canSelect ? isSelected : undefined}
+                onClick={() => canSelect && onSelectStage(step.id)}
+              >
+                <span className="od-progress-marker" aria-hidden="true">
+                  {step.state === "completed" ? "✓" : ""}
+                </span>
+                <span className="od-progress-copy">
+                  <strong>{step.label}</strong>
+                  {step.completedAt && <span>{formatOrderDate(step.completedAt, false)}</span>}
+                </span>
+              </button>
+              {activityLabel && (
+                <span className="od-progress-activity">
+                  <span>{activityLabel}</span>
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ol>
     </section>
   );
@@ -321,6 +461,7 @@ function OrderAction({ action }) {
 
 function OrderSummary({ detail }) {
   const { order, items = [], priceSummary } = detail;
+  const productItems = items.filter((item) => item.type !== "discount");
   const payment = paymentDisplayDetails(priceSummary);
   const hasPayment = Boolean(
     priceSummary?.paymentMethod ||
@@ -331,14 +472,12 @@ function OrderSummary({ detail }) {
     <section className="od-section">
       <h3>Items</h3>
       <div className="od-items">
-        {items.map((item) => (
-          <div className={`od-item-row${item.type === "discount" ? " od-item-row--discount" : ""}`} key={item.id}>
+        {productItems.map((item) => (
+          <div className="od-item-row" key={item.id}>
             <span>
               <strong>{item.name}</strong>
             </span>
-            {item.type !== "discount" && (
-              <span>{item.quantity} × {formatOrderMoney(item.unitPrice, priceSummary?.currency || order.currency)}</span>
-            )}
+            <span>{item.quantity} × {formatOrderMoney(item.unitPrice, priceSummary?.currency || order.currency)}</span>
             <strong>{formatOrderMoney(item.subtotal, priceSummary?.currency || order.currency)}</strong>
           </div>
         ))}
@@ -351,7 +490,6 @@ function OrderSummary({ detail }) {
               <div><dt>Subtotal</dt><dd>{formatOrderMoney(priceSummary.subtotal, priceSummary.currency)}</dd></div>
               {Number(priceSummary.discount) !== 0 && <div><dt>Discount</dt><dd>−{formatOrderMoney(Math.abs(Number(priceSummary.discount)), priceSummary.currency)}</dd></div>}
               <div><dt>Shipping</dt><dd>{formatOrderMoney(priceSummary.shipping, priceSummary.currency)}</dd></div>
-              <div><dt>Tax</dt><dd>{formatOrderMoney(priceSummary.tax, priceSummary.currency)}</dd></div>
               <div className="od-price-total"><dt>Total</dt><dd>{formatOrderMoney(priceSummary.total, priceSummary.currency)}</dd></div>
             </dl>
           </div>
@@ -409,62 +547,218 @@ function ShippingAddress({ shippingAddress }) {
   );
 }
 
-function ShippingStatus({ shipment }) {
-  const hasShippingInfo = Boolean(
-    shipment?.carrier ||
-    shipment?.trackingNumber ||
-    shipment?.trackingUrl ||
-    shipment?.status === "in_transit" ||
-    shipment?.status === "delivered",
-  );
-  const statusLabel = shipment?.status === "delivered"
-    ? "Delivered"
-    : shipment?.status === "in_transit"
-      ? "In transit"
-      : "Preparing shipment";
+function shipmentTitle(shipment, showBulkSequence) {
+  if (shipment.type === "final_sample") {
+    return `Final sample · Round ${shipment.roundNumber || 1}`;
+  }
+  return showBulkSequence
+    ? `Bulk order · Shipment ${shipment.sequenceNumber}`
+    : "Bulk order";
+}
+
+function shipmentStatusMeta(status) {
+  if (status === "delivered") {
+    return { label: "Delivered", tone: "success" };
+  }
+  if (status === "shipped") {
+    return { label: "Shipped", tone: "shipped" };
+  }
+  return { label: "Preparing for shipment", tone: "progress" };
+}
+
+function sampleApprovalMeta(status) {
+  const options = {
+    awaiting_review: { label: "Awaiting sample review", tone: "progress" },
+    approved: { label: "Sample approved", tone: "success" },
+    revision_requested: { label: "Revision requested", tone: "attention" },
+  };
+  return options[status] || null;
+}
+
+function OrderShipment({ shipment, showBulkSequence }) {
+  const hasTrackingNumber = Boolean(shipment.trackingNumber);
+  const status = shipmentStatusMeta(shipment.status);
+  const approval = sampleApprovalMeta(shipment.approvalStatus);
+  const description = shipment.status === "delivered"
+    ? [
+        "This shipment has been delivered.",
+        "Use the tracking link below to review the carrier record.",
+      ]
+    : hasTrackingNumber
+      ? [
+          "Your order has shipped.",
+          "Use the tracking link below for the latest delivery updates.",
+        ]
+      : [
+          "We’re preparing your order for shipment.",
+          "Tracking information will be available once your order ships.",
+        ];
 
   return (
-    <div className="od-delivery-group od-shipment-status">
-      <h4>Shipping status</h4>
-      {hasShippingInfo ? (
+    <div className="od-shipment-item">
+      <div className="od-shipment-heading">
+        <div>
+          <h4>{shipmentTitle(shipment, showBulkSequence)}</h4>
+          {shipment.quantity && (
+            <span>
+              {shipment.quantity.toLocaleString()} {Number(shipment.quantity) === 1 ? "unit" : "units"}
+            </span>
+          )}
+        </div>
+        <span className={`od-status od-status--${status.tone}`}>{status.label}</span>
+      </div>
+      <div className="od-shipment-summary">
+        {description.map((line) => <p key={line}>{line}</p>)}
+      </div>
+      {approval && (
+        <span className={`od-shipment-approval od-shipment-approval--${approval.tone}`}>
+          {approval.label}
+        </span>
+      )}
+      {hasTrackingNumber && (
         <>
           <dl className="od-shipment-facts">
-            <div><dt>Status</dt><dd>{statusLabel}</dd></div>
             {shipment.carrier && <div><dt>Carrier</dt><dd>{shipment.carrier}</dd></div>}
-            {shipment.trackingNumber && (
-              <div>
-                <dt>Tracking number</dt>
-                <dd translate="no">{shipment.trackingNumber}</dd>
-              </div>
-            )}
+            <div>
+              <dt>Tracking number</dt>
+              <dd translate="no">{shipment.trackingNumber}</dd>
+            </div>
           </dl>
-          {shipment.trackingUrl && (
-            <a
-              className="od-shipment-link"
-              href={shipment.trackingUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Track shipment ↗
-            </a>
-          )}
+          <a
+            className="od-shipment-link"
+            href={ORDER_TRACKING_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Track shipment ↗
+          </a>
         </>
-      ) : (
-        <p className="od-shipment-empty">
-          Tracking information isn’t available yet. We’ll display it here as soon as it’s updated.
-        </p>
       )}
     </div>
   );
 }
 
-function OrderDelivery({ shippingAddress, shipment }) {
+function shipmentSelectionOrder(shipment) {
+  return shipment.type === "final_sample"
+    ? (shipment.roundNumber || 0)
+    : (shipment.sequenceNumber || 0);
+}
+
+function shipmentSelectionLabel(shipment, showBulkSequence) {
+  if (shipment.type === "final_sample") {
+    return `Round ${shipment.roundNumber || 1}`;
+  }
+  return showBulkSequence
+    ? `Shipment ${shipment.sequenceNumber || 1}`
+    : "Bulk order";
+}
+
+function OrderDelivery({ shippingAddress, shipments = [], selectedStage }) {
+  const selectedType = selectedStage === "final_sample_approval"
+    ? "final_sample"
+    : "bulk_order";
+  const stageShipments = shipments
+    .filter((shipment) => shipment.type === selectedType)
+    .sort((a, b) => shipmentSelectionOrder(b) - shipmentSelectionOrder(a));
+  const latestShipmentId = stageShipments[0]?.id == null
+    ? null
+    : String(stageShipments[0].id);
+  const [selectedShipmentId, setSelectedShipmentId] = useStateOrders(
+    latestShipmentId,
+  );
+
+  useEffectOrders(() => {
+    setSelectedShipmentId(latestShipmentId);
+  }, [selectedStage, latestShipmentId]);
+
+  const selectedShipment = stageShipments.find(
+    (shipment) => String(shipment.id) === selectedShipmentId,
+  ) || stageShipments[0];
+  const bulkShipmentCount = shipments.filter(
+    (shipment) => shipment.type === "bulk_order",
+  ).length;
+
   return (
     <section className="od-section od-delivery">
-      <h3>Delivery</h3>
-      <ShippingStatus shipment={shipment} />
+      <h3>Shipments</h3>
+      {stageShipments.length > 1 && (
+        <div className="od-shipment-picker" role="tablist" aria-label="Select shipment">
+          {stageShipments.map((shipment) => {
+            const shipmentId = String(shipment.id);
+            const isSelected = shipmentId === String(selectedShipment?.id);
+            return (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                className={isSelected ? "is-selected" : ""}
+                key={shipment.id}
+                onClick={() => setSelectedShipmentId(shipmentId)}
+              >
+                {shipmentSelectionLabel(shipment, bulkShipmentCount > 1)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div className="od-shipments">
+        {selectedShipment && (
+          <OrderShipment
+            key={selectedShipment.id}
+            shipment={selectedShipment}
+            showBulkSequence={bulkShipmentCount > 1}
+          />
+        )}
+      </div>
       <ShippingAddress shippingAddress={shippingAddress} />
     </section>
+  );
+}
+
+function OrderDetailContent({ detail, onBack }) {
+  const { order } = detail;
+  const selectableStages = availableShipmentStages(detail.shipments);
+  const initialStage = defaultShipmentStage(
+    order.currentStage,
+    detail.shipments,
+  );
+  const [selectedStage, setSelectedStage] = useStateOrders(initialStage);
+
+  useEffectOrders(() => {
+    setSelectedStage(initialStage);
+  }, [order.id, initialStage]);
+
+  return (
+    <article className="od-detail">
+      <button type="button" className="od-back" onClick={onBack}>← All orders</button>
+      <header className="od-detail-header">
+        <div>
+          <div className="od-title-meta">
+            <span className="od-eyebrow">Order {order.orderNumber}</span>
+            <OrderStatus status={order.fulfillmentStatus} />
+          </div>
+          <h2>{order.packageName || "FridgeChannel order"}</h2>
+          <p>Placed {formatOrderDate(order.orderedAt)} · {order.quantity} {Number(order.quantity) === 1 ? "unit" : "units"}</p>
+          <OrderStatusSummary status={order.fulfillmentStatus} />
+        </div>
+      </header>
+      <OrderProgress
+        steps={detail.progress}
+        status={order.fulfillmentStatus}
+        holdReason={order.holdReason}
+        cancelReason={order.cancelReason}
+        selectableStages={selectableStages}
+        selectedStage={selectedStage}
+        onSelectStage={setSelectedStage}
+      />
+      <OrderAction action={detail.action} />
+      <OrderDelivery
+        shippingAddress={detail.shippingAddress}
+        shipments={detail.shipments}
+        selectedStage={selectedStage}
+      />
+      <OrderSummary detail={detail} />
+    </article>
   );
 }
 
@@ -497,37 +791,13 @@ function OrderDetail({ detail, loading, error, onRetry, onBack }) {
     );
   }
 
-  const { order } = detail;
-  return (
-    <article className="od-detail">
-      {backButton}
-      <header className="od-detail-header">
-        <div>
-          <div className="od-title-meta">
-            <span className="od-eyebrow">Order {order.orderNumber}</span>
-            <OrderStatus status={order.fulfillmentStatus} />
-          </div>
-          <h2>{order.packageName || "FridgeChannel order"}</h2>
-          <p>Placed {formatOrderDate(order.orderedAt)} · {order.quantity} {Number(order.quantity) === 1 ? "unit" : "units"}</p>
-          <OrderStatusSummary status={order.fulfillmentStatus} />
-        </div>
-      </header>
-      <OrderProgress
-        steps={detail.progress}
-        status={order.fulfillmentStatus}
-        holdReason={order.holdReason}
-        cancelReason={order.cancelReason}
-      />
-      <OrderAction action={detail.action} />
-      <OrderSummary detail={detail} />
-      <OrderDelivery shippingAddress={detail.shippingAddress} shipment={detail.shipment} />
-    </article>
-  );
+  return <OrderDetailContent detail={detail} onBack={onBack} />;
 }
 
 function OrdersDeliveryPage() {
   const initialOrderId = new URLSearchParams(window.location.search).get("order");
-  const [filter, setFilter] = useStateOrders("active");
+  const [filter, setFilter] = useStateOrders("all");
+  const [searchQuery, setSearchQuery] = useStateOrders("");
   const [orders, setOrders] = useStateOrders([]);
   const [selectedId, setSelectedId] = useStateOrders(initialOrderId);
   const [detailOpen, setDetailOpen] = useStateOrders(Boolean(initialOrderId));
@@ -551,8 +821,6 @@ function OrdersDeliveryPage() {
       if (!response.ok) throw new Error("detail");
       const data = await response.json();
       setDetail(data);
-      const classification = data.order?.classification;
-      if (classification === "completed") setFilter("completed");
     } catch {
       setDetail(null);
       setDetailError(true);
@@ -561,11 +829,11 @@ function OrdersDeliveryPage() {
     }
   }, []);
 
-  const loadList = useCallbackOrders(async (nextFilter, options = {}) => {
+  const loadList = useCallbackOrders(async (options = {}) => {
     setListLoading(true);
     setListError(false);
     try {
-      const response = await fetch(`/api/fc-orders?status=${encodeURIComponent(nextFilter)}`);
+      const response = await fetch("/api/fc-orders?status=all");
       if (!response.ok) throw new Error("list");
       const data = await response.json();
       const nextOrders = Array.isArray(data.orders) ? data.orders : [];
@@ -582,7 +850,7 @@ function OrdersDeliveryPage() {
   }, []);
 
   useEffectOrders(() => {
-    loadList("active", { keepSelection: Boolean(initialOrderId) });
+    loadList({ keepSelection: Boolean(initialOrderId) });
     if (initialOrderId) loadDetail(initialOrderId);
   }, []);
 
@@ -607,13 +875,12 @@ function OrdersDeliveryPage() {
   };
 
   const changeFilter = (nextFilter) => {
-    if (nextFilter === filter && !listError) return;
+    if (nextFilter === filter) return;
     setFilter(nextFilter);
     setDetailOpen(false);
     setSelectedId(null);
     setDetail(null);
     window.history.replaceState({}, "", "/orders-delivery");
-    loadList(nextFilter);
   };
 
   const showAllOrders = () => {
@@ -624,6 +891,23 @@ function OrdersDeliveryPage() {
     params.delete("order");
     window.history.pushState({}, "", `/orders-delivery${params.toString() ? `?${params.toString()}` : ""}`);
   };
+
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const statusFilteredOrders = filter === "all"
+    ? orders
+    : orders.filter((order) => orderListStatusMeta(order).id === filter);
+  const visibleOrders = normalizedSearch
+    ? statusFilteredOrders.filter((order) => {
+        const statusLabel = orderListStatusMeta(order).label;
+        return [
+          order.orderNumber,
+          order.productName,
+          order.packageName,
+          order.currency,
+          statusLabel,
+        ].some((value) => String(value || "").toLowerCase().includes(normalizedSearch));
+      })
+    : statusFilteredOrders;
 
   return (
     <main className="admin-content od-page">
@@ -648,7 +932,16 @@ function OrdersDeliveryPage() {
 
           <div className="od-layout">
             <aside className="od-list-panel" aria-label="Orders">
-              <div className="od-filter">
+              <div className="od-list-toolbar">
+                <label className="od-search">
+                  <span className="sr-only">Search orders</span>
+                  <input
+                    type="search"
+                    placeholder="Search orders"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                  />
+                </label>
                 <select
                   aria-label="Filter orders by status"
                   value={filter}
@@ -659,23 +952,38 @@ function OrdersDeliveryPage() {
                   ))}
                 </select>
               </div>
-              <div className="od-list" aria-busy={listLoading}>
-                {listLoading && orders.length === 0 ? (
-                  <div className="od-list-loading"><PageLoading /></div>
-                ) : listError ? (
-                  <OrdersError onRetry={() => loadList(filter, { keepSelection: true })} />
-                ) : orders.length === 0 ? (
-                  <OrdersEmpty filter={filter} />
-                ) : (
-                  orders.map((order) => (
-                    <OrderListRow
-                      key={order.id}
-                      order={order}
-                      selected={selectedId === order.id}
-                      onSelect={selectOrder}
-                    />
-                  ))
-                )}
+              <div className="od-list" role="table" aria-label="Order list" aria-busy={listLoading}>
+                <div className="od-list-header" role="row">
+                  <span role="columnheader">Order</span>
+                  <span role="columnheader">Date</span>
+                  <span role="columnheader">Product</span>
+                  <span role="columnheader">Total</span>
+                  <span role="columnheader">Status</span>
+                  <span role="columnheader">Action</span>
+                </div>
+                <div className="od-list-body" role="rowgroup">
+                  {listLoading && orders.length === 0 ? (
+                    <div className="od-list-loading"><PageLoading /></div>
+                  ) : listError ? (
+                    <OrdersError onRetry={() => loadList({ keepSelection: true })} />
+                  ) : orders.length === 0 ? (
+                    <OrdersEmpty filter="all" />
+                  ) : visibleOrders.length === 0 ? (
+                    <div className="od-empty od-search-empty">
+                      <h2>No matching orders</h2>
+                      <p>Try a different order number, product, or status.</p>
+                    </div>
+                  ) : (
+                    visibleOrders.map((order) => (
+                      <OrderListRow
+                        key={order.id}
+                        order={order}
+                        selected={selectedId === order.id}
+                        onSelect={selectOrder}
+                      />
+                    ))
+                  )}
+                </div>
               </div>
             </aside>
           </div>

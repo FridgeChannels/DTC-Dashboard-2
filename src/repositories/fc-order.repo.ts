@@ -15,7 +15,6 @@ export interface FcOrderRow {
   quantity: number;
   amount: Numeric;
   shipping_fee: Numeric | null;
-  tax_fee: Numeric | null;
   total_amount: Numeric;
   status: number | null;
   payment_method: string | null;
@@ -88,6 +87,27 @@ export interface FcOrderFulfillmentRow {
   updated_at: string;
 }
 
+export interface FcOrderShipmentRow {
+  id: number;
+  order_id: number;
+  customer_id: number;
+  shipment_type: "final_sample" | "bulk_order";
+  round_number: number | null;
+  sequence_number: number;
+  quantity: number | null;
+  carrier: string | null;
+  tracking_number: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  sample_approval_status:
+    | "awaiting_review"
+    | "approved"
+    | "revision_requested"
+    | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FcOrderFulfillmentEventRow {
   id: number;
   order_id: number;
@@ -126,7 +146,6 @@ const ORDER_SELECT = [
   "quantity",
   "amount",
   "shipping_fee",
-  "tax_fee",
   "total_amount",
   "status",
   "payment_method",
@@ -191,6 +210,23 @@ const FULFILLMENT_SELECT = [
   "hold_reason",
   "cancel_reason",
   "invoice_number",
+  "created_at",
+  "updated_at",
+].join(", ");
+
+const SHIPMENT_SELECT = [
+  "id",
+  "order_id",
+  "customer_id",
+  "shipment_type",
+  "round_number",
+  "sequence_number",
+  "quantity",
+  "carrier",
+  "tracking_number",
+  "shipped_at",
+  "delivered_at",
+  "sample_approval_status",
   "created_at",
   "updated_at",
 ].join(", ");
@@ -277,6 +313,21 @@ export async function listFulfillmentsByCustomerAndOrderIds(
     .order("updated_at", { ascending: false });
   throwIfError(error);
   return (data ?? []) as unknown as FcOrderFulfillmentRow[];
+}
+
+export async function listShipmentsByCustomerAndOrderIds(
+  customerId: number,
+  orderIds: number[],
+): Promise<FcOrderShipmentRow[]> {
+  if (!orderIds.length) return [];
+  const { data, error } = await getSupabase()
+    .from("fc_order_shipment")
+    .select(SHIPMENT_SELECT)
+    .eq("customer_id", customerId)
+    .in("order_id", orderIds)
+    .order("created_at", { ascending: true });
+  throwIfError(error);
+  return (data ?? []) as unknown as FcOrderShipmentRow[];
 }
 
 export async function listFulfillmentEventsForOrder(

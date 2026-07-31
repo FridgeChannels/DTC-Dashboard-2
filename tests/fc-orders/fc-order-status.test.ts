@@ -23,9 +23,11 @@ describe("FC order fulfillment status", () => {
 
   it("keeps the last active stage when an order is on hold", () => {
     expect(mapFulfillmentStatusToStage("on_hold", "production")).toBe(
-      "design_production",
+      "mass_production",
     );
-    expect(mapFulfillmentStatusToStage("on_hold", "shipped")).toBe("shipped");
+    expect(mapFulfillmentStatusToStage("on_hold", "shipped")).toBe(
+      "bulk_shipment",
+    );
   });
 
   it("does not show a normal progress stage for cancelled orders", () => {

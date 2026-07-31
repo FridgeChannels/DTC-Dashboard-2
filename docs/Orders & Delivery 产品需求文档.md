@@ -357,7 +357,6 @@ Tracking URL 不存在时，在地址下方显示：`Tracking information isn’
 - Subtotal
 - Discount
 - Shipping
-- Tax
 - Total
 - Currency
 - Payment Method

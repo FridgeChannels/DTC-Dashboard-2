@@ -8,6 +8,7 @@ import {
 import type {
   FcOrderFulfillmentRow,
   FcOrderRow,
+  FcOrderShipmentRow,
 } from "../../src/repositories/fc-order.repo.js";
 import {
   PRICE_SNAPSHOT_CASES,
@@ -21,6 +22,7 @@ vi.mock("../../src/repositories/fc-order.repo.js", () => ({
   listPaymentsByOrderIds: vi.fn(),
   listFinanceHandoffsByOrderIds: vi.fn(),
   listFulfillmentsByCustomerAndOrderIds: vi.fn(),
+  listShipmentsByCustomerAndOrderIds: vi.fn(),
   listFulfillmentEventsForOrder: vi.fn(),
   findShippingAddressForCustomer: vi.fn(),
   listPricingPlansByIds: vi.fn(),
@@ -33,7 +35,6 @@ const baseOrder: FcOrderRow = {
   quantity: 1000,
   amount: 4200,
   shipping_fee: 120,
-  tax_fee: 72,
   total_amount: 4392,
   status: 1,
   payment_method: "card",
@@ -77,6 +78,23 @@ const productionFulfillment: FcOrderFulfillmentRow = {
   updated_at: "2026-07-29T12:00:00Z",
 };
 
+const bulkShipment: FcOrderShipmentRow = {
+  id: 201,
+  order_id: 101,
+  customer_id: 7,
+  shipment_type: "bulk_order",
+  round_number: null,
+  sequence_number: 1,
+  quantity: 1000,
+  carrier: "UPS",
+  tracking_number: "1Z999",
+  shipped_at: "2026-07-31T10:00:00Z",
+  delivered_at: null,
+  sample_approval_status: null,
+  created_at: "2026-07-31T10:00:00Z",
+  updated_at: "2026-07-31T10:00:00Z",
+};
+
 describe("FC order service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -86,6 +104,7 @@ describe("FC order service", () => {
     vi.mocked(repo.listPaymentsByOrderIds).mockResolvedValue([]);
     vi.mocked(repo.listFinanceHandoffsByOrderIds).mockResolvedValue([]);
     vi.mocked(repo.listFulfillmentsByCustomerAndOrderIds).mockResolvedValue([]);
+    vi.mocked(repo.listShipmentsByCustomerAndOrderIds).mockResolvedValue([]);
     vi.mocked(repo.listFulfillmentEventsForOrder).mockResolvedValue([]);
     vi.mocked(repo.findShippingAddressForCustomer).mockResolvedValue(null);
     vi.mocked(repo.listPricingPlansByIds).mockResolvedValue([]);
@@ -119,7 +138,7 @@ describe("FC order service", () => {
     expect(result.orders[0]).toMatchObject({
       paymentStatus: "pending",
       fulfillmentStatus: "payment_pending",
-      currentStage: "order_placed",
+      currentStage: "payment_confirmed",
       classification: "active",
     });
   });
@@ -132,7 +151,7 @@ describe("FC order service", () => {
     expect(result.orders[0]).toMatchObject({
       paymentStatus: "paid",
       fulfillmentStatus: "order_confirmed",
-      currentStage: "design_production",
+      currentStage: "design_locked",
     });
   });
 
@@ -149,7 +168,7 @@ describe("FC order service", () => {
           completedAt: baseOrder.payment_time,
         }),
         expect.objectContaining({
-          id: "design_production",
+          id: "design_locked",
           state: "current",
         }),
       ]),
@@ -179,6 +198,9 @@ describe("FC order service", () => {
         cancel_reason: "Order replaced.",
       },
     ]);
+    vi.mocked(repo.listShipmentsByCustomerAndOrderIds).mockResolvedValue([
+      bulkShipment,
+    ]);
 
     expect((await listFcOrders(7, "active")).orders.map((o) => o.id)).toEqual([
       101,
@@ -201,6 +223,158 @@ describe("FC order service", () => {
     const result = await listFcOrders(7, "all");
 
     expect(result.orders.map(({ id }) => id)).toEqual([102, 103, 101]);
+  });
+
+  it("includes safe shipment actions and additional product counts in the list", async () => {
+    vi.mocked(repo.listOrdersByCustomerId).mockResolvedValue([baseOrder]);
+    vi.mocked(repo.listOrderItemsByOrderIds).mockResolvedValue([
+      {
+        id: 1,
+        order_id: 101,
+        item_name: "Custom FC Magnets",
+        item_type: "product",
+        unit_price: 4.2,
+        quantity: 1000,
+        subtotal: 4200,
+        created_at: baseOrder.created_at,
+      },
+      {
+        id: 2,
+        order_id: 101,
+        item_name: "Display stands",
+        item_type: "product",
+        unit_price: 1,
+        quantity: 1000,
+        subtotal: 1000,
+        created_at: baseOrder.created_at,
+      },
+    ]);
+    vi.mocked(repo.listFulfillmentsByCustomerAndOrderIds).mockResolvedValue([
+      {
+        ...productionFulfillment,
+        status: "shipped",
+        tracking_number: "1Z999",
+        tracking_url: "https://www.ups.com/track?tracknum=1Z999",
+      },
+    ]);
+    vi.mocked(repo.listShipmentsByCustomerAndOrderIds).mockResolvedValue([
+      bulkShipment,
+    ]);
+
+    const result = await listFcOrders(7, "all");
+
+    expect(result.orders[0]).toMatchObject({
+      productName: "Custom FC Magnets",
+      additionalItemCount: 1,
+      hasTracking: true,
+    });
+    expect(result.orders[0]).not.toHaveProperty("trackingNumber");
+    expect(result.orders[0]).not.toHaveProperty("trackingUrl");
+  });
+
+  it("returns repeatable sample rounds before bulk shipments", async () => {
+    vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue(baseOrder);
+    vi.mocked(repo.listFulfillmentsByCustomerAndOrderIds).mockResolvedValue([
+      productionFulfillment,
+    ]);
+    vi.mocked(repo.listShipmentsByCustomerAndOrderIds).mockResolvedValue([
+      {
+        ...bulkShipment,
+        id: 211,
+        shipment_type: "final_sample",
+        round_number: 2,
+        sequence_number: 1,
+        quantity: 1,
+        tracking_number: "SAMPLE-2",
+        sample_approval_status: "approved",
+      },
+      {
+        ...bulkShipment,
+        id: 210,
+        shipment_type: "final_sample",
+        round_number: 1,
+        sequence_number: 1,
+        quantity: 1,
+        tracking_number: "SAMPLE-1",
+        delivered_at: "2026-07-20T10:00:00Z",
+        sample_approval_status: "revision_requested",
+      },
+      {
+        ...bulkShipment,
+        id: 212,
+        shipment_type: "bulk_order",
+        round_number: null,
+        sequence_number: 1,
+        tracking_number: null,
+        carrier: null,
+        shipped_at: null,
+      },
+    ]);
+
+    const detail = await getFcOrderDetail(7, 101);
+
+    expect(detail?.shipments).toEqual([
+      expect.objectContaining({
+        id: 210,
+        type: "final_sample",
+        roundNumber: 1,
+        status: "delivered",
+        approvalStatus: "revision_requested",
+      }),
+      expect.objectContaining({
+        id: 211,
+        type: "final_sample",
+        roundNumber: 2,
+        status: "shipped",
+        approvalStatus: "approved",
+      }),
+      expect.objectContaining({
+        id: 212,
+        type: "bulk_order",
+        sequenceNumber: 1,
+        status: "preparing",
+      }),
+    ]);
+    expect(detail?.order.hasTracking).toBe(false);
+  });
+
+  it("hides bulk shipments until the latest final sample is approved", async () => {
+    vi.mocked(repo.findOrderByIdForCustomer).mockResolvedValue(baseOrder);
+    vi.mocked(repo.listFulfillmentsByCustomerAndOrderIds).mockResolvedValue([
+      {
+        ...productionFulfillment,
+        status: "design_approved",
+      },
+    ]);
+    vi.mocked(repo.listShipmentsByCustomerAndOrderIds).mockResolvedValue([
+      {
+        ...bulkShipment,
+        id: 210,
+        shipment_type: "final_sample",
+        round_number: 1,
+        quantity: 1,
+        tracking_number: "SAMPLE-1",
+        sample_approval_status: "revision_requested",
+      },
+      {
+        ...bulkShipment,
+        id: 211,
+        shipment_type: "final_sample",
+        round_number: 2,
+        quantity: 1,
+        tracking_number: "SAMPLE-2",
+        sample_approval_status: "awaiting_review",
+      },
+      bulkShipment,
+    ]);
+
+    const detail = await getFcOrderDetail(7, 101);
+
+    expect(detail?.shipments).toHaveLength(2);
+    expect(detail?.shipments.map((shipment) => shipment.type)).toEqual([
+      "final_sample",
+      "final_sample",
+    ]);
   });
 
   it("builds a production detail from immutable price snapshots", async () => {
@@ -266,14 +440,20 @@ describe("FC order service", () => {
       subtotal: 4200,
       discount: -200,
       shipping: 120,
-      tax: 72,
       total: 4392,
       currency: "USD",
       invoiceNumber: "INV-2026-001",
     });
     expect(detail?.shippingAddress?.recipientName).toBe("Jamie Lee");
-    expect(detail?.progress.find((step) => step.id === "design_production"))
+    expect(detail?.progress.find((step) => step.id === "mass_production"))
       .toMatchObject({ state: "current" });
+    expect(detail?.shipments).toEqual([
+      expect.objectContaining({
+        type: "bulk_order",
+        status: "preparing",
+        isVirtual: true,
+      }),
+    ]);
   });
 
   it("preserves the last active stage while an order is on hold", async () => {
@@ -289,7 +469,7 @@ describe("FC order service", () => {
 
     const detail = await getFcOrderDetail(7, 101);
 
-    expect(detail?.order.currentStage).toBe("shipped");
+    expect(detail?.order.currentStage).toBe("bulk_shipment");
     expect(detail?.order.holdReason).toBe("Carrier pickup rescheduled.");
   });
 
@@ -310,7 +490,7 @@ describe("FC order service", () => {
     expect(active.orders).toEqual([]);
     expect(completed.orders[0]).toMatchObject({
       fulfillmentStatus: "delivered",
-      currentStage: "delivered",
+      currentStage: "completed",
       classification: "completed",
     });
   });
@@ -330,7 +510,7 @@ describe("FC order service", () => {
 
       expect(result.orders[0]).toMatchObject({
         fulfillmentStatus: "delivered",
-        currentStage: "delivered",
+        currentStage: "completed",
         classification: "completed",
         actionRequired: false,
         nextActionTitle: null,
@@ -359,14 +539,24 @@ describe("FC order service", () => {
       nextActionTitle: null,
     });
     expect(detail?.progress.map(({ id }) => id)).toEqual([
-      "order_placed",
       "payment_confirmed",
-      "design_production",
-      "shipped",
-      "delivered",
+      "design_locked",
+      "final_sample_approval",
+      "mass_production",
+      "bulk_shipment",
+      "completed",
+    ]);
+    expect(detail?.progress.map(({ label }) => label)).toEqual([
+      "Payment confirmed",
+      "Design locked",
+      "Final sample approved",
+      "Mass production completed",
+      "Shipped",
+      "Delivered",
     ]);
     expect(detail?.progress.at(-1)).toMatchObject({
-      id: "delivered",
+      id: "completed",
+      label: "Delivered",
       state: "completed",
       completedAt: "2026-08-05T10:00:00Z",
     });
@@ -416,7 +606,6 @@ describe("FC order service", () => {
         ...baseOrder,
         amount: String(snapshot.subtotal),
         shipping_fee: String(snapshot.shipping),
-        tax_fee: String(snapshot.tax),
         total_amount: String(snapshot.total),
         currency: snapshot.currency,
       });

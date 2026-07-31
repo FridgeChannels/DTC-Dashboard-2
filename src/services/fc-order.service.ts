@@ -7,6 +7,7 @@ import type {
   FcOrderPaymentRow,
   FcOrderPricingPlanRow,
   FcOrderRow,
+  FcOrderShipmentRow,
   FcOrderShippingAddressRow,
 } from "../repositories/fc-order.repo.js";
 import {
@@ -21,6 +22,7 @@ import {
   type FcOrderListItem,
   type FcOrderListResponse,
   type FcOrderShipment,
+  type FcOrderShipmentItem,
   type FulfillmentProgressItem,
   type FulfillmentStage,
   type FulfillmentStatus,
@@ -34,15 +36,17 @@ interface OrderContext {
   payment: FcOrderPaymentRow | null;
   handoff: FcOrderFinanceHandoffRow | null;
   fulfillment: FcOrderFulfillmentRow | null;
+  shipments: FcOrderShipmentRow[];
   pricingPlan: FcOrderPricingPlanRow | null;
 }
 
 const STAGE_LABELS: Record<FulfillmentStage, string> = {
-  order_placed: "Order placed",
   payment_confirmed: "Payment confirmed",
-  design_production: "Design & production",
-  shipped: "Shipped",
-  delivered: "Delivered",
+  design_locked: "Design locked",
+  final_sample_approval: "Final sample approved",
+  mass_production: "Mass production completed",
+  bulk_shipment: "Shipped",
+  completed: "Delivered",
 };
 
 const TRUSTED_TRACKING_HOSTS = new Set([
@@ -138,12 +142,18 @@ function packageNameForContext(context: OrderContext): string {
   return fallback?.item_name?.trim() || "FC order";
 }
 
+function productNameForContext(context: OrderContext): string {
+  const product = context.items.find((item) => item.item_type === "product");
+  return product?.item_name?.trim() || packageNameForContext(context);
+}
+
 function updatedAtForContext(context: OrderContext): string | null {
   return latestIso([
     context.order.updated_at,
     context.fulfillment?.updated_at,
     context.payment?.updated_at,
     context.handoff?.updated_at,
+    ...context.shipments.map((shipment) => shipment.updated_at),
   ]);
 }
 
@@ -151,11 +161,21 @@ function toListItem(context: OrderContext): FcOrderListItem {
   const paymentStatus = paymentStatusForContext(context);
   const fulfillmentStatus = effectiveStatus(context.fulfillment, paymentStatus);
   const classification = classifyFulfillmentStatus(fulfillmentStatus);
+  const productItemCount = context.items.filter(
+    (item) => item.item_type === "product",
+  ).length;
+  const hasTracking = context.shipments.some(
+    (shipment) =>
+      shipment.shipment_type === "bulk_order" &&
+      Boolean(shipment.tracking_number?.trim()),
+  );
   return {
     id: context.order.id,
     orderNumber: context.order.order_no,
     packageName: packageNameForContext(context),
+    productName: productNameForContext(context),
     quantity: context.order.quantity,
+    additionalItemCount: Math.max(0, productItemCount - 1),
     currency: context.order.currency || "USD",
     totalAmount: toNumber(context.order.total_amount),
     paymentStatus,
@@ -175,6 +195,7 @@ function toListItem(context: OrderContext): FcOrderListItem {
     estimatedDeliveryStart:
       context.fulfillment?.estimated_delivery_start ?? null,
     estimatedDeliveryEnd: context.fulfillment?.estimated_delivery_end ?? null,
+    hasTracking,
     orderedAt: context.order.created_at,
     updatedAt: updatedAtForContext(context),
   };
@@ -191,12 +212,16 @@ async function buildContexts(orders: FcOrderRow[]): Promise<OrderContext[]> {
     ),
   ];
 
-  const [items, payments, handoffs, fulfillments, pricingPlans] =
+  const [items, payments, handoffs, fulfillments, shipments, pricingPlans] =
     await Promise.all([
       fcOrderRepo.listOrderItemsByOrderIds(orderIds),
       fcOrderRepo.listPaymentsByOrderIds(orderIds),
       fcOrderRepo.listFinanceHandoffsByOrderIds(orderIds),
       fcOrderRepo.listFulfillmentsByCustomerAndOrderIds(
+        orders[0]?.customer_id ?? 0,
+        orderIds,
+      ),
+      fcOrderRepo.listShipmentsByCustomerAndOrderIds(
         orders[0]?.customer_id ?? 0,
         orderIds,
       ),
@@ -214,6 +239,7 @@ async function buildContexts(orders: FcOrderRow[]): Promise<OrderContext[]> {
   const fulfillmentByOrder = new Map(
     fulfillments.map((row) => [row.order_id, row]),
   );
+  const shipmentsByOrder = groupByOrderId(shipments);
   const pricingPlanById = new Map(pricingPlans.map((row) => [row.id, row]));
 
   return orders.map((order) => ({
@@ -222,6 +248,7 @@ async function buildContexts(orders: FcOrderRow[]): Promise<OrderContext[]> {
     payment: paymentsByOrder.get(order.id)?.[0] ?? null,
     handoff: handoffsByOrder.get(order.id)?.[0] ?? null,
     fulfillment: fulfillmentByOrder.get(order.id) ?? null,
+    shipments: shipmentsByOrder.get(order.id) ?? [],
     pricingPlan:
       (order.pricing_plan_id != null
         ? pricingPlanById.get(order.pricing_plan_id)
@@ -304,6 +331,82 @@ function firstEventAt(
   return matches[0] ?? null;
 }
 
+function shipmentStatus(
+  trackingNumber: string | null,
+  deliveredAt: string | null,
+): FcOrderShipmentItem["status"] {
+  if (deliveredAt) return "delivered";
+  if (trackingNumber?.trim()) return "shipped";
+  return "preparing";
+}
+
+function customerShipmentsForContext(
+  context: OrderContext,
+): FcOrderShipmentItem[] {
+  const persisted: FcOrderShipmentItem[] = context.shipments.map((shipment) => ({
+    id: shipment.id,
+    type: shipment.shipment_type,
+    roundNumber: shipment.round_number,
+    sequenceNumber: shipment.sequence_number,
+    quantity: shipment.quantity,
+    status: shipmentStatus(
+      shipment.tracking_number,
+      shipment.delivered_at,
+    ),
+    carrier: shipment.carrier,
+    trackingNumber: shipment.tracking_number,
+    shippedAt: shipment.shipped_at,
+    deliveredAt: shipment.delivered_at,
+    approvalStatus: shipment.sample_approval_status,
+    isVirtual: false,
+  }));
+
+  const sampleShipments = persisted
+    .filter((shipment) => shipment.type === "final_sample")
+    .sort((a, b) => (a.roundNumber ?? 0) - (b.roundNumber ?? 0));
+  const latestSample = sampleShipments.at(-1);
+  const canShowBulkOrder =
+    !latestSample || latestSample.approvalStatus === "approved";
+  const visibleShipments = canShowBulkOrder
+    ? persisted
+    : persisted.filter((shipment) => shipment.type === "final_sample");
+
+  if (
+    canShowBulkOrder &&
+    !visibleShipments.some((shipment) => shipment.type === "bulk_order")
+  ) {
+    const fulfillment = context.fulfillment;
+    visibleShipments.push({
+      id: `virtual-bulk-${context.order.id}`,
+      type: "bulk_order",
+      roundNumber: null,
+      sequenceNumber: 1,
+      quantity: context.order.quantity,
+      status: shipmentStatus(
+        fulfillment?.tracking_number ?? null,
+        fulfillment?.delivered_at ?? null,
+      ),
+      carrier: fulfillment?.carrier ?? null,
+      trackingNumber: fulfillment?.tracking_number ?? null,
+      shippedAt: fulfillment?.shipped_at ?? null,
+      deliveredAt: fulfillment?.delivered_at ?? null,
+      approvalStatus: null,
+      isVirtual: true,
+    });
+  }
+
+  return visibleShipments.sort((a, b) => {
+    if (a.type !== b.type) return a.type === "final_sample" ? -1 : 1;
+    const aOrder = a.type === "final_sample"
+      ? (a.roundNumber ?? 0)
+      : a.sequenceNumber;
+    const bOrder = b.type === "final_sample"
+      ? (b.roundNumber ?? 0)
+      : b.sequenceNumber;
+    return aOrder - bOrder;
+  });
+}
+
 function buildProgress(
   status: FulfillmentStatus,
   currentStage: FulfillmentStage | null,
@@ -314,18 +417,36 @@ function buildProgress(
 
   const currentIndex = FULFILLMENT_STAGES.indexOf(currentStage);
   const allCompleted = classifyFulfillmentStatus(status) === "completed";
+  const sampleShipments = context.shipments.filter(
+    (shipment) => shipment.shipment_type === "final_sample",
+  );
+  const bulkShipments = context.shipments.filter(
+    (shipment) => shipment.shipment_type === "bulk_order",
+  );
   const completionDates: Partial<Record<FulfillmentStage, string | null>> = {
-    order_placed:
-      firstEventAt(events, ["order_placed"]) ?? context.order.created_at,
     payment_confirmed:
       firstEventAt(events, ["payment_confirmed", "order_confirmed"]) ??
       context.payment?.payment_time ??
       context.order.payment_time,
-    design_production:
-      firstEventAt(events, ["shipped"]) ?? context.fulfillment?.shipped_at,
-    shipped:
-      firstEventAt(events, ["delivered"]) ?? context.fulfillment?.delivered_at,
-    delivered:
+    design_locked:
+      firstEventAt(events, ["design_approved"]) ??
+      latestIso(sampleShipments.map((shipment) => shipment.shipped_at)),
+    final_sample_approval:
+      firstEventAt(events, ["production"]) ??
+      latestIso(
+        sampleShipments
+          .filter((shipment) => shipment.sample_approval_status === "approved")
+          .map((shipment) => shipment.updated_at),
+      ),
+    mass_production:
+      firstEventAt(events, ["shipped"]) ??
+      latestIso(bulkShipments.map((shipment) => shipment.shipped_at)) ??
+      context.fulfillment?.shipped_at,
+    bulk_shipment:
+      firstEventAt(events, ["delivered"]) ??
+      latestIso(bulkShipments.map((shipment) => shipment.delivered_at)) ??
+      context.fulfillment?.delivered_at,
+    completed:
       firstEventAt(events, ["delivered"]) ?? context.fulfillment?.delivered_at,
   };
 
@@ -549,6 +670,8 @@ export async function getFcOrderDetail(
   listItem.updatedAt =
     latestIso([listItem.updatedAt, latestEventAt]) ?? listItem.updatedAt;
 
+  const shipments = customerShipmentsForContext(context);
+
   return {
     order: {
       ...listItem,
@@ -578,6 +701,7 @@ export async function getFcOrderDetail(
           dueAt: null,
         },
     shipment: buildShipment(context.fulfillment),
+    shipments,
     shippingAddress: toAddress(address, order),
     items: context.items.map((item) => ({
       id: item.id,
@@ -593,7 +717,6 @@ export async function getFcOrderDetail(
         .filter((item) => item.item_type === "discount")
         .reduce((sum, item) => sum + toNumber(item.subtotal), 0),
       shipping: toNumber(order.shipping_fee),
-      tax: toNumber(order.tax_fee),
       total: toNumber(order.total_amount),
       currency: order.currency || "USD",
       paymentMethod:

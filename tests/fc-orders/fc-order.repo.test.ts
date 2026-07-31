@@ -12,6 +12,7 @@ import {
   listFinanceHandoffsByOrderIds,
   listOrdersByCustomerId,
   listPaymentsByOrderIds,
+  listShipmentsByCustomerAndOrderIds,
 } from "../../src/repositories/fc-order.repo.js";
 
 function singleQueryResult(data: unknown) {
@@ -88,6 +89,16 @@ describe("FC order repository tenant isolation", () => {
 
     expect(query.from).toHaveBeenCalledWith("order");
     expect(query.calls).toContainEqual(["eq:customer_id", 7]);
+  });
+
+  it("scopes shipment records to both customer and requested orders", async () => {
+    const query = listQueryResult([]);
+
+    await listShipmentsByCustomerAndOrderIds(7, [42, 43]);
+
+    expect(query.from).toHaveBeenCalledWith("fc_order_shipment");
+    expect(query.calls).toContainEqual(["eq:customer_id", 7]);
+    expect(query.calls).toContainEqual(["in:order_id", [42, 43]]);
   });
 });
 

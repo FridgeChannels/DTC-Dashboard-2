@@ -310,6 +310,7 @@ export async function handleCreateSurveyQuestion(
     const body = await readJsonBody<{
       survey_campaign_id?: string;
       question_text?: string;
+      intelligence_topic?: string | null;
       question_type?: CreateSurveyQuestionRequest["questionType"];
       rating_scale?: number | null;
       display_order?: number;
@@ -330,6 +331,7 @@ export async function handleCreateSurveyQuestion(
     const input: CreateSurveyQuestionRequest = {
       surveyCampaignId: body.survey_campaign_id ?? "",
       questionText: body.question_text ?? "",
+      intelligenceTopic: body.intelligence_topic,
       questionType: body.question_type,
       ratingScale: body.rating_scale,
       displayOrder: body.display_order,
@@ -364,6 +366,7 @@ export async function handleReplaceSurveyQuestions(
       questions?: Array<{
         id?: string;
         question_text?: string;
+        intelligence_topic?: string | null;
         question_type?: ReplaceSurveyQuestionInput["questionType"];
         rating_scale?: number | null;
         is_required?: boolean;
@@ -385,6 +388,7 @@ export async function handleReplaceSurveyQuestions(
     const questions: ReplaceSurveyQuestionInput[] = (body.questions ?? []).map((q) => ({
       id: q.id,
       questionText: q.question_text ?? "",
+      intelligenceTopic: q.intelligence_topic,
       questionType: q.question_type,
       ratingScale: q.rating_scale,
       isRequired: q.is_required,
@@ -420,6 +424,7 @@ export async function handleUpdateSurveyQuestion(
     const body = await readJsonBody<{
       question_id?: string;
       question_text?: string;
+      intelligence_topic?: string | null;
       question_type?: UpdateSurveyQuestionRequest["questionType"];
       rating_scale?: number | null;
       display_order?: number;
@@ -432,6 +437,7 @@ export async function handleUpdateSurveyQuestion(
     const input: UpdateSurveyQuestionRequest = {
       questionId: body.question_id ?? "",
       questionText: body.question_text,
+      intelligenceTopic: body.intelligence_topic,
       questionType: body.question_type,
       ratingScale: body.rating_scale,
       displayOrder: body.display_order,

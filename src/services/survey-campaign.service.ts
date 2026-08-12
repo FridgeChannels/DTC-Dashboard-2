@@ -45,6 +45,7 @@ export interface SurveyQuestionDto {
   id: string;
   questionText: string;
   title: string;
+  intelligenceTopic: string | null;
   questionType: SurveyQuestionType;
   ratingScale: number | null;
   displayOrder: number;
@@ -127,6 +128,7 @@ export interface UpdateSurveyCampaignRequest extends CreateSurveyCampaignRequest
 export interface CreateSurveyQuestionRequest {
   surveyCampaignId: string;
   questionText: string;
+  intelligenceTopic?: string | null;
   questionType?: SurveyQuestionType;
   ratingScale?: number | null;
   displayOrder?: number;
@@ -146,6 +148,7 @@ export interface CreateSurveyQuestionRequest {
 export interface UpdateSurveyQuestionRequest {
   questionId: string;
   questionText?: string;
+  intelligenceTopic?: string | null;
   questionType?: SurveyQuestionType;
   ratingScale?: number | null;
   displayOrder?: number;
@@ -220,6 +223,7 @@ function mapQuestion(
     id: row.id,
     questionText: row.question_text,
     title: row.question_text,
+    intelligenceTopic: row.intelligence_topic ?? null,
     questionType: row.question_type as SurveyQuestionType,
     ratingScale: row.rating_scale,
     displayOrder: row.display_order,
@@ -797,6 +801,7 @@ export async function duplicateSurveyCampaignForCustomer(
     const newQ = await questionRepo.insertQuestion({
       surveyCampaignId: copy.id,
       questionText: q.questionText,
+      intelligenceTopic: q.intelligenceTopic,
       questionType: q.questionType,
       ratingScale: q.ratingScale,
       displayOrder: q.displayOrder,
@@ -829,6 +834,7 @@ export interface ReplaceSurveyQuestionInput {
   /** 已有问题的 id；新问题为空或以 "temp-" 前缀。 */
   id?: string;
   questionText: string;
+  intelligenceTopic?: string | null;
   questionType?: SurveyQuestionType;
   ratingScale?: number | null;
   isRequired?: boolean;
@@ -889,12 +895,14 @@ export async function replaceSurveyQuestionsForCustomer(
     const questionType: SurveyQuestionType = q.questionType ?? "single_choice";
     const ratingScale = questionType === "rating" ? (q.ratingScale ?? 5) : null;
     const displayOrder = i + 1;
+    const intelligenceTopic = normalizeIntelligenceTopic(q.intelligenceTopic);
 
     let questionId: string;
     if (isTempQuestionId(q.id)) {
       const created = await questionRepo.insertQuestion({
         surveyCampaignId: id,
         questionText: text,
+        intelligenceTopic,
         questionType,
         ratingScale,
         displayOrder,
@@ -905,6 +913,7 @@ export async function replaceSurveyQuestionsForCustomer(
     } else {
       await questionRepo.updateQuestionById(q.id!, {
         questionText: text,
+        intelligenceTopic,
         questionType,
         ratingScale,
         displayOrder,
@@ -970,6 +979,7 @@ export async function createSurveyQuestionForCustomer(
 
   const questionType: SurveyQuestionType = input.questionType ?? "single_choice";
   const ratingScale = questionType === "rating" ? (input.ratingScale ?? 5) : null;
+  const intelligenceTopic = normalizeIntelligenceTopic(input.intelligenceTopic);
 
   const displayOrder =
     input.displayOrder ?? (await questionRepo.getNextQuestionDisplayOrder(campaignId));
@@ -977,6 +987,7 @@ export async function createSurveyQuestionForCustomer(
   const question = await questionRepo.insertQuestion({
     surveyCampaignId: campaignId,
     questionText: text,
+    intelligenceTopic,
     questionType,
     ratingScale,
     displayOrder,
@@ -1041,6 +1052,7 @@ export async function updateSurveyQuestionForCustomer(
 
   await questionRepo.updateQuestionById(questionId, {
     questionText: input.questionText?.trim(),
+    intelligenceTopic: normalizeIntelligenceTopic(input.intelligenceTopic),
     questionType: input.questionType,
     ratingScale: input.ratingScale,
     displayOrder: input.displayOrder,
@@ -1181,6 +1193,14 @@ function validateOptionInput(input: {
   if (input.allowTextInput && !input.isOtherOption) {
     throw new Error("Only Other options can allow text input");
   }
+}
+
+function normalizeIntelligenceTopic(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  const topic = value?.trim() ?? "";
+  if (!topic) return null;
+  if (topic.length > 60) throw new Error("Customer Intelligence topic must be 60 characters or fewer");
+  return topic;
 }
 
 function slugify(text: string): string {

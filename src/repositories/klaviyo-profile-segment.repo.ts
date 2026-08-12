@@ -20,3 +20,14 @@ export async function listSegmentsForUser(
   if (error) throw error;
   return (data ?? []) as KlaviyoProfileSegmentRow[];
 }
+
+export async function listProfileSegmentsByCustomerId(
+  customerId: number,
+): Promise<KlaviyoProfileSegmentRow[]> {
+  const { data, error } = await getSupabase()
+    .from("klaviyo_profile_segment")
+    .select("customer_id, fc_user_id, segment_id, synced_at")
+    .eq("customer_id", customerId);
+  if (error) throw error;
+  return (data ?? []) as KlaviyoProfileSegmentRow[];
+}

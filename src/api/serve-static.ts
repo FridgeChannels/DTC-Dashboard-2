@@ -33,6 +33,7 @@ export async function serveStatic(
   else if (
     pathname === "/" ||
     pathname === "/dashboard" ||
+    pathname === "/customer-intelligence" ||
     pathname === "/orders-delivery" ||
     pathname === "/brand-config" ||
     pathname === "/segment-config" ||

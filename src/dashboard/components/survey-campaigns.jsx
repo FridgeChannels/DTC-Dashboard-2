@@ -633,6 +633,7 @@ function SurveyQuestionCard({
           <span className="survey-preview-q-num">Q{question.displayOrder}</span>
           <div className="survey-preview-q-meta">
             <span className="survey-preview-q-type-badge">{getSurveyQuestionTypeLabel(question)}</span>
+            {question.intelligenceTopic && <span className="survey-preview-q-type-badge">{question.intelligenceTopic}</span>}
             {question.isRequired && <span className="survey-preview-required-badge">Required</span>}
           </div>
         </div>
@@ -668,6 +669,15 @@ function SurveyQuestionCard({
             <button type="button" className="survey-card-format-btn" style={{ fontStyle: "italic" }}>I</button>
             <button type="button" className="survey-card-format-btn" style={{ textDecoration: "underline" }}>U</button>
           </div>
+          <input
+            type="text"
+            className="survey-card-topic-input"
+            value={question.intelligenceTopic || ""}
+            disabled={editDisabled}
+            maxLength={60}
+            onChange={(e) => onPatch(question.id, { intelligenceTopic: e.target.value })}
+            placeholder="Customer Intelligence topic (optional)"
+          />
         </div>
         <select className="survey-card-type-select" value={qType}
           disabled={editDisabled}
@@ -1344,6 +1354,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
   const makeQuestion = (tempId, extra = {}) => ({
     id: tempId, status: "active",
     questionText: "", title: "",
+    intelligenceTopic: null,
     questionType: "single_choice", ratingScale: null,
     displayOrder: 1, sortOrder: 1,
     // 新问题默认必填（required 默认选中）
@@ -1587,6 +1598,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
   const draftToPayload = (questions) => questions.map((q) => ({
     id: q.id,
     question_text: q.questionText,
+    intelligence_topic: q.intelligenceTopic?.trim() || null,
     question_type: q.questionType,
     rating_scale: q.ratingScale,
     is_required: q.isRequired,

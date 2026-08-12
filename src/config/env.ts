@@ -50,4 +50,8 @@ export const env = {
   /** Dify 品牌色分析 */
   difyApiUrl: process.env.DIFY_API_URL ?? "",
   difyApiKey: process.env.DIFY_API_KEY ?? "",
+  aiRecommendationApiUrl: process.env.AI_RECOMMENDATION_API_URL ?? "",
+  aiRecommendationApiKey: process.env.AI_RECOMMENDATION_API_KEY ?? "",
+  aiRecommendationModel: process.env.AI_RECOMMENDATION_MODEL ?? "",
+  aiRecommendationTimeoutMs: Number(process.env.AI_RECOMMENDATION_TIMEOUT_MS ?? 12_000_000),
 } as const;

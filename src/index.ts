@@ -56,6 +56,16 @@ import {
   handleGetSurveyCampaignOtherReview,
 } from "./api/survey-campaigns.js";
 import { handleGetBrandDashboard } from "./api/brand-dashboard.js";
+import { handleGetCustomerIntelligence } from "./api/customer-intelligence.js";
+import { handleArchiveSegment, handleCreateSegment, handleGetSegment, handleListSegments, handlePreviewSegment } from "./api/segments.js";
+import {
+  handleDecideIntelligenceRecommendation,
+  handleGetIntelligenceRecommendation,
+  handleListIntelligenceRecommendations,
+  handleListCustomerIntelligenceImpact,
+  handlePreviewIntelligenceRecommendation,
+  handleReanalyzeIntelligenceRecommendations,
+} from "./api/customer-intelligence-recommendations.js";
 import {
   handleGetActiveFcOrderSummary,
   handleGetFcOrderDetail,
@@ -285,6 +295,33 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && pathname === "/api/segments") {
+    await handleListSegments(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/segments/preview") {
+    await handlePreviewSegment(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/segments") {
+    await handleCreateSegment(req, res);
+    return;
+  }
+
+  const segmentArchiveMatch = /^\/api\/segments\/([^/]+)\/archive$/.exec(pathname);
+  if (req.method === "POST" && segmentArchiveMatch) {
+    await handleArchiveSegment(req, res, segmentArchiveMatch[1] ?? "");
+    return;
+  }
+
+  const segmentDetailMatch = /^\/api\/segments\/([^/]+)$/.exec(pathname);
+  if (req.method === "GET" && segmentDetailMatch) {
+    await handleGetSegment(req, res, segmentDetailMatch[1] ?? "");
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/survey-campaigns") {
     await handleListSurveyCampaigns(req, res);
     return;
@@ -362,6 +399,42 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/brand-dashboard") {
     await handleGetBrandDashboard(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/customer-intelligence") {
+    await handleGetCustomerIntelligence(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/customer-intelligence/recommendations") {
+    await handleListIntelligenceRecommendations(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/customer-intelligence/impact") {
+    await handleListCustomerIntelligenceImpact(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/customer-intelligence/recommendations/reanalyze") {
+    await handleReanalyzeIntelligenceRecommendations(req, res);
+    return;
+  }
+
+  const intelligenceRecommendationMatch = /^\/api\/customer-intelligence\/recommendations\/([^/]+)$/.exec(pathname);
+  if (req.method === "GET" && intelligenceRecommendationMatch) {
+    await handleGetIntelligenceRecommendation(req, res, intelligenceRecommendationMatch[1] ?? "");
+    return;
+  }
+
+  const intelligenceRecommendationActionMatch = /^\/api\/customer-intelligence\/recommendations\/([^/]+)\/(preview|decision)$/.exec(pathname);
+  if (req.method === "POST" && intelligenceRecommendationActionMatch) {
+    if (intelligenceRecommendationActionMatch[2] === "preview") {
+      await handlePreviewIntelligenceRecommendation(req, res, intelligenceRecommendationActionMatch[1] ?? "");
+    } else {
+      await handleDecideIntelligenceRecommendation(req, res, intelligenceRecommendationActionMatch[1] ?? "");
+    }
     return;
   }
 

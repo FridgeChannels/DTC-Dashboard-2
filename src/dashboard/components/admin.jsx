@@ -8,6 +8,7 @@ const DASHBOARD_SECTION = {
   id: "dashboard",
   label: "Dashboard",
 };
+const CUSTOMER_INTELLIGENCE_SECTION = { id: "customer-intelligence", label: "Customer Intelligence" };
 const ORDERS_DELIVERY_SECTION = { id: "orders-delivery", label: "Orders & Delivery" };
 
 // 旧版（mock 数据）Dashboard，保留为 dashboard_pre
@@ -36,6 +37,7 @@ const ACCOUNT_MATCH = [ACCOUNT_SECTION.id, SHOPIFY_SECTION.id, KLAVIYO_SECTION.i
 
 const ALL_SECTIONS = [
   DASHBOARD_SECTION,
+  CUSTOMER_INTELLIGENCE_SECTION,
   ORDERS_DELIVERY_SECTION,
   BRAND_COLLECT_SECTION,
   PRODUCT_ADD_SECTION,
@@ -59,6 +61,7 @@ function buildNavGroups(conn) {
       items: [
         // dashboard_pre 暂时隐藏（保留 DASHBOARD_PRE_SECTION 与渲染分支，未删除）
         { ...DASHBOARD_SECTION, icon: I.navDashboard },
+        { ...CUSTOMER_INTELLIGENCE_SECTION, icon: I.navIntelligence },
         { ...ORDERS_DELIVERY_SECTION, icon: I.navOrders },
         { ...BRAND_COLLECT_SECTION, icon: I.navBrand },
         // Add Product 暂时隐藏（保留 PRODUCT_ADD_SECTION 与渲染分支，未删除）
@@ -95,6 +98,7 @@ function buildNavGroups(conn) {
 
 function parseSection() {
   if (window.location.pathname === "/" || window.location.pathname === "/dashboard") return DASHBOARD_SECTION.id;
+  if (window.location.pathname === "/customer-intelligence") return CUSTOMER_INTELLIGENCE_SECTION.id;
   if (window.location.pathname === "/orders-delivery") return ORDERS_DELIVERY_SECTION.id;
   if (window.location.pathname === "/dashboard-pre") return DASHBOARD_PRE_SECTION.id;
   if (window.location.pathname === "/brand-collect") return BRAND_COLLECT_SECTION.id;
@@ -327,6 +331,10 @@ function AdminApp() {
       window.history.replaceState({}, "", "/");
       return;
     }
+    if (nextSection === CUSTOMER_INTELLIGENCE_SECTION.id) {
+      window.history.replaceState({}, "", "/customer-intelligence");
+      return;
+    }
     if (nextSection === ORDERS_DELIVERY_SECTION.id) {
       window.history.replaceState({}, "", "/orders-delivery");
       return;
@@ -369,7 +377,7 @@ function AdminApp() {
   }
 
   return (
-    <div className="admin-app">
+    <div className={`admin-app${section === CUSTOMER_INTELLIGENCE_SECTION.id ? " customer-intelligence-active" : ""}`}>
       <AdminSidebar
         section={section}
         onSectionChange={handleSectionChange}
@@ -378,6 +386,8 @@ function AdminApp() {
       <div className="admin-main">
         {section === DASHBOARD_SECTION.id
           ? <BrandDashboardPage />
+          : section === CUSTOMER_INTELLIGENCE_SECTION.id
+          ? <CustomerIntelligencePage />
           : section === ORDERS_DELIVERY_SECTION.id
           ? <OrdersDeliveryPage />
           : section === DASHBOARD_PRE_SECTION.id

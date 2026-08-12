@@ -503,10 +503,12 @@ function OrderSummary({ detail }) {
                     {paymentStatusLabel(order.paymentStatus)}
                   </dd>
                 </div>
-                <div>
-                  <dt>Method</dt>
-                  <dd>{payment.method || "Payment method unavailable"}</dd>
-                </div>
+                {payment.method && (
+                  <div>
+                    <dt>Paid with</dt>
+                    <dd>{payment.method}</dd>
+                  </div>
+                )}
                 {priceSummary.paymentTime && (
                   <div><dt>Paid on</dt><dd>{formatOrderDateTime(priceSummary.paymentTime)}</dd></div>
                 )}

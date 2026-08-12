@@ -95,6 +95,7 @@ export interface QSurveyQuestionRow {
   id: string;
   survey_campaign_id: string;
   question_text: string;
+  intelligence_topic?: string | null;
   question_type: SurveyQuestionType;
   rating_scale: number | null;
   display_order: number;

@@ -9,6 +9,7 @@ import type {
   SegmentCouponConfigRow,
   SegmentDiscountType,
 } from "../repositories/segment-coupon-config.repo.js";
+import { recordCouponActivationForExternalSegment } from "./segment-activation.service.js";
 
 export interface SegmentCouponCampaignOption {
   id: string;
@@ -255,6 +256,7 @@ export async function saveSegmentCouponConfig(
           status: "active",
         })),
       );
+      await recordCouponActivationForExternalSegment(input.customerId, item.segmentId, campaignIds);
     }
   }
 

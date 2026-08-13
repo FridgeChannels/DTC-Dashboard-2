@@ -2,6 +2,19 @@
 // Brand Info
 // ============================================================
 const { useState, useEffect, useCallback } = React;
+const BRAND_INFO_LOCAL_KEY = "fc-brand-info";
+
+function readLocalBrandInfo() {
+  try {
+    return JSON.parse(window.localStorage.getItem(BRAND_INFO_LOCAL_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalBrandInfo(brand) {
+  window.localStorage.setItem(BRAND_INFO_LOCAL_KEY, JSON.stringify(brand));
+}
 
 function BrandField({ label, hint, children, fullRow }) {
   return (
@@ -13,7 +26,7 @@ function BrandField({ label, hint, children, fullRow }) {
   );
 }
 
-function BrandCollectPage({ readOnly = false } = {}) {
+function BrandCollectPage({ readOnly = false, onSkip = null, skipLabel = "Skip for now", onSaved = null } = {}) {
   const [brandName, setBrandName] = useState("");
   const [brandWebsite, setBrandWebsite] = useState("");
   const [brandLogo, setBrandLogo] = useState("");
@@ -49,9 +62,10 @@ function BrandCollectPage({ readOnly = false } = {}) {
     (async () => {
       try {
         const { brand } = await BrandCollectApi.fetchConfiguredInfo();
-        if (!cancelled) applyServerConfig(brand);
+        if (!cancelled) applyServerConfig(brand || readLocalBrandInfo());
       } catch (err) {
         console.warn("Failed to load brand config:", err);
+        if (!cancelled) applyServerConfig(readLocalBrandInfo());
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -123,16 +137,26 @@ function BrandCollectPage({ readOnly = false } = {}) {
     setError("");
     setSaving(true);
     try {
-      const result = await BrandCollectApi.saveBrand({
+      const savedBrand = {
         brandName: brandName.trim(),
+        website: brandWebsite.trim(),
+        brandLogo,
+        primaryColor: colors.primary || "",
+        secondaryColor: colors.accent || "",
+      };
+      saveLocalBrandInfo(savedBrand);
+      const result = await BrandCollectApi.saveBrand({
+        brandName: savedBrand.brandName,
         brandWebsite: brandWebsite.trim(),
         brandLogo: brandLogo,
         colors,
       });
-      if (result.records?.[0]) {
-        applyServerConfig(result.records[0]);
-      }
-      showNotice(`Brand info updated (${result.updatedCount} magnet${result.updatedCount === 1 ? "" : "s"}).`);
+      applyServerConfig(result.records?.[0] || savedBrand);
+      window.dispatchEvent(new Event("brand-info-saved"));
+      showNotice(result.updatedCount > 0
+        ? `Brand info updated (${result.updatedCount} magnet${result.updatedCount === 1 ? "" : "s"}).`
+        : "Brand info saved on this device. It will sync when a magnet is available.");
+      onSaved?.();
     } catch (err) {
       setError(err.message || "Failed to save brand info.");
     } finally {
@@ -259,7 +283,12 @@ function BrandCollectPage({ readOnly = false } = {}) {
               </div>
             </div>
 
-            <div className="row" style={{ gridColumn: "1 / -1", justifyContent: "flex-end" }}>
+            <div className="cfg-actions" style={{ gridColumn: "1 / -1" }}>
+              {onSkip && (
+                <button type="button" className="btn" onClick={onSkip}>
+                  {skipLabel}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn primary"

@@ -2,24 +2,30 @@ import { validateIntelligenceRule } from "./intelligence-rule-engine.js";
 import type { IntelligenceRuleNode } from "./intelligence-rule.types.js";
 import type { RecommendationDecisionUse } from "./intelligence-recommendation-validator.js";
 
+export type AiSegmentSuggestionAction = "create_segment" | "monitor" | "no_segment";
+export type AiCouponSuggestionAction = "suggest_coupon" | "no_coupon";
+
+export interface AiSegmentSuggestion {
+  action: AiSegmentSuggestionAction;
+  summary: string;
+}
+
+export interface AiCouponSuggestion {
+  action: AiCouponSuggestionAction;
+  offerIdea: string;
+}
+
 export interface AiRecommendationOutput {
   stableKey: string;
   name: string;
   topicId: string;
   decisionUse: RecommendationDecisionUse;
-  finding: string;
-  businessMeaning: string;
-  evidenceSummary: string;
+  summary: string;
   evidenceIds: string[];
   rules: IntelligenceRuleNode;
   exclusions: IntelligenceRuleNode;
-  recommendedAction: string;
-  actionRationale: string;
-  reviewTrigger: string;
-  successMetric: string;
-  confidence: number;
-  missingData: string[];
-  limitations: string[];
+  segmentSuggestion: AiSegmentSuggestion;
+  couponSuggestion: AiCouponSuggestion;
 }
 
 export interface AiRecommendationEnvelope {
@@ -72,11 +78,11 @@ export const AI_RECOMMENDATION_JSON_SCHEMA: Record<string, unknown> = {
             type: "string",
             enum: ["customer_action", "product_decision", "content_decision", "research_only"],
           },
-          finding: { type: "string", minLength: 1, maxLength: 700 },
-          businessMeaning: { type: "string", minLength: 1, maxLength: 700 },
-          evidenceSummary: {
-            type: "string", minLength: 1, maxLength: 700,
-            description: "Plain-language explanation of the cited answer combination, including conflicts or sample concentration.",
+          summary: {
+            type: "string",
+            minLength: 1,
+            maxLength: 700,
+            description: "One short explanation of the insight that supports the Segment and coupon suggestions.",
           },
           evidenceIds: {
             type: "array",
@@ -85,36 +91,35 @@ export const AI_RECOMMENDATION_JSON_SCHEMA: Record<string, unknown> = {
           },
           rules: { $ref: "#/$defs/ruleNode" },
           exclusions: { $ref: "#/$defs/ruleNode" },
-          recommendedAction: {
-            type: "string", minLength: 1, maxLength: 500,
-            description: "The smallest safe next step for the brand. It must be a proposal, never an action claimed as executed.",
+          segmentSuggestion: {
+            type: "object",
+            properties: {
+              action: { type: "string", enum: ["create_segment", "monitor", "no_segment"] },
+              summary: {
+                type: "string", minLength: 1, maxLength: 300,
+                description: "What Segment to create or why not to create one yet.",
+              },
+            },
+            required: ["action", "summary"],
+            additionalProperties: false,
           },
-          actionRationale: {
-            type: "string", minLength: 1, maxLength: 700,
-            description: "Why the suggested next step follows from the cited evidence and why a stronger action is not yet justified.",
-          },
-          reviewTrigger: {
-            type: "string", minLength: 1, maxLength: 500,
-            description: "The concrete evidence threshold or business event that should trigger another review.",
-          },
-          successMetric: { type: "string", minLength: 1, maxLength: 300 },
-          confidence: { type: "number", minimum: 0, maximum: 1 },
-          missingData: {
-            type: "array",
-            maxItems: 20,
-            description: "Data absent from the evidence bundle that prevents a stronger conclusion or safe activation.",
-            items: { type: "string", minLength: 1, maxLength: 500 },
-          },
-          limitations: {
-            type: "array",
-            maxItems: 20,
-            items: { type: "string", minLength: 1, maxLength: 500 },
+          couponSuggestion: {
+            type: "object",
+            properties: {
+              action: { type: "string", enum: ["suggest_coupon", "no_coupon"] },
+              offerIdea: {
+                type: "string", minLength: 1, maxLength: 300,
+                description: "Plain-language coupon offer idea. Use None when action is no_coupon.",
+              },
+            },
+            required: ["action", "offerIdea"],
+            additionalProperties: false,
           },
         },
         required: [
-          "stableKey", "name", "topicId", "decisionUse", "finding", "businessMeaning",
-          "evidenceSummary", "evidenceIds", "rules", "exclusions", "recommendedAction",
-          "actionRationale", "reviewTrigger", "successMetric", "confidence", "missingData", "limitations",
+          "stableKey", "name", "topicId", "decisionUse", "summary",
+          "evidenceIds", "rules", "exclusions",
+          "segmentSuggestion", "couponSuggestion",
         ],
         additionalProperties: false,
       },
@@ -128,10 +133,14 @@ export const AI_RECOMMENDATION_JSON_SCHEMA: Record<string, unknown> = {
         conditionSchema("answer.value", ["eq", "neq", "in", "not_in"], { anyOf: [scalarSchema, scalarArraySchema] }, true),
         conditionSchema("answer.exists", ["eq", "exists"], { type: ["boolean", "null"] }, true),
         conditionSchema("order.days_since_last_purchase", ["eq", "lt", "lte", "gt", "gte", "exists"], { type: ["number", "null"] }),
+        conditionSchema("order.verified_purchase_count", ["eq", "lt", "lte", "gt", "gte"], { type: "number" }),
+        conditionSchema("engagement.survey_impression_count", ["eq", "lt", "lte", "gt", "gte"], { type: "number" }),
+        conditionSchema("engagement.days_since_last_survey_impression", ["eq", "lt", "lte", "gt", "gte", "exists"], { type: ["number", "null"] }),
+        conditionSchema("coupon.assignment_count", ["eq", "lt", "lte", "gt", "gte"], { type: "number" }),
+        conditionSchema("coupon.redemption_count", ["eq", "lt", "lte", "gt", "gte"], { type: "number" }),
+        conditionSchema("coupon.days_since_last_assigned", ["eq", "lt", "lte", "gt", "gte", "exists"], { type: ["number", "null"] }),
         conditionSchema("identity.status", ["eq", "neq", "in", "not_in"], { anyOf: [{ type: "string", enum: ["anonymous", "known", "reachable"] }, { type: "array", minItems: 1, items: { type: "string", enum: ["anonymous", "known", "reachable"] } }] }),
         conditionSchema("channel.reachable", ["eq", "exists"], { type: ["boolean", "null"] }),
-        conditionSchema("consent.marketing", ["eq"], { type: "boolean" }),
-        conditionSchema("contact.days_since_last", ["eq", "lt", "lte", "gt", "gte", "exists"], { type: ["number", "null"] }),
         {
           type: "object",
           properties: { all: { type: "array", minItems: 1, maxItems: 12, items: { $ref: "#/$defs/ruleNode" } } },
@@ -156,10 +165,22 @@ export const AI_RECOMMENDATION_JSON_SCHEMA: Record<string, unknown> = {
 };
 
 const DECISION_USES = new Set(["customer_action", "product_decision", "content_decision", "research_only"]);
+const SEGMENT_ACTIONS = new Set(["create_segment", "monitor", "no_segment"]);
+const COUPON_ACTIONS = new Set(["suggest_coupon", "no_coupon"]);
 
 function text(value: unknown, field: string, max = 500): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${field} must be non-empty text`);
   return value.trim().slice(0, max);
+}
+
+export function deriveRecommendedAction(output: Pick<AiRecommendationOutput, "segmentSuggestion" | "couponSuggestion">): string {
+  const segment = output.segmentSuggestion;
+  const coupon = output.couponSuggestion;
+  if (segment.action === "create_segment" && coupon.action === "suggest_coupon") {
+    return `Create Segment, then configure coupon: ${coupon.offerIdea}`;
+  }
+  if (coupon.action === "suggest_coupon") return `Configure coupon: ${coupon.offerIdea}`;
+  return segment.summary;
 }
 
 export function parseAiRecommendationEnvelope(value: unknown): AiRecommendationEnvelope {
@@ -174,10 +195,14 @@ export function parseAiRecommendationEnvelope(value: unknown): AiRecommendationE
       const row = raw as Record<string, unknown>;
       if (!DECISION_USES.has(String(row.decisionUse))) throw new Error(`recommendations[${index}].decisionUse is invalid`);
       if (!Array.isArray(row.evidenceIds) || !row.evidenceIds.every((id) => typeof id === "string")) throw new Error(`recommendations[${index}].evidenceIds must be a string array`);
-      if (!Array.isArray(row.missingData) || !row.missingData.every((item) => typeof item === "string")) throw new Error(`recommendations[${index}].missingData must be a string array`);
-      if (!Array.isArray(row.limitations) || !row.limitations.every((item) => typeof item === "string")) throw new Error(`recommendations[${index}].limitations must be a string array`);
-      const confidence = Number(row.confidence);
-      if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw new Error(`recommendations[${index}].confidence must be between 0 and 1`);
+      const segmentRaw = row.segmentSuggestion;
+      if (!segmentRaw || typeof segmentRaw !== "object" || Array.isArray(segmentRaw)) throw new Error(`recommendations[${index}].segmentSuggestion must be an object`);
+      const segmentRow = segmentRaw as Record<string, unknown>;
+      if (!SEGMENT_ACTIONS.has(String(segmentRow.action))) throw new Error(`recommendations[${index}].segmentSuggestion.action is invalid`);
+      const couponRaw = row.couponSuggestion;
+      if (!couponRaw || typeof couponRaw !== "object" || Array.isArray(couponRaw)) throw new Error(`recommendations[${index}].couponSuggestion must be an object`);
+      const couponRow = couponRaw as Record<string, unknown>;
+      if (!COUPON_ACTIONS.has(String(couponRow.action))) throw new Error(`recommendations[${index}].couponSuggestion.action is invalid`);
       const ruleIssues = validateIntelligenceRule(row.rules);
       const exclusionIssues = validateIntelligenceRule(row.exclusions);
       if (ruleIssues.length || exclusionIssues.length) throw new Error(`recommendations[${index}] contains unsupported rules`);
@@ -186,19 +211,18 @@ export function parseAiRecommendationEnvelope(value: unknown): AiRecommendationE
         name: text(row.name, "name", 120),
         topicId: text(row.topicId, "topicId", 120),
         decisionUse: row.decisionUse as RecommendationDecisionUse,
-        finding: text(row.finding, "finding", 700),
-        businessMeaning: text(row.businessMeaning, "businessMeaning", 700),
-        evidenceSummary: text(row.evidenceSummary, "evidenceSummary", 700),
+        summary: text(row.summary, "summary", 700),
         evidenceIds: [...new Set(row.evidenceIds as string[])].slice(0, 200),
         rules: row.rules as IntelligenceRuleNode,
         exclusions: row.exclusions as IntelligenceRuleNode,
-        recommendedAction: text(row.recommendedAction, "recommendedAction", 500),
-        actionRationale: text(row.actionRationale, "actionRationale", 700),
-        reviewTrigger: text(row.reviewTrigger, "reviewTrigger", 500),
-        successMetric: text(row.successMetric, "successMetric", 300),
-        confidence,
-        missingData: (row.missingData as string[]).map((item) => item.trim()).filter(Boolean).slice(0, 20),
-        limitations: (row.limitations as string[]).map((item) => item.trim()).filter(Boolean).slice(0, 20),
+        segmentSuggestion: {
+          action: segmentRow.action as AiSegmentSuggestionAction,
+          summary: text(segmentRow.summary, "segmentSuggestion.summary", 300),
+        },
+        couponSuggestion: {
+          action: couponRow.action as AiCouponSuggestionAction,
+          offerIdea: text(couponRow.offerIdea, "couponSuggestion.offerIdea", 300),
+        },
       };
     }),
   };

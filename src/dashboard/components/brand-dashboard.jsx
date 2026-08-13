@@ -538,112 +538,11 @@ function exportBrandDashboardPdf(rangeLabel) {
   window.print();
 }
 
-function bdOrderMoney(value, currency) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return "—";
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-      minimumFractionDigits: 2,
-    }).format(amount);
-  } catch {
-    return `${currency || "USD"} ${amount.toFixed(2)}`;
-  }
-}
-
-function bdOrderDate(value) {
-  if (!value) return "To be confirmed";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "To be confirmed";
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
-
-function bdOrderStageLabel(order) {
-  const labels = {
-    order_placed: "Order placed",
-    payment_confirmed: "Payment confirmed",
-    design: "Design",
-    production: "Production",
-    delivery: "Delivery",
-    distribution: "Delivered",
-  };
-  return labels[order.currentStage] || String(order.fulfillmentStatus || "In progress").replaceAll("_", " ");
-}
-
-function navigateToFcOrders(orderId) {
-  const suffix = orderId ? `?order=${encodeURIComponent(orderId)}` : "";
-  window.history.pushState({}, "", `/orders-delivery${suffix}`);
-  window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
-function ActiveFcOrderSummary({ summary }) {
-  const order = summary?.activeFcOrder;
-  if (!order) return null;
-  const delivery = order.estimatedDeliveryStart && order.estimatedDeliveryEnd
-    ? `${bdOrderDate(order.estimatedDeliveryStart)} – ${bdOrderDate(order.estimatedDeliveryEnd)}`
-    : bdOrderDate(order.estimatedDeliveryStart || order.estimatedDeliveryEnd);
-
-  return (
-    <section className="bd-active-order" aria-labelledby="active-fc-order-title">
-      <div className="bd-active-order-heading">
-        <div>
-          <span className="bd-active-order-kicker">Active FC Order</span>
-          <h2 id="active-fc-order-title">{order.packageName || "FridgeChannel order"}</h2>
-        </div>
-        <span className="bd-active-order-stage">{bdOrderStageLabel(order)}</span>
-      </div>
-      <button
-        type="button"
-        className="bd-active-order-main"
-        onClick={() => navigateToFcOrders(order.id)}
-        aria-label={`Open order ${order.orderNumber}`}
-      >
-        <span>
-          <small>Order</small>
-          <strong>{order.orderNumber}</strong>
-        </span>
-        <span>
-          <small>Quantity</small>
-          <strong>{order.quantity} {Number(order.quantity) === 1 ? "unit" : "units"}</strong>
-        </span>
-        <span>
-          <small>Total</small>
-          <strong>{bdOrderMoney(order.totalAmount, order.currency)}</strong>
-        </span>
-        <span>
-          <small>Payment</small>
-          <strong>{order.paymentStatus === "paid" ? "Paid" : order.paymentStatus === "pending" ? "Pending" : "Unknown"}</strong>
-        </span>
-        <span>
-          <small>Estimated delivery</small>
-          <strong>{delivery}</strong>
-        </span>
-        <span className="bd-active-order-action">
-          <small>Current action</small>
-          <strong>{order.actionRequired ? (order.nextActionTitle || "Action required") : "No action needed"}</strong>
-        </span>
-        <span className="bd-active-order-chevron" aria-hidden="true">›</span>
-      </button>
-      {summary.activeCount > 1 && (
-        <button type="button" className="bd-active-order-all" onClick={() => navigateToFcOrders()}>
-          View all {summary.activeCount} active orders
-        </button>
-      )}
-    </section>
-  );
-}
-
 function BrandDashboardPage() {
   const [dateRange, setDateRange] = useStateBD("30day");
   const [dashboard, setDashboard] = useStateBD(null);
   const [loading, setLoading] = useStateBD(true);
   const [error, setError] = useStateBD(null);
-  const [activeOrderSummary, setActiveOrderSummary] = useStateBD(null);
 
   const loadData = useCallbackBD(async () => {
     setLoading(true); setError(null);
@@ -658,21 +557,6 @@ function BrandDashboardPage() {
   }, [dateRange]);
 
   useEffectBD(() => { loadData(); }, [loadData]);
-
-  useEffectBD(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/fc-orders/active-summary");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled) setActiveOrderSummary(data);
-      } catch {
-        // 订单摘要独立降级，不影响收入 Dashboard。
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   const rangeLabel = BD_DATE_RANGES.find((r) => r.id === dateRange)?.label || "Last 30 days";
 
@@ -696,8 +580,6 @@ function BrandDashboardPage() {
           </div>
         </div>
       </header>
-
-      <ActiveFcOrderSummary summary={activeOrderSummary} />
 
       {error && (<div className="cfg-alert warn" style={{ marginBottom: 16 }}><I.info /> {error}</div>)}
 

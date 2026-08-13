@@ -10,6 +10,16 @@ const users: IntelligenceUserFacts[] = Array.from({ length: 6 }, (_, index) => (
   marketingConsent: index < 4,
   answers: [{ questionKey: "standard:CORE-02", value: index < 5 ? "less_than_2_weeks" : "more_than_1_month", answeredAt: "2026-08-10T08:00:00.000Z", evidenceId: `answer:${index + 1}` }],
   lastPurchaseAt: index === 0 ? "2026-08-09T08:00:00.000Z" : "2026-07-01T08:00:00.000Z",
+  verifiedPurchaseCount: 1,
+  purchaseEvidence: [],
+  surveyImpressionCount: 0,
+  lastSurveyImpressionAt: null,
+  surveyImpressionEvidence: [],
+  couponAssignmentCount: 0,
+  lastCouponAssignedAt: null,
+  couponAssignmentEvidence: [],
+  couponRedemptionCount: 0,
+  couponRedemptionEvidence: [],
   lastContactAt: null,
 }));
 

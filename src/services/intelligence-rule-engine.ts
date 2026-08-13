@@ -12,6 +12,12 @@ const ALLOWED_OPERATORS: Record<IntelligenceRuleField, IntelligenceRuleOperator[
   "answer.value": ["eq", "neq", "in", "not_in"],
   "answer.exists": ["eq", "exists"],
   "order.days_since_last_purchase": ["eq", "lt", "lte", "gt", "gte", "exists"],
+  "order.verified_purchase_count": ["eq", "lt", "lte", "gt", "gte"],
+  "engagement.survey_impression_count": ["eq", "lt", "lte", "gt", "gte"],
+  "engagement.days_since_last_survey_impression": ["eq", "lt", "lte", "gt", "gte", "exists"],
+  "coupon.assignment_count": ["eq", "lt", "lte", "gt", "gte"],
+  "coupon.redemption_count": ["eq", "lt", "lte", "gt", "gte"],
+  "coupon.days_since_last_assigned": ["eq", "lt", "lte", "gt", "gte", "exists"],
   "identity.status": ["eq", "neq", "in", "not_in"],
   "channel.reachable": ["eq", "exists"],
   "consent.marketing": ["eq"],
@@ -115,6 +121,25 @@ function evaluateCondition(condition: IntelligenceRuleCondition, facts: Intellig
     evidenceIds = latest ? [latest.evidenceId] : [];
   } else if (condition.field === "order.days_since_last_purchase") {
     actual = daysSince(facts.lastPurchaseAt, now);
+    evidenceIds = facts.purchaseEvidence.slice(0, 20).map((fact) => fact.evidenceId);
+  } else if (condition.field === "order.verified_purchase_count") {
+    actual = facts.verifiedPurchaseCount;
+    evidenceIds = facts.purchaseEvidence.slice(0, 20).map((fact) => fact.evidenceId);
+  } else if (condition.field === "engagement.survey_impression_count") {
+    actual = facts.surveyImpressionCount;
+    evidenceIds = facts.surveyImpressionEvidence.slice(0, 20).map((fact) => fact.evidenceId);
+  } else if (condition.field === "engagement.days_since_last_survey_impression") {
+    actual = daysSince(facts.lastSurveyImpressionAt, now);
+    evidenceIds = facts.surveyImpressionEvidence.slice(0, 1).map((fact) => fact.evidenceId);
+  } else if (condition.field === "coupon.assignment_count") {
+    actual = facts.couponAssignmentCount;
+    evidenceIds = facts.couponAssignmentEvidence.slice(0, 20).map((fact) => fact.evidenceId);
+  } else if (condition.field === "coupon.redemption_count") {
+    actual = facts.couponRedemptionCount;
+    evidenceIds = facts.couponRedemptionEvidence.slice(0, 20).map((fact) => fact.evidenceId);
+  } else if (condition.field === "coupon.days_since_last_assigned") {
+    actual = daysSince(facts.lastCouponAssignedAt, now);
+    evidenceIds = facts.couponAssignmentEvidence.slice(0, 1).map((fact) => fact.evidenceId);
   } else if (condition.field === "identity.status") {
     actual = facts.identityStatus;
   } else if (condition.field === "channel.reachable") {

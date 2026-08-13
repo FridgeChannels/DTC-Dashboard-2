@@ -10,6 +10,16 @@ const facts: IntelligenceUserFacts = {
   marketingConsent: true,
   answers: [{ questionKey: "standard:CORE-02", value: "less_than_2_weeks", answeredAt: "2026-08-10T08:00:00.000Z", evidenceId: "answer:1" }],
   lastPurchaseAt: "2026-07-20T08:00:00.000Z",
+  verifiedPurchaseCount: 2,
+  purchaseEvidence: [{ evidenceId: "verified_purchase:1", occurredAt: "2026-07-20T08:00:00.000Z" }],
+  surveyImpressionCount: 4,
+  lastSurveyImpressionAt: "2026-08-09T08:00:00.000Z",
+  surveyImpressionEvidence: [{ evidenceId: "survey_impression:1", occurredAt: "2026-08-09T08:00:00.000Z" }],
+  couponAssignmentCount: 2,
+  lastCouponAssignedAt: "2026-08-01T08:00:00.000Z",
+  couponAssignmentEvidence: [{ evidenceId: "coupon_assignment:1", occurredAt: "2026-08-01T08:00:00.000Z" }],
+  couponRedemptionCount: 1,
+  couponRedemptionEvidence: [{ evidenceId: "coupon_redemption:1", occurredAt: "2026-07-20T08:00:00.000Z" }],
   lastContactAt: "2026-07-25T08:00:00.000Z",
 };
 
@@ -22,13 +32,33 @@ describe("intelligence rule engine", () => {
       { not: { field: "contact.days_since_last", operator: "lt", value: 7 } },
     ] };
     expect(validateIntelligenceRule(rule)).toEqual([]);
-    expect(evaluateIntelligenceRule(rule, facts, now)).toMatchObject({ included: true, matchedEvidenceIds: ["answer:1"] });
+    expect(evaluateIntelligenceRule(rule, facts, now)).toMatchObject({
+      included: true,
+      matchedEvidenceIds: expect.arrayContaining(["answer:1", "verified_purchase:1"]),
+    });
   });
 
   it("uses only the latest answer inside the freshness window", () => {
     const changed = { ...facts, answers: [...facts.answers, { questionKey: "standard:CORE-02", value: "more_than_1_month", answeredAt: "2026-08-11T07:00:00.000Z", evidenceId: "answer:2" }] };
     const result = evaluateIntelligenceRule({ field: "answer.value", questionKey: "standard:CORE-02", operator: "eq", value: "less_than_2_weeks", withinDays: 30 }, changed, now);
     expect(result.included).toBe(false);
+  });
+
+  it("evaluates connected purchase, engagement and coupon signals", () => {
+    const rule: IntelligenceRuleNode = { all: [
+      { field: "order.verified_purchase_count", operator: "gte", value: 2 },
+      { field: "engagement.days_since_last_survey_impression", operator: "lte", value: 7 },
+      { field: "coupon.redemption_count", operator: "gte", value: 1 },
+    ] };
+    expect(validateIntelligenceRule(rule)).toEqual([]);
+    expect(evaluateIntelligenceRule(rule, facts, now)).toMatchObject({
+      included: true,
+      matchedEvidenceIds: expect.arrayContaining([
+        "verified_purchase:1",
+        "survey_impression:1",
+        "coupon_redemption:1",
+      ]),
+    });
   });
 
   it("rejects free-form fields and invalid operators", () => {

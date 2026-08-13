@@ -57,6 +57,7 @@ import {
 } from "./api/survey-campaigns.js";
 import { handleGetBrandDashboard } from "./api/brand-dashboard.js";
 import { handleGetCustomerIntelligence } from "./api/customer-intelligence.js";
+import { handleListMagnets } from "./api/magnets.js";
 import { handleArchiveSegment, handleCreateSegment, handleGetSegment, handleListSegments, handlePreviewSegment } from "./api/segments.js";
 import {
   handleDecideIntelligenceRecommendation,
@@ -404,6 +405,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/customer-intelligence") {
     await handleGetCustomerIntelligence(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/magnets") {
+    await handleListMagnets(req, res);
     return;
   }
 

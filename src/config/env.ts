@@ -3,8 +3,13 @@ import { resolve } from "node:path";
 
 /** 加载 .env（零依赖，进程启动时执行一次） */
 function loadDotEnv(): void {
+  if (process.env.NODE_ENV === "test" || process.env.VITEST) return;
   const envPath = resolve(process.cwd(), ".env");
   if (!existsSync(envPath)) return;
+  // Local development: .env wins over stale shell exports (e.g. old AI provider URL).
+  // Test/production: explicit process env wins so tests and deployment remain isolated.
+  const nodeEnv = process.env.NODE_ENV ?? "development";
+  const preferDotEnv = nodeEnv === "development";
   for (const line of readFileSync(envPath, "utf8").split("\n")) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
@@ -12,7 +17,7 @@ function loadDotEnv(): void {
     if (eq === -1) continue;
     const key = trimmed.slice(0, eq).trim();
     const value = trimmed.slice(eq + 1).trim();
-    if (!process.env[key]) process.env[key] = value;
+    if (preferDotEnv || !process.env[key]) process.env[key] = value;
   }
 }
 
@@ -53,5 +58,5 @@ export const env = {
   aiRecommendationApiUrl: process.env.AI_RECOMMENDATION_API_URL ?? "",
   aiRecommendationApiKey: process.env.AI_RECOMMENDATION_API_KEY ?? "",
   aiRecommendationModel: process.env.AI_RECOMMENDATION_MODEL ?? "",
-  aiRecommendationTimeoutMs: Number(process.env.AI_RECOMMENDATION_TIMEOUT_MS ?? 12_000_000),
+  aiRecommendationTimeoutMs: Number(process.env.AI_RECOMMENDATION_TIMEOUT_MS ?? 120_000),
 } as const;

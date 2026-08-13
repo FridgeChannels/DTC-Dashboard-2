@@ -15,6 +15,7 @@ vi.mock("../../src/repositories/customer-shopify-config.repo.js", () => ({
 }));
 
 vi.mock("../../src/clients/secrets.client.js", () => ({
+  hasSecret: vi.fn(),
   resolveSecret: vi.fn(),
 }));
 
@@ -55,6 +56,7 @@ describe("lookupCouponByCode", () => {
       access_token_ref: "secret-ref",
       status: "active",
     } as Awaited<ReturnType<typeof shopifyConfigRepo.getShopifyConfigByCustomerId>>);
+    vi.mocked(secrets.hasSecret).mockResolvedValue(true);
     vi.mocked(secrets.resolveSecret).mockResolvedValue("token");
   });
 

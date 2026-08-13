@@ -120,6 +120,16 @@ const I = {
       <path d="M3 13.6 C3 10.7 5.2 9.3 8 9.3 C10.8 9.3 13 10.7 13 13.6" />
     </svg>
   ),
+  navMenu: ({ size = 16 } = {}) => (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
+      <path d="M2.5 4.5 H13.5 M2.5 8 H13.5 M2.5 11.5 H13.5" />
+    </svg>
+  ),
+  navMenuClose: ({ size = 16 } = {}) => (
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
+      <path d="M4 4 L12 12 M12 4 L4 12" />
+    </svg>
+  ),
 };
 window.I = I;
 

@@ -269,24 +269,77 @@ function ciRuleLabel(node, questions = []) {
   if (node.field === "channel.reachable") return node.operator === "exists" || node.value === true ? "A reachable channel is available" : "No reachable channel is available";
   if (node.field === "consent.marketing") return node.value === true ? "Marketing eligibility passes the current check (verify before activation)" : "Marketing eligibility does not pass the current check";
   if (node.field === "order.days_since_last_purchase") return node.operator === "exists" ? "Purchase history is available" : `Last purchase was ${ageOperator} ${value} days ago`;
+  if (node.field === "order.verified_purchase_count") return `Verified coupon-attributed purchase count is ${ageOperator} ${value}`;
+  if (node.field === "engagement.survey_impression_count") return `Survey impression count is ${ageOperator} ${value}`;
+  if (node.field === "engagement.days_since_last_survey_impression") return node.operator === "exists" ? "Survey impression history is available" : `Last survey impression was ${ageOperator} ${value} days ago`;
+  if (node.field === "coupon.assignment_count") return `Coupon assignment count is ${ageOperator} ${value}`;
+  if (node.field === "coupon.redemption_count") return `Coupon redemption count is ${ageOperator} ${value}`;
+  if (node.field === "coupon.days_since_last_assigned") return node.operator === "exists" ? "Coupon assignment history is available" : `Last coupon assignment was ${ageOperator} ${value} days ago`;
   if (node.field === "contact.days_since_last") return node.operator === "exists" ? "Contact history is available" : `Last contact was ${ageOperator} ${value} days ago`;
   return `${node.field} ${node.operator} ${value}`;
 }
 
-function ciEvidenceLabel(evidence, questions = []) {
-  const question = ciQuestionFor(evidence.questionKey, questions);
-  const answer = ciRuleValueLabel(evidence.value, question);
-  return `${question?.text || "Customer answer"} · ${answer}${evidence.answeredAt ? ` · ${ciDate(evidence.answeredAt)}` : ""}`;
-}
-
-function ciDecisionGuidance(recommendation) {
-  if (recommendation.status === "ready") return `Review for action. Validated rules currently find ${ciInt(recommendation.matchedCount)} matched and ${ciInt(recommendation.reachableCount)} reachable customers.`;
-  if (recommendation.status === "monitoring") return `Do not activate yet. ${recommendation.reviewTrigger}`;
-  if (recommendation.status === "insight_only") return "Use this for product, content, or research decisions. Do not create an operational Segment from this insight.";
-  if (recommendation.status === "stale") return "Refresh the supporting evidence before making a brand or customer decision.";
-  if (recommendation.status === "segment_created") return "A Segment was created from this recommendation. Review new evidence before changing it.";
-  if (recommendation.status === "dismissed") return "This recommendation was dismissed. Reconsider it only if materially new evidence appears.";
-  return "Review the evidence and limitations before making a decision.";
+/** Same aggregation idea as AI input: question → answer values with counts, not raw rows. */
+function ciAggregateEvidence(evidence = [], questions = []) {
+  const byQuestion = new Map();
+  const byOperationalKind = new Map();
+  for (const item of evidence) {
+    if (item?.kind && item.occurredAt) {
+      let bucket = byOperationalKind.get(item.kind);
+      if (!bucket) {
+        bucket = { kind: item.kind, count: 0, users: new Set() };
+        byOperationalKind.set(item.kind, bucket);
+      }
+      bucket.count += 1;
+      bucket.users.add(item.userKey || item.evidenceId);
+      continue;
+    }
+    if (!item?.questionKey || item.value == null || item.value === "") continue;
+    let question = byQuestion.get(item.questionKey);
+    if (!question) {
+      question = { questionKey: item.questionKey, values: new Map(), users: new Set() };
+      byQuestion.set(item.questionKey, question);
+    }
+    question.users.add(item.userKey || item.evidenceId);
+    let bucket = question.values.get(String(item.value));
+    if (!bucket) {
+      bucket = { value: item.value, count: 0, users: new Set() };
+      question.values.set(String(item.value), bucket);
+    }
+    bucket.count += 1;
+    bucket.users.add(item.userKey || item.evidenceId);
+  }
+  const answerGroups = [...byQuestion.values()].map((question) => {
+    const meta = ciQuestionFor(question.questionKey, questions);
+    const answers = [...question.values.values()]
+      .sort((a, b) => b.count - a.count || String(a.value).localeCompare(String(b.value)))
+      .map((bucket) => ({
+        label: ciRuleValueLabel(bucket.value, meta),
+        count: bucket.count,
+        uniqueUsers: bucket.users.size,
+      }));
+    return {
+      questionKey: question.questionKey,
+      text: meta?.text || "Customer answer",
+      answered: answers.reduce((sum, row) => sum + row.count, 0),
+      uniqueUsers: question.users.size,
+      answers,
+    };
+  });
+  const operationalLabels = {
+    verified_purchase: "Verified coupon-attributed purchases",
+    coupon_assignment: "Coupon assignments",
+    coupon_redemption: "Coupon redemptions",
+    survey_impression: "Survey impressions",
+  };
+  const operationalGroups = [...byOperationalKind.values()].map((bucket) => ({
+    questionKey: `operational:${bucket.kind}`,
+    text: operationalLabels[bucket.kind] || String(bucket.kind).replaceAll("_", " "),
+    answered: bucket.count,
+    uniqueUsers: bucket.users.size,
+    answers: [],
+  }));
+  return [...answerGroups, ...operationalGroups];
 }
 
 function ciCloneRule(node) {
@@ -324,16 +377,73 @@ function RuleReviewEditor({ label, tree, questions, onChange }) {
           <span>{ciRuleLabel({ ...node, value: "" }, questions).trim()}</span>
           <input className="cfg-input" value={Array.isArray(node.value) ? node.value.join(", ") : String(node.value ?? "")} onChange={(event) => onChange(ciSetRuleValue(tree, path, event.target.value))} />
         </label>
-      )) : <small>No exclusion conditions</small>}
+      )) : <small>No conditions</small>}
     </div>
   );
 }
 
+function ciFriendlyError(message, status) {
+  const raw = String(message || "").trim();
+  if (!raw || raw === "fetch failed" || raw === "Failed to fetch" || /Load failed|NetworkError|unreachable|other side closed/i.test(raw)) {
+    return "Could not reach the recommendations service. Please retry.";
+  }
+  if (status === 401) return "Session expired. Refresh the page and sign in again.";
+  if (status === 502 || status === 503) return raw || "Recommendations service is temporarily unavailable. Please retry.";
+  return raw;
+}
+
+function ciIsRetryableError(message, status) {
+  if (status != null && status >= 500) return true;
+  return /fetch failed|Failed to fetch|Load failed|NetworkError|unreachable|other side closed|temporarily unavailable|Upstream request failed|ECONNREFUSED|ETIMEDOUT|ECONNRESET/i.test(String(message || ""));
+}
+
+async function ciFetchJson(url, options = {}, { retries = 1 } = {}) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, { credentials: "same-origin", ...options });
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+      if (!response.ok) {
+        const message = ciFriendlyError(payload?.error || `Request failed (${response.status})`, response.status);
+        if (attempt < retries && ciIsRetryableError(payload?.error || message, response.status)) {
+          await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(message);
+      }
+      return payload;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const message = ciFriendlyError(lastError.message);
+      if (attempt < retries && ciIsRetryableError(lastError.message)) {
+        await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+        continue;
+      }
+      throw new Error(message);
+    }
+  }
+  throw lastError || new Error("Request failed");
+}
+
 async function ciPost(url, body) {
-  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "Request failed");
-  return payload;
+  return ciFetchJson(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+}
+
+function ciSegmentSuggestionLabel(action) {
+  return ({ create_segment: "Create Segment", monitor: "Monitor first", no_segment: "No Segment" })[action] || action;
+}
+
+function ciCouponSuggestionLabel(action) {
+  return ({ suggest_coupon: "Suggest coupon", no_coupon: "No coupon" })[action] || action;
 }
 
 function RecommendationDetail({ recommendation, questions, onChanged }) {
@@ -353,11 +463,13 @@ function RecommendationDetail({ recommendation, questions, onChanged }) {
 
   if (!recommendation) return <div className="ci-flat-empty">Select an AI recommendation to review its evidence.</div>;
 
+  const evidenceAnalysis = ciAggregateEvidence(recommendation.evidence, questions);
+
   const decide = async (decision) => {
     setWorking(true); setMessage(null);
     try {
       await ciPost(`/api/customer-intelligence/recommendations/${recommendation.id}/decision`, { decision, versionId: recommendation.versionId });
-      setMessage(decision === "dismiss" ? "Suggestion dismissed" : "Suggestion saved for later");
+      setMessage(decision === "dismiss" ? "Suggestion dismissed" : "Decision saved");
       onChanged();
     } catch (error) { setMessage(error.message); }
     finally { setWorking(false); }
@@ -368,7 +480,7 @@ function RecommendationDetail({ recommendation, questions, onChanged }) {
     try {
       const payload = await ciPost("/api/segments/preview", {
         rules, exclusions,
-        purpose: recommendation.businessMeaning, action: recommendation.recommendedAction,
+        purpose: recommendation.summary, action: recommendation.recommendedAction,
       });
       setPreview(payload.preview); setReviewing(true);
     } catch (error) { setMessage(error.message); }
@@ -396,7 +508,7 @@ function RecommendationDetail({ recommendation, questions, onChanged }) {
     try {
       const payload = await ciPost("/api/segments/preview", {
         rules, exclusions, parentSegmentId: match.segmentId,
-        purpose: recommendation.businessMeaning, action: recommendation.recommendedAction,
+        purpose: recommendation.summary, action: recommendation.recommendedAction,
       });
       setParentSegmentId(match.segmentId); setPreview({ ...payload.preview, basedOnName: match.segmentName });
     } catch (error) { setMessage(error.message); }
@@ -418,7 +530,7 @@ function RecommendationDetail({ recommendation, questions, onChanged }) {
       const payload = await ciPost("/api/segments", {
         name: segmentName, rules, exclusions, parentSegmentId,
         expectedRuleHash: preview.ruleHash, recommendationId: recommendation.id,
-        recommendationVersionId: recommendation.versionId, purpose: recommendation.businessMeaning,
+        recommendationVersionId: recommendation.versionId, purpose: recommendation.summary,
         recommendedAction: recommendation.recommendedAction,
       });
       setMessage(`Segment created · ${payload.segment.name || segmentName}`); setReviewing(false); onChanged();
@@ -430,53 +542,98 @@ function RecommendationDetail({ recommendation, questions, onChanged }) {
     <div className="ci-recommendation-detail">
       <div className="ci-ai-disclosure"><span>AI-generated</span><p>{recommendation.disclosure}</p></div>
       <div className="ci-recommendation-title"><strong>{recommendation.name}</strong><span className={`ci-recommendation-status ${recommendation.status}`}>{ciStatusLabel(recommendation.status)}</span></div>
-      <div className="ci-recommendation-metrics" aria-label="Recommendation counts">
-        <span><strong>{ciInt(recommendation.matchedCount)}</strong>Matched</span>
-        <span><strong>{ciInt(recommendation.reachableCount)}</strong>Reachable</span>
-        <span><strong>{ciInt(recommendation.sampleCount)}</strong>Evidence</span>
+
+      <div className="ci-recommendation-primary" aria-label="Primary suggestions">
+        <div className="ci-recommendation-primary-item">
+          <strong>{ciSegmentSuggestionLabel(recommendation.segmentSuggestion?.action)}</strong>
+          <p>{recommendation.segmentSuggestion?.summary || recommendation.recommendedAction}</p>
+        </div>
+        <div className="ci-recommendation-primary-item">
+          <strong>{ciCouponSuggestionLabel(recommendation.couponSuggestion?.action)}</strong>
+          <p>{recommendation.couponSuggestion?.offerIdea || "None"}</p>
+        </div>
       </div>
-      <dl className="ci-recommendation-facts">
-        <div><dt>Recommended now</dt><dd>{ciDecisionGuidance(recommendation)}</dd></div>
-        <div><dt>What we learned</dt><dd>{recommendation.finding}</dd></div>
-        <div><dt>Why it matters</dt><dd>{recommendation.businessMeaning}</dd></div>
-        <div><dt>Evidence</dt><dd className="ci-evidence-detail"><span>{recommendation.evidenceSummary}</span>{recommendation.evidence?.slice(0, 5).map((item) => <small key={item.evidenceId || `${item.questionKey}-${item.answeredAt}`}>{ciEvidenceLabel(item, questions)}</small>)}</dd></div>
-        <div><dt>Suggested next step</dt><dd>{recommendation.recommendedAction}</dd></div>
-        <div><dt>Why this action</dt><dd>{recommendation.actionRationale}</dd></div>
-        <div><dt>Review again when</dt><dd>{recommendation.reviewTrigger}</dd></div>
-        <div><dt>Measure with</dt><dd>{recommendation.successMetric}</dd></div>
-        <div><dt>Segment criteria</dt><dd>{ciRuleLabel(recommendation.rules, questions)}</dd></div>
-        <div><dt>Exclude</dt><dd>{ciRuleLabel(recommendation.exclusions, questions)}</dd></div>
-        {recommendation.missingData?.length ? <div><dt>Missing data</dt><dd className="ci-evidence-detail">{recommendation.missingData.map((item) => <small key={item}>{item}</small>)}</dd></div> : null}
-      </dl>
-      {recommendation.limitations?.length ? <div className="ci-recommendation-limit"><strong>Review carefully</strong>{recommendation.limitations.map((item) => <span key={item}>{item}</span>)}</div> : null}
 
       {reviewing ? (
         <div className="ci-segment-review">
           <label><span>Segment name</span><input className="cfg-input" value={segmentName} maxLength="120" onChange={(event) => setSegmentName(event.target.value)} /></label>
           <RuleReviewEditor label="Include when" tree={rules} questions={questions} onChange={(next) => { setRules(next); setPreview(null); }} />
-          <RuleReviewEditor label="Exclude when" tree={exclusions} questions={questions} onChange={(next) => { setExclusions(next); setPreview(null); }} />
           {!preview ? <button type="button" className="btn primary ci-primary-action" disabled={working} onClick={review}>{working ? "Checking…" : "Update preview"}</button> : null}
           {preview ? <React.Fragment>
-          <div className="ci-segment-preview"><span><strong>{ciInt(preview.matchedCount)}</strong>will enter</span><span><strong>{ciInt(preview.reachableCount)}</strong>reachable</span><span><strong>{ciInt(preview.excludedCount)}</strong>excluded</span></div>
+          <div className="ci-segment-preview"><span><strong>{ciInt(preview.matchedCount)}</strong>will enter</span><span><strong>{ciInt(preview.reachableCount)}</strong>reachable</span></div>
           {preview.segmentRecommendation ? <p className="ci-segment-match"><strong>{preview.segmentRecommendation.decision.replaceAll("_", " ")}</strong>{preview.segmentRecommendation.reasons.join(" ")}</p> : null}
           {preview.members?.length ? <div className="ci-preview-members" aria-label="Matching customer evidence">{preview.members.slice(0, 5).map((member) => <div key={member.userKey}><span>{member.userKey}</span><small>{member.reasons?.[0] || "Matched reviewed rules"}</small></div>)}</div> : null}
+          {recommendation.couponSuggestion?.action === "suggest_coupon" ? (
+            <p className="ci-segment-match">
+              <strong>After create</strong>
+              {" "}Configure the suggested coupon in Segment Coupons: {recommendation.couponSuggestion.offerIdea}
+            </p>
+          ) : null}
           {preview.basedOnName ? <button type="button" className="btn primary ci-primary-action" disabled={working || !segmentName.trim()} onClick={createSegment}>{working ? "Creating…" : `Create from ${preview.basedOnName}`}</button>
             : preview.segmentRecommendation?.decision === "use_existing" ? <button type="button" className="btn primary ci-primary-action" disabled={working} onClick={useExisting}>{working ? "Saving…" : `Use ${preview.segmentRecommendation.segmentName}`}</button>
             : preview.segmentRecommendation?.decision === "create_from_existing" ? <button type="button" className="btn primary ci-primary-action" disabled={working} onClick={prepareFromExisting}>{working ? "Checking…" : `Create from ${preview.segmentRecommendation.segmentName}`}</button>
             : preview.segmentRecommendation?.decision === "do_not_create" ? <button type="button" className="btn primary ci-primary-action" disabled={working} onClick={doNotCreate}>{working ? "Saving…" : "Confirm no Segment"}</button>
-            : <button type="button" className="btn primary ci-primary-action" disabled={working || !segmentName.trim()} onClick={createSegment}>{working ? "Creating…" : "Create new Segment"}</button>}
+            : <button type="button" className="btn primary ci-primary-action" disabled={working || !segmentName.trim()} onClick={createSegment}>{working ? "Creating…" : "Create Segment"}</button>}
           </React.Fragment> : null}
         </div>
       ) : (
         <div className="ci-recommendation-actions">
-          <button type="button" className="btn primary" disabled={working || recommendation.status !== "ready"} onClick={review}>{working ? "Checking…" : "Review suggestion"}</button>
-          <button type="button" className="btn" disabled={working} onClick={() => decide("defer")}>Save for later</button>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={working || recommendation.status !== "ready"}
+            onClick={review}
+          >
+            {working ? "Checking…" : "Change segment"}
+          </button>
+          <button type="button" className="btn" onClick={() => { window.location.assign("/segment-config"); }}>
+            Configure coupon
+          </button>
           <button type="button" className="btn linkish" disabled={working} onClick={() => decide("dismiss")}>Dismiss</button>
         </div>
       )}
       {message ? <div className="ci-action-message" role="status">{message}</div> : null}
+
+      <div className="ci-recommendation-support">
+        <h3>Supporting detail</h3>
+        <dl className="ci-recommendation-facts">
+          <div><dt>Summary</dt><dd>{recommendation.summary}</dd></div>
+          <div>
+            <dt>Evidence</dt>
+            <dd className="ci-evidence-detail">
+              {evidenceAnalysis.length
+                ? evidenceAnalysis.map((question) => (
+                  <div key={question.questionKey} className="ci-evidence-aggregate">
+                    <strong>{question.text}</strong>
+                    <small>{ciInt(question.answered)} answers · {ciInt(question.uniqueUsers)} users</small>
+                    {question.answers.map((answer) => (
+                      <small key={`${question.questionKey}-${answer.label}`}>
+                        {answer.label} · {ciInt(answer.count)} answers · {ciInt(answer.uniqueUsers)} users
+                      </small>
+                    ))}
+                  </div>
+                ))
+                : <small>No cited evidence</small>}
+            </dd>
+          </div>
+        </dl>
+        {recommendation.limitations?.length ? <div className="ci-recommendation-limit"><strong>Review carefully</strong>{recommendation.limitations.map((item) => <span key={item}>{item}</span>)}</div> : null}
+      </div>
     </div>
   );
+}
+
+function ciGroupRecommendationsByRun(recommendations = []) {
+  const groups = new Map();
+  for (const item of recommendations) {
+    const runId = item.analysisRunId || item.id;
+    const analyzedAt = item.analyzedAt || item.updatedAt || "";
+    if (!groups.has(runId)) groups.set(runId, { analysisRunId: runId, analyzedAt, items: [] });
+    const group = groups.get(runId);
+    group.items.push(item);
+    if (analyzedAt && analyzedAt > group.analyzedAt) group.analyzedAt = analyzedAt;
+  }
+  return [...groups.values()].sort((a, b) => String(b.analyzedAt).localeCompare(String(a.analyzedAt)));
 }
 
 function RecommendationsView({ data, answerSummary, questions, loading, error, onReload, onReanalyze }) {
@@ -486,15 +643,27 @@ function RecommendationsView({ data, answerSummary, questions, loading, error, o
   const recommendations = data?.recommendations || [];
   const topics = [...new Set(recommendations.map((item) => item.topicId))];
   const filtered = recommendations.filter((item) => (topic === "all" || item.topicId === topic) && (status === "all" || item.status === status));
-  const selected = recommendations.find((item) => item.id === selectedId) || filtered.find((item) => item.status === "ready") || filtered[0] || null;
+  const runGroups = ciGroupRecommendationsByRun(filtered);
+  const fallbackId = runGroups[0]?.items.find((item) => item.status === "ready")?.id
+    || runGroups[0]?.items[0]?.id
+    || null;
+  const openId = selectedId || fallbackId;
 
   if (loading) return <PageLoading compact />;
-  if (error) return <div className="ci-flat-empty">{error}<button type="button" className="btn" onClick={onReload}>Retry</button></div>;
+  if (error) {
+    return (
+      <div className="ci-flat-empty ci-recommendation-empty">
+        <strong>Could not load AI recommendations</strong>
+        <span>{error}</span>
+        <button type="button" className="btn" onClick={onReload}>Retry</button>
+      </div>
+    );
+  }
   if (!recommendations.length) return (
     <div className="ci-flat-empty ci-recommendation-empty">
       <strong>{data?.configured ? "No AI recommendation has been generated yet" : "AI recommendations are not configured"}</strong>
       <span>{data?.configured
-        ? `${ciInt(answerSummary?.answers)} submitted answers from ${ciInt(answerSummary?.respondents)} respondents are available, including ${ciInt(answerSummary?.reachableCustomers)} reachable customers. A Ready recommendation needs at least ${data?.policy?.minimumSupportingAnswers ?? 5} supporting answer facts for one finding, ${data?.policy?.minimumReachableCustomers ?? 1} matching reachable customer, and evidence from the last ${data?.policy?.evidenceMaxAgeDays ?? 90} days.`
+        ? `${ciInt(answerSummary?.answers)} submitted answers from ${ciInt(answerSummary?.respondents)} respondents are available, including ${ciInt(answerSummary?.reachableCustomers)} reachable customers. AI also uses connected purchase, coupon, survey-impression, and identity signals. A Ready recommendation needs at least ${data?.policy?.minimumSupportingAnswers ?? 5} supporting facts, ${data?.policy?.minimumReachableCustomers ?? 1} matching reachable customer, and evidence from the last ${data?.policy?.evidenceMaxAgeDays ?? 90} days.`
         : "Answers remain available. Configure the dedicated AI recommendation provider to generate suggestions."}</span>
       {data?.configured ? <button type="button" className="btn primary" onClick={onReanalyze}>Analyze answers</button> : null}
     </div>
@@ -505,14 +674,35 @@ function RecommendationsView({ data, answerSummary, questions, loading, error, o
       <div className="ci-filter-row ci-recommendation-filters">
         <select className="cfg-input" value={topic} onChange={(event) => setTopic(event.target.value)} aria-label="Signal topic"><option value="all">All signals</option>{topics.map((item) => <option key={item} value={item}>{item.replace(/^fc:/, "").replaceAll("_", " ")}</option>)}</select>
         <select className="cfg-input" value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Recommendation status"><option value="all">All states</option>{["ready", "monitoring", "insight_only", "stale", "segment_created", "dismissed"].map((item) => <option key={item} value={item}>{ciStatusLabel(item)}</option>)}</select>
-        <button type="button" className="btn" onClick={onReanalyze}>Re-analyze</button>
+        <button type="button" className="btn primary" onClick={onReanalyze}>Re-analyze with latest data</button>
       </div>
       <div className="ci-recommendation-workbench">
-        <select className="cfg-input ci-recommendation-mobile-select" value={selected?.id || ""} onChange={(event) => setSelectedId(event.target.value)} aria-label="Select AI recommendation">{filtered.map((item) => <option key={item.id} value={item.id}>{item.name} · {ciStatusLabel(item.status)}</option>)}</select>
-        <div className="ci-recommendation-list" role="listbox" aria-label="AI recommendations">
-          {filtered.map((item) => <button key={item.id} type="button" role="option" aria-selected={selected?.id === item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setSelectedId(item.id)}><span><small>AI-generated · {item.topicId.replace(/^fc:/, "").replaceAll("_", " ")}</small><strong>{item.name}</strong><em>{ciStatusLabel(item.status)}</em></span><span><strong>{ciInt(item.matchedCount)}</strong><small>{ciInt(item.reachableCount)} reachable</small></span></button>)}
+        <div className="ci-recommendation-list" aria-label="AI recommendations">
+          {runGroups.map((group, groupIndex) => (
+            <div key={group.analysisRunId} className="ci-recommendation-run">
+              <div className="ci-recommendation-run-divider" role="separator" aria-label={group.analyzedAt ? `Analyzed ${ciDate(group.analyzedAt, true)}` : "Earlier analysis"}>
+                <span>{groupIndex === 0 ? "Latest analysis" : "Earlier analysis"}</span>
+                <time dateTime={group.analyzedAt || undefined}>{group.analyzedAt ? ciDate(group.analyzedAt, true) : "Unknown time"}</time>
+              </div>
+              {group.items.map((item) => {
+                const isOpen = openId === item.id;
+                return (
+                  <div key={item.id} className="ci-recommendation-card">
+                    <button
+                      type="button"
+                      className={`ci-recommendation-card-trigger${isOpen ? " active" : ""}`}
+                      aria-expanded={isOpen}
+                      onClick={() => setSelectedId(item.id)}
+                    >
+                      <strong>{item.name}</strong>
+                    </button>
+                    {isOpen ? <RecommendationDetail recommendation={item} questions={questions} onChanged={onReload} /> : null}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
-        <RecommendationDetail recommendation={selected} questions={questions} onChanged={onReload} />
       </div>
     </div>
   );
@@ -523,32 +713,32 @@ function CustomerIntelligencePage() {
   const [activeTab, setActiveTab] = useStateCI("answers");
   const [intelligence, setIntelligence] = useStateCI(null);
   const [recommendationData, setRecommendationData] = useStateCI({ configured: false, recommendations: [] });
-  const [recommendationLoading, setRecommendationLoading] = useStateCI(true);
+  const [recommendationLoading, setRecommendationLoading] = useStateCI(false);
   const [recommendationError, setRecommendationError] = useStateCI(null);
   const [loading, setLoading] = useStateCI(true);
   const [error, setError] = useStateCI(null);
 
   const loadRecommendations = useCallbackCI(async () => {
-    setRecommendationLoading(true); setRecommendationError(null);
+    setRecommendationLoading(true);
+    setRecommendationError(null);
     try {
-      const response = await fetch("/api/customer-intelligence/recommendations");
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Failed to load AI recommendations");
+      const payload = await ciFetchJson("/api/customer-intelligence/recommendations", {}, { retries: 2 });
       setRecommendationData(payload);
-    } catch (err) { setRecommendationError(err.message); }
-    finally { setRecommendationLoading(false); }
+    } catch (err) {
+      setRecommendationError(err instanceof Error ? err.message : "Failed to load AI recommendations");
+    } finally {
+      setRecommendationLoading(false);
+    }
   }, []);
 
   const loadData = useCallbackCI(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(buildCustomerIntelligenceUrl(dateRange));
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Failed to load customer intelligence");
+      const payload = await ciFetchJson(buildCustomerIntelligenceUrl(dateRange), {}, { retries: 1 });
       setIntelligence(payload.intelligence);
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : "Failed to load customer intelligence");
       setIntelligence(null);
     } finally {
       setLoading(false);
@@ -556,17 +746,31 @@ function CustomerIntelligencePage() {
   }, [dateRange]);
 
   useEffectCI(() => { loadData(); }, [loadData]);
-  useEffectCI(() => { loadRecommendations(); }, [loadRecommendations]);
 
-  const reanalyze = async () => {
-    setRecommendationLoading(true); setRecommendationError(null);
-    try { await ciPost("/api/customer-intelligence/recommendations/reanalyze", {}); await loadRecommendations(); }
-    catch (err) { setRecommendationError(err.message); setRecommendationLoading(false); }
-  };
+  const reanalyze = useCallbackCI(async () => {
+    setRecommendationLoading(true);
+    setRecommendationError(null);
+    try {
+      await ciPost("/api/customer-intelligence/recommendations/reanalyze", {});
+      await loadRecommendations();
+    } catch (err) {
+      setRecommendationError(err instanceof Error ? err.message : "Failed to analyze answers");
+      setRecommendationLoading(false);
+    }
+  }, [loadRecommendations]);
 
+  // Load saved recommendation history when opening the tab. New runs are created via Re-analyze.
+  useEffectCI(() => {
+    if (activeTab !== "recommendations") return;
+    loadRecommendations();
+  }, [activeTab, loadRecommendations]);
+
+  const latestRunId = recommendationData.recommendations[0]?.analysisRunId;
   const summary = intelligence ? {
     ...intelligence.summary,
-    readyRecommendations: recommendationData.recommendations.filter((item) => item.status === "ready").length,
+    readyRecommendations: recommendationData.recommendations.filter((item) => (
+      item.status === "ready" && (!latestRunId || item.analysisRunId === latestRunId)
+    )).length,
   } : null;
 
   return (

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { env } from "../config/env.js";
-import { json, errorJson } from "./http.js";
+import { readJsonBody, json, errorJson } from "./http.js";
 import { assertRequestCanWriteConfig, getRequestCustomerId } from "./tenant-context.js";
 import { AuthError } from "../lib/auth/errors.js";
 import {
@@ -27,8 +27,19 @@ const OAUTH_SESSION_TTL_MS = 10 * 60 * 1000;
 
 const oauthSessions = new Map<
   string,
-  { customerId: number; codeVerifier: string; createdAt: number }
+  { customerId: number; codeVerifier: string; createdAt: number; returnTo: string | null }
 >();
+
+function onboardingReturnTo(value: unknown): string | null {
+  return typeof value === "string" && value.startsWith("/onboarding?") ? value : null;
+}
+
+function callbackDestination(returnTo: string | null, value: string): string {
+  if (!returnTo) return `/brand-config?klaviyo_oauth=${value}&section=klaviyo`;
+  const target = new URL(returnTo, "http://local");
+  target.searchParams.set("klaviyo_oauth", value);
+  return `${target.pathname}?${target.searchParams.toString()}`;
+}
 
 function redirect(res: ServerResponse, location: string): void {
   res.writeHead(302, { Location: location });
@@ -106,6 +117,7 @@ export async function handleKlaviyoOAuthStart(
   res: ServerResponse,
 ): Promise<void> {
   try {
+    const body = await readJsonBody<{ returnTo?: string }>(req);
     await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
 
@@ -128,7 +140,7 @@ export async function handleKlaviyoOAuthStart(
     const codeChallenge = generateCodeChallenge(codeVerifier);
     const state = randomBytes(24).toString("hex");
 
-    oauthSessions.set(state, { customerId, codeVerifier, createdAt: Date.now() });
+    oauthSessions.set(state, { customerId, codeVerifier, createdAt: Date.now(), returnTo: onboardingReturnTo(body.returnTo) });
 
     const params = new URLSearchParams({
       response_type: "code",
@@ -153,6 +165,7 @@ export async function handleKlaviyoOAuthCallback(
   res: ServerResponse,
   url: URL,
 ): Promise<void> {
+  let returnTo: string | null = null;
   try {
     const oauthError = url.searchParams.get("error");
     const state = url.searchParams.get("state");
@@ -176,6 +189,7 @@ export async function handleKlaviyoOAuthCallback(
       redirect(res, "/brand-config?klaviyo_oauth=invalid_state&section=klaviyo");
       return;
     }
+    returnTo = session.returnTo;
 
     const tokenData = await exchangeCodeForTokens(code, session.codeVerifier);
     const customerId = session.customerId;
@@ -216,10 +230,10 @@ export async function handleKlaviyoOAuthCallback(
       accountEmail,
     });
 
-    redirect(res, "/brand-config?klaviyo_oauth=success&section=klaviyo");
+    redirect(res, callbackDestination(returnTo, "success"));
   } catch (err) {
     console.error(err);
-    redirect(res, "/brand-config?klaviyo_oauth=failed&section=klaviyo");
+    redirect(res, callbackDestination(returnTo, "failed"));
   }
 }
 

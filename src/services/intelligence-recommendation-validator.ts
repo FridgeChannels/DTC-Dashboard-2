@@ -72,13 +72,16 @@ export function validateRecommendationCandidate(
     }
     matchedUserKeys.push(user.userKey);
     inclusion.matchedEvidenceIds.forEach((id) => evidenceIds.add(id));
-    if (user.identityStatus === "reachable" && user.reachableChannels.length && user.marketingConsent) {
+    if (user.identityStatus === "reachable" && user.reachableChannels.length && user.marketingConsent !== false) {
       reachableUserKeys.push(user.userKey);
     }
   }
 
-  if (candidate.sampleCount < policy.minimumSample) limitations.push(`Only ${candidate.sampleCount} responses are available; this is not a trend.`);
+  if (candidate.sampleCount < policy.minimumSample) limitations.push(`Only ${candidate.sampleCount} supporting facts are available; this is not a trend.`);
   if (reachableUserKeys.length < policy.minimumReachable) limitations.push("No currently reachable customers satisfy the validated rule.");
+  if (matchedUserKeys.some((key) => users.find((user) => user.userKey === key)?.marketingConsent === null)) {
+    limitations.push("Marketing consent is not connected and must be verified before activation.");
+  }
   if (staleDays === null || staleDays > policy.staleAfterDays) limitations.push("The supporting evidence is stale or has no valid timestamp.");
 
   let readiness: RecommendationReadiness;

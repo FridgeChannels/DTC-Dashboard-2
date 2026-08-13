@@ -47,6 +47,28 @@ export async function listRecommendations(customerId: number): Promise<Intellige
   return (data ?? []) as unknown as IntelligenceRecommendationRow[];
 }
 
+/** Load current versions for many recommendations in one round-trip (avoids N+1). */
+export async function listRecommendationVersionsByIds(
+  customerId: number,
+  items: Array<{ id: string; current_version: number }>,
+): Promise<Map<string, IntelligenceRecommendationVersionRow>> {
+  const result = new Map<string, IntelligenceRecommendationVersionRow>();
+  if (!items.length) return result;
+  const ids = items.map((item) => item.id);
+  const { data, error } = await getSupabase()
+    .from("fc_intelligence_recommendation_version")
+    .select(VERSION_COLUMNS)
+    .eq("customer_id", customerId)
+    .in("recommendation_id", ids);
+  if (error) throw error;
+  const wanted = new Map(items.map((item) => [item.id, item.current_version]));
+  for (const row of (data ?? []) as unknown as IntelligenceRecommendationVersionRow[]) {
+    if (wanted.get(row.recommendation_id) !== row.version) continue;
+    result.set(row.recommendation_id, row);
+  }
+  return result;
+}
+
 export async function getRecommendation(customerId: number, id: string): Promise<IntelligenceRecommendationRow | null> {
   const { data, error } = await getSupabase().from("fc_intelligence_recommendation").select(RECOMMENDATION_COLUMNS).eq("customer_id", customerId).eq("id", id).maybeSingle();
   if (error) throw error;
@@ -99,4 +121,16 @@ export async function updateRecommendationStatus(customerId: number, id: string,
     .update({ status, updated_at: new Date().toISOString() })
     .eq("customer_id", customerId).eq("id", id);
   if (error) throw error;
+}
+
+/** Wipe all recommendation rows for a tenant so the next analysis replaces history. */
+export async function deleteRecommendationsForCustomer(customerId: number): Promise<void> {
+  const sb = getSupabase();
+  // decisions reference versions with ON DELETE RESTRICT — delete them first
+  const { error: decisionError } = await sb.from("fc_intelligence_recommendation_decision").delete().eq("customer_id", customerId);
+  if (decisionError) throw decisionError;
+  const { error: versionError } = await sb.from("fc_intelligence_recommendation_version").delete().eq("customer_id", customerId);
+  if (versionError) throw versionError;
+  const { error: recommendationError } = await sb.from("fc_intelligence_recommendation").delete().eq("customer_id", customerId);
+  if (recommendationError) throw recommendationError;
 }

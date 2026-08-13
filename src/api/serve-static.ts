@@ -32,8 +32,12 @@ export async function serveStatic(
   if (pathname === "/login") relativePath = "/login.html";
   else if (
     pathname === "/" ||
+    pathname === "/onboarding" ||
     pathname === "/dashboard" ||
+    pathname === "/magnets" ||
+    pathname === "/customers" ||
     pathname === "/customer-intelligence" ||
+    pathname === "/customer-insights" ||
     pathname === "/orders-delivery" ||
     pathname === "/brand-config" ||
     pathname === "/segment-config" ||

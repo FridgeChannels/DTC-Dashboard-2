@@ -10,6 +10,10 @@ import { listCustomerIntelligenceImpact } from "../services/segment-activation.s
 function statusFor(err: unknown): number {
   if (err instanceof AuthError) return 401;
   if (err instanceof Error && err.message.includes("not configured")) return 503;
+  const message = err instanceof Error ? err.message : "";
+  if (/fetch failed|Failed to fetch|unreachable|other side closed|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|ECONNRESET|UND_ERR_SOCKET|Upstream request failed/i.test(message)) {
+    return 502;
+  }
   return 400;
 }
 
@@ -43,11 +47,16 @@ export async function handleGetIntelligenceRecommendation(req: IncomingMessage, 
 }
 
 export async function handleReanalyzeIntelligenceRecommendations(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const started = Date.now();
   try {
     await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
-    json(res, 202, await refreshCustomerRecommendations(customerId));
+    console.log(`[ci-ai] reanalyze start customerId=${customerId}`);
+    const result = await refreshCustomerRecommendations(customerId);
+    console.log(`[ci-ai] reanalyze done customerId=${customerId} generated=${result.generated} unchanged=${result.unchanged} ms=${Date.now() - started}`);
+    json(res, 202, result);
   } catch (err) {
+    console.error(`[ci-ai] reanalyze failed ms=${Date.now() - started}`, err instanceof Error ? err.message : err);
     errorJson(res, statusFor(err), toErrorMessage(err, "Failed to analyze customer intelligence"));
   }
 }

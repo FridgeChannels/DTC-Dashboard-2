@@ -19,8 +19,19 @@ import { disconnectShopifyAuthorization } from "../services/brand-config.service
 
 const oauthStates = new Map<
   string,
-  { customerId: number; shop: string; createdAt: number }
+  { customerId: number; shop: string; createdAt: number; returnTo: string | null }
 >();
+
+function onboardingReturnTo(value: unknown): string | null {
+  return typeof value === "string" && value.startsWith("/onboarding?") ? value : null;
+}
+
+function callbackDestination(returnTo: string | null, key: string, value: string): string {
+  if (!returnTo) return `/brand-config?${key}=${value}&section=shopify`;
+  const target = new URL(returnTo, "http://local");
+  target.searchParams.set(key, value);
+  return `${target.pathname}?${target.searchParams.toString()}`;
+}
 
 function normalizeShopDomain(shop: string): string {
   return shop
@@ -102,7 +113,7 @@ export async function handleShopifyOAuthStart(
   res: ServerResponse,
 ): Promise<void> {
   try {
-    const body = await readJsonBody<{ shop?: string }>(req);
+    const body = await readJsonBody<{ shop?: string; returnTo?: string }>(req);
     await assertRequestCanWriteConfig(req, res);
     const shop = normalizeShopDomain(body.shop ?? "");
     const customerId = await getRequestCustomerId(req, res);
@@ -147,7 +158,7 @@ export async function handleShopifyOAuthStart(
     }
 
     const state = randomBytes(24).toString("hex");
-    oauthStates.set(state, { customerId, shop, createdAt: Date.now() });
+    oauthStates.set(state, { customerId, shop, createdAt: Date.now(), returnTo: onboardingReturnTo(body.returnTo) });
 
     const redirectUri = `${env.shopifyAppHost}/api/shopify/oauth/callback`;
     const params = new URLSearchParams({
@@ -170,6 +181,7 @@ export async function handleShopifyOAuthCallback(
   res: ServerResponse,
   url: URL,
 ): Promise<void> {
+  let returnTo: string | null = null;
   try {
     const shop = normalizeShopDomain(url.searchParams.get("shop") ?? "");
     const code = url.searchParams.get("code");
@@ -192,6 +204,7 @@ export async function handleShopifyOAuthCallback(
       redirect(res, "/brand-config?shopify_oauth=invalid_shop");
       return;
     }
+    returnTo = savedState.returnTo;
 
     const customerId = savedState.customerId;
     const oauthConfig = await getOAuthAppConfig(customerId);
@@ -249,10 +262,10 @@ export async function handleShopifyOAuthCallback(
       status: "active",
     });
 
-    redirect(res, "/brand-config?shopify_oauth=success&section=shopify");
+    redirect(res, callbackDestination(returnTo, "shopify_oauth", "success"));
   } catch (err) {
     console.error(err);
-    redirect(res, "/brand-config?shopify_oauth=failed&section=shopify");
+    redirect(res, callbackDestination(returnTo, "shopify_oauth", "failed"));
   }
 }
 

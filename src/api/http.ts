@@ -28,7 +28,19 @@ export function errorJson(
 }
 
 export function toErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
+  if (err instanceof Error) {
+    const cause = (err as Error & { cause?: unknown }).cause;
+    if (
+      (err.message === "fetch failed" || err.message === "Failed to fetch") &&
+      cause &&
+      typeof cause === "object" &&
+      "message" in cause &&
+      typeof (cause as { message: unknown }).message === "string"
+    ) {
+      return `Upstream request failed: ${(cause as { message: string }).message}`;
+    }
+    return err.message;
+  }
   if (
     err &&
     typeof err === "object" &&

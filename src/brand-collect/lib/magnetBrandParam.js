@@ -203,10 +203,14 @@ export async function updateBrandInfoMagnetBrandParams(input) {
     updatePayload.brand_logo = await uploadImage(brandLogo, 'logos');
   }
 
-  return updateMagnetBrandParamRows(updatePayload, {
+  const preferredMagnets = await updateMagnetBrandParamRows(updatePayload, {
     customerId,
     magnetSns: BRAND_INFO_MAGNET_SNS,
   });
+  // New tenants may not yet have the two legacy Brand Info magnets. Persist to
+  // their available magnets instead of reporting a misleading zero-row save.
+  if (preferredMagnets.updatedCount > 0) return preferredMagnets;
+  return updateMagnetBrandParamRows(updatePayload, { customerId });
 }
 
 export async function updateMagnetBrandParamStoreWebsite(storeWebsite, customerId) {

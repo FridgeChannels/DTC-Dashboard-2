@@ -188,13 +188,16 @@ def recommendation_fixture():
         "id": "rec-1", "versionId": "rec-v1", "version": 1, "name": "Near-term replenishment opportunity",
         "topicId": "fc:supply_replenishment", "decisionUse": "customer_action", "status": "ready",
         "aiGenerated": True, "disclosure": "AI-generated decision support based on the evidence shown here. The system validates rules and readiness; the brand decides what to do.",
-        "finding": "Customers report less than two weeks of supply.", "businessMeaning": "A timely replenishment reminder may reduce stock-out risk.",
-        "evidenceSummary": "Recent answers show a near-term replenishment window among reachable respondents.",
-        "recommendedAction": "Review a useful replenishment reminder without automatic sending.",
-        "actionRationale": "The supply answers indicate timing relevance, while brand review is still required before contact.",
-        "reviewTrigger": "Review when at least five supporting answers and one reachable customer are available.",
-        "successMetric": "Repeat purchase rate", "missingData": ["Verified marketing consent", "Recent purchase history"],
-        "rules": {"all": [rule]}, "exclusions": {"any": []}, "confidence": .84, "sampleCount": 28,
+        "summary": "Customers report less than two weeks of supply. A timely Segment and replenishment coupon may reduce stock-out risk after brand review.",
+        "segmentSuggestion": {"action": "create_segment", "summary": "Create a Segment of customers with less than two weeks of supply."},
+        "couponSuggestion": {
+            "action": "suggest_coupon",
+            "offerIdea": "Useful replenishment coupon after brand review",
+        },
+        "recommendedAction": "Create Segment, then configure coupon: Useful replenishment coupon after brand review",
+        "analysisRunId": "run-visual-1",
+        "analyzedAt": "2026-08-11T03:15:00.000Z",
+        "rules": {"all": [rule]}, "exclusions": {"any": []}, "sampleCount": 28,
         "matchedCount": 10, "reachableCount": 7, "limitations": ["Marketing consent must be checked before activation."],
         "evidence": [{
             "evidenceId": "customer_signal:answer-1",
@@ -290,9 +293,10 @@ def run():
             assert page.get_by_role("combobox", name="Signal topic").is_visible()
             assert page.get_by_role("combobox", name="Recommendation status").is_visible()
             assert page.get_by_text("Recommended now", exact=True).is_visible()
-            assert page.get_by_text("Why this action", exact=True).is_visible()
+            assert page.get_by_text("Segment suggestion", exact=True).is_visible()
+            assert page.get_by_text("Coupon suggestion", exact=True).is_visible()
             assert page.get_by_text("Review again when", exact=True).is_visible()
-            assert page.get_by_text("Missing data", exact=True).is_visible()
+            assert page.get_by_text("Review carefully", exact=True).is_visible()
             assert page.get_by_text("At your current rate, how long will your current supply last? · Less than 1 week", exact=False).is_visible()
             assert page.get_by_text("undefined", exact=True).count() == 0
             page.get_by_role("button", name="Review suggestion").click()

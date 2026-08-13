@@ -1,14 +1,18 @@
 // ============================================================
 // FC Admin — sidebar navigation + configuration panels
 // ============================================================
-const { useState: useStateAdmin, useEffect: useEffectAdmin } = React;
+const { useState: useStateAdmin, useEffect: useEffectAdmin, useRef: useRefAdmin, useCallback: useCallbackAdmin } = React;
 
 // 新版收入优先 Brand Dashboard
 const DASHBOARD_SECTION = {
   id: "dashboard",
   label: "Dashboard",
 };
-const CUSTOMER_INTELLIGENCE_SECTION = { id: "customer-intelligence", label: "Customer Intelligence" };
+const ONBOARDING_SECTION = { id: "onboarding", label: "Finish setup" };
+const CAMPAIGNS_SECTION = { id: "campaigns", label: "Campaigns" };
+const CUSTOMER_INTELLIGENCE_SECTION = { id: "customer-intelligence", label: "Magnets" };
+const CUSTOMER_INSIGHTS_SECTION = { id: "customer-insights", label: "Customer Insights" };
+const ANALYTICS_OVERVIEW_SECTION = { id: "analytics-overview", label: "Overview" };
 const ORDERS_DELIVERY_SECTION = { id: "orders-delivery", label: "Orders & Delivery" };
 
 // 旧版（mock 数据）Dashboard，保留为 dashboard_pre
@@ -32,12 +36,22 @@ const ACCOUNT_SECTION = { id: "account", label: "FC Account" };
 const SHOPIFY_SECTION = { id: "shopify", label: "Shopify" };
 const KLAVIYO_SECTION = { id: "klaviyo", label: "Klaviyo" };
 
-// section 属于 Accounts 区时，底部 Accounts 保持展开/高亮
-const ACCOUNT_MATCH = [ACCOUNT_SECTION.id, SHOPIFY_SECTION.id, KLAVIYO_SECTION.id];
+// Account owns account settings, completed brand setup, and operational settings.
+const ACCOUNT_MATCH = [
+  ACCOUNT_SECTION.id,
+  SHOPIFY_SECTION.id,
+  KLAVIYO_SECTION.id,
+  BRAND_COLLECT_SECTION.id,
+  ORDERS_DELIVERY_SECTION.id,
+];
 
 const ALL_SECTIONS = [
   DASHBOARD_SECTION,
+  ONBOARDING_SECTION,
+  CAMPAIGNS_SECTION,
   CUSTOMER_INTELLIGENCE_SECTION,
+  CUSTOMER_INSIGHTS_SECTION,
+  ANALYTICS_OVERVIEW_SECTION,
   ORDERS_DELIVERY_SECTION,
   BRAND_COLLECT_SECTION,
   PRODUCT_ADD_SECTION,
@@ -49,63 +63,66 @@ const ALL_SECTIONS = [
   KLAVIYO_SECTION,
 ];
 
-// 依赖门控：shopify → Coupons；klaviyo → Segment Coupons / Survey Campaigns
-// 层级：Coupons（券线）下含 Coupons + Segment Coupons；Surveys（问卷线）独立；
-//       Integrations（Shopify+Klaviyo 合并）为地基，单独一项。
-function buildNavGroups(conn) {
+// Brand Info is an onboarding blocker until its five core fields are complete.
+function buildNavGroups(conn, brandInfo, setupProgress) {
   const shopifyReady = conn.shopifyReady;
   const klaviyoReady = conn.klaviyoReady;
-  return [
+  const groups = [
+    ...(setupProgress.complete ? [] : [{
+      items: [{
+        ...ONBOARDING_SECTION,
+        icon: I.navBrand,
+        blocker: true,
+        progress: `${setupProgress.completed}/3`,
+      }],
+    }]),
+    { items: [{ ...DASHBOARD_SECTION, icon: I.navDashboard }] },
+    { items: [{ ...CAMPAIGNS_SECTION, icon: I.navProduct, placeholder: true }] },
     {
-      label: "Overview",
+      label: "Customers",
+      expandable: true,
       items: [
-        // dashboard_pre 暂时隐藏（保留 DASHBOARD_PRE_SECTION 与渲染分支，未删除）
-        { ...DASHBOARD_SECTION, icon: I.navDashboard },
         { ...CUSTOMER_INTELLIGENCE_SECTION, icon: I.navIntelligence },
-        { ...ORDERS_DELIVERY_SECTION, icon: I.navOrders },
-        { ...BRAND_COLLECT_SECTION, icon: I.navBrand },
-        // Add Product 暂时隐藏（保留 PRODUCT_ADD_SECTION 与渲染分支，未删除）
+        { ...SEGMENT_CONFIG_SECTION, label: "Segments", icon: I.navSegments, locked: !klaviyoReady, lockHint: "Connect Klaviyo and sync segments before configuring coupons." },
       ],
     },
     {
-      label: "Campaign",
+      label: "Content",
+      expandable: true,
       items: [
-        {
-          ...COUPON_CAMPAIGNS_SECTION,
-          label: "Coupons",
-          icon: I.navCoupons,
-          locked: !shopifyReady,
-          lockHint: "Connect Shopify before creating coupons.",
-        },
-        {
-          ...SEGMENT_CONFIG_SECTION,
-          label: "Segments",
-          icon: I.navSegments,
-          locked: !klaviyoReady,
-          lockHint: "Connect Klaviyo and sync segments before configuring coupons.",
-        },
-        {
-          ...SURVEY_CAMPAIGNS_SECTION,
-          icon: I.navSurveys,
-          locked: !klaviyoReady,
-          lockHint: "Connect Klaviyo before running surveys.",
-        },
+        { ...COUPON_CAMPAIGNS_SECTION, icon: I.navCoupons, locked: !shopifyReady, lockHint: "Connect Shopify before creating coupons." },
+        { ...SURVEY_CAMPAIGNS_SECTION, icon: I.navSurveys, locked: !klaviyoReady, lockHint: "Connect Klaviyo before running surveys." },
       ],
     },
+    {
+      label: "Analytics",
+      expandable: true,
+      items: [
+        { ...ANALYTICS_OVERVIEW_SECTION, icon: I.navDashboard },
+        { ...CUSTOMER_INSIGHTS_SECTION, icon: I.navIntelligence },
+      ],
+    },
+    { items: [{ ...ACCOUNT_SECTION, label: "Account", icon: I.navAccounts }], account: true },
   ];
+  return groups;
 }
 
 
 function parseSection() {
+  const params = new URLSearchParams(window.location.search);
+  if (window.location.pathname === "/onboarding" || params.get("section") === ONBOARDING_SECTION.id) return ONBOARDING_SECTION.id;
   if (window.location.pathname === "/" || window.location.pathname === "/dashboard") return DASHBOARD_SECTION.id;
+  if (window.location.pathname === "/magnets" || window.location.pathname === "/customers") return CUSTOMER_INTELLIGENCE_SECTION.id;
   if (window.location.pathname === "/customer-intelligence") return CUSTOMER_INTELLIGENCE_SECTION.id;
+  if (window.location.pathname === "/customer-insights") return CUSTOMER_INSIGHTS_SECTION.id;
+  if (window.location.pathname === "/analytics") return ANALYTICS_OVERVIEW_SECTION.id;
+  if (window.location.pathname === "/campaigns") return CAMPAIGNS_SECTION.id;
   if (window.location.pathname === "/orders-delivery") return ORDERS_DELIVERY_SECTION.id;
   if (window.location.pathname === "/dashboard-pre") return DASHBOARD_PRE_SECTION.id;
   if (window.location.pathname === "/brand-collect") return BRAND_COLLECT_SECTION.id;
   if (window.location.pathname === "/product-add") return PRODUCT_ADD_SECTION.id;
   if (window.location.pathname === "/segment-config") return SEGMENT_CONFIG_SECTION.id;
   if (window.location.pathname === "/survey-campaigns") return SURVEY_CAMPAIGNS_SECTION.id;
-  const params = new URLSearchParams(window.location.search);
   const fromQuery = params.get("section");
   if (fromQuery === "coupon-modes") return "shopify";
   if (fromQuery === "campaigns") return COUPON_CAMPAIGNS_SECTION.id;
@@ -114,17 +131,45 @@ function parseSection() {
   return SHOPIFY_SECTION.id;
 }
 
+function pathForSection(section) {
+  if (section === DASHBOARD_SECTION.id) return "/";
+  if (section === BRAND_COLLECT_SECTION.id) return "/brand-collect";
+  if (section === SHOPIFY_SECTION.id || section === KLAVIYO_SECTION.id) return `/brand-config?section=${section}`;
+  if (section === SEGMENT_CONFIG_SECTION.id) return "/segment-config";
+  if (section === SURVEY_CAMPAIGNS_SECTION.id) return "/survey-campaigns";
+  if (section === ORDERS_DELIVERY_SECTION.id) return "/orders-delivery";
+  if (section === CUSTOMER_INTELLIGENCE_SECTION.id) return "/magnets";
+  if (section === CUSTOMER_INSIGHTS_SECTION.id) return "/customer-insights";
+  if (section === ANALYTICS_OVERVIEW_SECTION.id) return "/analytics";
+  if (section === CAMPAIGNS_SECTION.id) return "/campaigns";
+  return `/brand-config?section=${section}`;
+}
+
+function onboardingPath(step) {
+  return `/onboarding?step=${step}`;
+}
+
+function localBrandInfo() {
+  try {
+    return JSON.parse(window.localStorage.getItem("fc-brand-info") || "null");
+  } catch {
+    return null;
+  }
+}
+
 function AdminNavItem({ item, active, onSelect }) {
   return (
     <button
       type="button"
-      className={`admin-nav-item${active ? " active" : ""}${item.locked ? " locked" : ""}${item.indent ? " indent" : ""}`}
+      className={`admin-nav-item${active ? " active" : ""}${item.locked ? " locked" : ""}${item.blocker ? " blocker" : ""}`}
       title={item.locked ? item.lockHint : (item.statusLabel || undefined)}
       aria-disabled={item.locked || undefined}
       onClick={() => onSelect(item.id)}
     >
       {item.icon && <span className="admin-nav-icon" aria-hidden="true">{item.icon()}</span>}
       <span className="admin-nav-label">{item.label}</span>
+
+      {item.progress && <span className="admin-nav-progress">{item.progress}</span>}
 
       {item.status && (
         <span
@@ -136,29 +181,91 @@ function AdminNavItem({ item, active, onSelect }) {
   );
 }
 
-function AdminSidebar({ section, onSectionChange, connections }) {
-  const groups = buildNavGroups(connections);
-  const accountsActive = ACCOUNT_MATCH.includes(section);
+function AdminSidebar({ section, onSectionChange, connections, brandInfo, setupProgress }) {
+  const groups = buildNavGroups(connections, brandInfo, setupProgress);
+  const [menuOpen, setMenuOpen] = useStateAdmin(false);
+  const [expandedGroups, setExpandedGroups] = useStateAdmin({ Customers: true, Content: true, Analytics: true });
+  const sidebarRef = useRefAdmin(null);
+  const currentLabel = ALL_SECTIONS.find((item) => item.id === section)?.label || "Menu";
+
+  const closeMenu = () => setMenuOpen(false);
+  const handleSelect = (id) => {
+    onSectionChange(id);
+    setMenuOpen(false);
+  };
+
+  useEffectAdmin(() => {
+    setMenuOpen(false);
+  }, [section]);
+
+  useEffectAdmin(() => {
+    if (!menuOpen) return undefined;
+    const onPointerDown = (event) => {
+      if (!sidebarRef.current?.contains(event.target)) setMenuOpen(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
   return (
-    <aside className="admin-sidebar">
+    <aside ref={sidebarRef} className={`admin-sidebar${menuOpen ? " nav-open" : ""}`}>
       <div className="admin-sidebar-brand">
-        <div className="brand-glyph">
-          <img src="assets/fc-logo.png" alt="FridgeChannel" />
+        <div className="admin-sidebar-brand-main">
+          <div className="brand-glyph">
+            <img src="assets/fc-logo.png" alt="FridgeChannel" />
+          </div>
+          <div>
+            <div className="admin-sidebar-title">FridgeChannel</div>
+            <div className="admin-sidebar-sub">Admin</div>
+          </div>
         </div>
-        <div>
-          <div className="admin-sidebar-title">FridgeChannel</div>
-          <div className="admin-sidebar-sub">Admin</div>
+        <div className="admin-sidebar-brand-actions">
+          <button
+            type="button"
+            className="admin-nav-menu-toggle"
+            aria-expanded={menuOpen}
+            aria-controls="admin-nav-panel"
+            aria-label={menuOpen ? "Close navigation" : `Open navigation. Current: ${currentLabel}`}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <span className="admin-nav-menu-toggle-label">Menu</span>
+            <span className="admin-nav-icon" aria-hidden="true">
+              {menuOpen ? I.navMenuClose() : I.navMenu()}
+            </span>
+          </button>
         </div>
       </div>
 
-      <nav className="admin-nav" aria-label="Admin navigation">
+      <nav
+        id="admin-nav-panel"
+        className={`admin-nav${menuOpen ? " is-open" : ""}`}
+        aria-label="Admin navigation"
+        hidden={false}
+      >
         {groups.map((group, gi) => (
           <div
             key={group.label || `group-${gi}`}
-            className={`admin-nav-group${group.settings ? " settings" : ""}`}
+            className={`admin-nav-group${group.advanced ? " advanced" : ""}${group.account ? " account" : ""}`}
           >
-            {group.label && <div className="admin-nav-group-label">{group.label}</div>}
-            {group.items.map((item) => (
+            {group.expandable ? (
+              <button
+                type="button"
+                className="admin-nav-group-toggle"
+                aria-expanded={expandedGroups[group.label] !== false}
+                onClick={() => setExpandedGroups((current) => ({ ...current, [group.label]: current[group.label] === false }))}
+              >
+                <span>{group.label}</span>
+                <span className={`admin-nav-group-caret${expandedGroups[group.label] === false ? " collapsed" : ""}`} aria-hidden="true"><I.chevDown /></span>
+              </button>
+            ) : group.label ? <div className="admin-nav-group-label">{group.label}</div> : null}
+            {(!group.expandable || expandedGroups[group.label] !== false) && group.items.map((item) => (
               <AdminNavItem
                 key={item.id}
                 item={item}
@@ -167,29 +274,26 @@ function AdminSidebar({ section, onSectionChange, connections }) {
                     ? item.activeMatch.includes(section)
                     : section === item.id
                 }
-                onSelect={onSectionChange}
+                onSelect={handleSelect}
               />
             ))}
           </div>
         ))}
       </nav>
-
-      <div className="admin-sidebar-foot">
+      {menuOpen ? (
         <button
           type="button"
-          className={`admin-nav-item${accountsActive ? " active" : ""}`}
-          onClick={() => onSectionChange(SHOPIFY_SECTION.id)}
-        >
-          <span className="admin-nav-icon" aria-hidden="true">{I.navAccounts()}</span>
-          <span className="admin-nav-label">Accounts</span>
-        </button>
-      </div>
+          className="admin-nav-backdrop"
+          aria-label="Close navigation"
+          onClick={closeMenu}
+        />
+      ) : null}
     </aside>
   );
 }
 
 // Accounts 二级布局：左侧子导航（Account / Integration → Shopify, Klaviyo）+ 右侧内容
-function AccountsPage({ section, user, connections, onSubChange, onLogout, readOnly }) {
+function AccountsPage({ section, user, connections, onSubChange, onLogout, readOnly, setupComplete, brandInfoReadOnly, onSkipSetup }) {
   const subItem = (sec, label, status, icon = null) => (
     <button
       type="button"
@@ -207,24 +311,24 @@ function AccountsPage({ section, user, connections, onSubChange, onLogout, readO
       <aside className="accounts-subnav" aria-label="Accounts navigation">
         <div className="admin-nav-group-label">Accounts</div>
         {subItem(ACCOUNT_SECTION.id, "Account")}
-        <div className="admin-nav-group-label">Integration</div>
-        {subItem(
-          SHOPIFY_SECTION.id,
-          "Shopify",
-          connections.shopifyReady ? "online" : "offline",
-          <I.shopify size={18} />,
-        )}
-        {subItem(
-          KLAVIYO_SECTION.id,
-          "Klaviyo",
-          connections.klaviyoReady ? "online" : "offline",
-          <I.klaviyo height={12} />,
+        {subItem(ORDERS_DELIVERY_SECTION.id, "Orders & Delivery", null, <I.navOrders />)}
+        {setupComplete && (
+          <>
+            {subItem(BRAND_COLLECT_SECTION.id, "Brand Info", null, <I.navBrand />)}
+            <div className="admin-nav-group-label">Integration</div>
+            {subItem(SHOPIFY_SECTION.id, "Shopify", "online", <I.shopify size={18} />)}
+            {subItem(KLAVIYO_SECTION.id, "Klaviyo", "online", <I.klaviyo height={12} />)}
+          </>
         )}
       </aside>
       <main className="admin-content accounts-body">
         {section === ACCOUNT_SECTION.id
           ? <FcAccountView user={user} onLogout={onLogout} />
-          : <BrandConfigPage section={section} readOnly={readOnly} />}
+          : section === BRAND_COLLECT_SECTION.id
+            ? <BrandCollectPage readOnly={brandInfoReadOnly} />
+            : section === ORDERS_DELIVERY_SECTION.id
+              ? <OrdersDeliveryPage />
+              : <BrandConfigPage section={section} readOnly={readOnly} onSkip={onSkipSetup} skipLabel="Skip setup" />}
       </main>
     </div>
   );
@@ -254,10 +358,85 @@ function FcAccountView({ user, onLogout }) {
   );
 }
 
+function CampaignsPlaceholderPage() {
+  return (
+    <main className="admin-content">
+      <div className="nav-placeholder">
+        <span className="nav-placeholder-icon" aria-hidden="true">{I.navProduct({ size: 24 })}</span>
+        <h1>Campaigns</h1>
+        <p>Campaign management is coming soon.</p>
+      </div>
+    </main>
+  );
+}
+
+function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, brandInfoReadOnly, configReadOnly }) {
+  const steps = [
+    { id: "brand", label: "Brand Info", complete: progress.brandComplete, Section: BRAND_COLLECT_SECTION.id },
+    { id: "shopify", label: "Connect Shopify", complete: progress.shopifyComplete, Section: SHOPIFY_SECTION.id },
+    { id: "klaviyo", label: "Connect Klaviyo", complete: progress.klaviyoComplete, Section: KLAVIYO_SECTION.id },
+  ];
+  const valid = new Set(steps.map((step) => step.id));
+  const initial = new URLSearchParams(window.location.search).get("step");
+  const [stepId, setStepId] = useStateAdmin(valid.has(initial) ? initial : (steps.find((step) => !step.complete)?.id || "klaviyo"));
+  const current = steps.find((step) => step.id === stepId) || steps[0];
+  const go = (id) => {
+    setStepId(id);
+    window.history.replaceState({}, "", onboardingPath(id));
+  };
+  const next = () => steps.slice(steps.findIndex((step) => step.id === stepId) + 1).find((step) => !step.complete && !skipped[step.id]);
+
+  useEffectAdmin(() => {
+    if (!current.complete) return;
+    const target = next();
+    if (target) go(target.id);
+  }, [progress.completed]);
+
+  useEffectAdmin(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("shopify_oauth") === "success") {
+      onRefresh();
+      go("klaviyo");
+    }
+    if (params.get("klaviyo_oauth") === "success") onRefresh();
+  }, []);
+
+  const handleSkip = () => {
+    onSkipStep(stepId);
+    const target = steps.slice(steps.findIndex((step) => step.id === stepId) + 1).find((step) => !step.complete);
+    if (target) go(target.id);
+    else onExit();
+  };
+
+  if (progress.complete) {
+    return <div className="onboarding-shell"><div className="onboarding-frame"><span>Setup complete</span><h1>Your workspace is ready</h1><button type="button" className="btn primary" onClick={onExit}>Go to Dashboard</button></div></div>;
+  }
+
+  return (
+    <div className="onboarding-shell">
+      <div className="onboarding-frame">
+        <header className="onboarding-header"><h1>Set up your workspace</h1></header>
+        <ol className="onboarding-progress-list">
+          {steps.map((step, index) => <li key={step.id} className={step.id === stepId ? "current" : step.complete ? "complete" : skipped[step.id] ? "skipped" : ""}><span>{step.complete ? "✓" : index + 1}</span>{step.label}{skipped[step.id] ? <em>Skipped</em> : null}</li>)}
+        </ol>
+        <div className="onboarding-body">
+          {stepId === "brand"
+            ? <BrandCollectPage readOnly={brandInfoReadOnly} onSkip={current.complete ? null : handleSkip} onSaved={() => { onRefresh(); go("shopify"); }} />
+            : <BrandConfigPage section={current.Section} readOnly={configReadOnly} onSkip={current.complete ? null : handleSkip} skipLabel="Skip for now" onboardingReturnTo={onboardingPath(stepId)} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminApp() {
   const [section, setSection] = useStateAdmin(parseSection);
   const [auth, setAuth] = useStateAdmin({ loading: true, user: null });
   const [connections, setConnections] = useStateAdmin({ shopifyReady: false, klaviyoReady: false });
+  const [brandInfo, setBrandInfo] = useStateAdmin({ completedFields: 0, complete: false });
+  const [setupLoaded, setSetupLoaded] = useStateAdmin({ brand: false, connections: false, dismissal: false });
+  const [setupDismissed, setSetupDismissed] = useStateAdmin(false);
+  const [setupSkipped, setSetupSkipped] = useStateAdmin({});
   const access = auth.user?.access ?? {};
   const configReadOnly = auth.loading ? false : access.canWriteConfig === false;
   const brandInfoReadOnly = auth.loading ? false : access.canWriteBrandInfo === false;
@@ -304,66 +483,112 @@ function AdminApp() {
     return () => { cancelled = true; };
   }, []);
 
-  // 连接状态：驱动侧边栏的状态点与依赖锁定
-  useEffectAdmin(() => {
-    if (auth.loading || !auth.user) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/brand-config");
-        if (!res.ok) return;
+  const refreshConnections = useCallbackAdmin(async () => {
+    try {
+      const res = await fetch("/api/brand-config");
+      if (res.ok) {
         const data = await res.json();
-        if (cancelled) return;
         setConnections({
           shopifyReady: Boolean(data.shopify?.hasAccessToken && data.shopify?.shopDomain),
           klaviyoReady: Boolean(data.klaviyo?.hasOAuthToken),
         });
-      } catch {
-        /* 状态点降级为未连接即可，无需打断导航 */
       }
-    })();
-    return () => { cancelled = true; };
+    } catch {
+      /* Status falls back to disconnected without interrupting navigation. */
+    } finally {
+      setSetupLoaded((current) => ({ ...current, connections: true }));
+    }
+  }, []);
+
+  // Connection state drives navigation progress and dependency states.
+  useEffectAdmin(() => {
+    if (!auth.loading && auth.user) refreshConnections();
+  }, [auth.loading, auth.user, refreshConnections]);
+
+  const loadBrandInfoStatus = async () => {
+    try {
+      const res = await fetch("/api/config");
+      if (res.ok) {
+        const { brand: remoteBrand } = await res.json();
+        const brand = remoteBrand || localBrandInfo();
+        const completedFields = [brand?.brandName, brand?.website, brand?.brandLogo, brand?.primaryColor, brand?.secondaryColor || brand?.accentColor]
+          .filter((value) => typeof value === "string" && value.trim()).length;
+        setBrandInfo({ completedFields, complete: completedFields === 5 });
+      }
+    } catch {
+      // The navigation remains usable if the onboarding status cannot be loaded.
+    } finally {
+      setSetupLoaded((current) => ({ ...current, brand: true }));
+    }
+  };
+
+  useEffectAdmin(() => {
+    if (!auth.loading && auth.user) loadBrandInfoStatus();
   }, [auth.loading, auth.user]);
 
+  useEffectAdmin(() => {
+    window.addEventListener("brand-info-saved", loadBrandInfoStatus);
+    return () => window.removeEventListener("brand-info-saved", loadBrandInfoStatus);
+  }, []);
+
+  useEffectAdmin(() => {
+    if (auth.loading || !auth.user) return;
+    const key = `fc-onboarding-dismissed:${auth.user.customer?.id ?? auth.user.authUser?.id ?? "current"}`;
+    setSetupDismissed(window.localStorage.getItem(key) === "true");
+    try { setSetupSkipped(JSON.parse(window.localStorage.getItem(`${key}:steps`) || "{}")); } catch { setSetupSkipped({}); }
+    setSetupLoaded((current) => ({ ...current, dismissal: true }));
+  }, [auth.loading, auth.user]);
+
+  const setupProgress = {
+    brandComplete: brandInfo.complete,
+    shopifyComplete: connections.shopifyReady,
+    klaviyoComplete: connections.klaviyoReady,
+    completed: Number(brandInfo.complete) + Number(connections.shopifyReady) + Number(connections.klaviyoReady),
+    complete: brandInfo.complete && connections.shopifyReady && connections.klaviyoReady,
+  };
+  const nextSetupSection = !brandInfo.complete
+    ? BRAND_COLLECT_SECTION.id
+    : !connections.shopifyReady
+      ? SHOPIFY_SECTION.id
+      : !connections.klaviyoReady
+        ? KLAVIYO_SECTION.id
+        : DASHBOARD_SECTION.id;
+
+  useEffectAdmin(() => {
+    if (!setupLoaded.brand || !setupLoaded.connections || !setupLoaded.dismissal) return;
+    if (section === ONBOARDING_SECTION.id) return;
+    if (setupDismissed || setupProgress.complete || section !== DASHBOARD_SECTION.id) return;
+    setSection(ONBOARDING_SECTION.id);
+    window.history.replaceState({}, "", onboardingPath(nextSetupSection === BRAND_COLLECT_SECTION.id ? "brand" : nextSetupSection));
+  }, [section, setupDismissed, setupLoaded, setupProgress.complete, nextSetupSection]);
+
   const handleSectionChange = (nextSection) => {
+    if (nextSection === ONBOARDING_SECTION.id) {
+      setSection(ONBOARDING_SECTION.id);
+      const step = nextSetupSection === BRAND_COLLECT_SECTION.id ? "brand" : nextSetupSection;
+      window.history.replaceState({}, "", onboardingPath(step));
+      return;
+    }
     setSection(nextSection);
-    if (nextSection === DASHBOARD_SECTION.id) {
-      window.history.replaceState({}, "", "/");
-      return;
-    }
-    if (nextSection === CUSTOMER_INTELLIGENCE_SECTION.id) {
-      window.history.replaceState({}, "", "/customer-intelligence");
-      return;
-    }
-    if (nextSection === ORDERS_DELIVERY_SECTION.id) {
-      window.history.replaceState({}, "", "/orders-delivery");
-      return;
-    }
-    if (nextSection === BRAND_COLLECT_SECTION.id) {
-      window.history.replaceState({}, "", "/brand-collect");
-      return;
-    }
-    if (nextSection === PRODUCT_ADD_SECTION.id) {
-      window.history.replaceState({}, "", "/product-add");
-      return;
-    }
-    if (nextSection === SEGMENT_CONFIG_SECTION.id) {
-      window.history.replaceState({}, "", "/segment-config");
-      return;
-    }
-    if (nextSection === SURVEY_CAMPAIGNS_SECTION.id) {
-      window.history.replaceState({}, "", "/survey-campaigns");
-      return;
-    }
-    const params = new URLSearchParams(window.location.search);
-    params.set("section", nextSection);
-    const qs = params.toString();
-    window.history.replaceState({}, "", `/brand-config${qs ? `?${qs}` : ""}`);
+    window.history.replaceState({}, "", pathForSection(nextSection));
   };
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/login";
+  };
+
+  const dismissSetup = () => {
+    const key = `fc-onboarding-dismissed:${auth.user?.customer?.id ?? auth.user?.authUser?.id ?? "current"}`;
+    window.localStorage.setItem(key, "true");
+    setSetupDismissed(true);
+    handleSectionChange(DASHBOARD_SECTION.id);
+  };
+  const skipSetupStep = (step) => {
+    const key = `fc-onboarding-dismissed:${auth.user?.customer?.id ?? auth.user?.authUser?.id ?? "current"}`;
+    const next = { ...setupSkipped, [step]: true };
+    window.localStorage.setItem(`${key}:steps`, JSON.stringify(next));
+    setSetupSkipped(next);
   };
 
   if (auth.loading) {
@@ -376,23 +601,33 @@ function AdminApp() {
     );
   }
 
+  if (section === ONBOARDING_SECTION.id) {
+    return <OnboardingPage progress={setupProgress} skipped={setupSkipped} onSkipStep={skipSetupStep} onExit={dismissSetup} onRefresh={() => { loadBrandInfoStatus(); refreshConnections(); }} brandInfoReadOnly={brandInfoReadOnly} configReadOnly={configReadOnly} />;
+  }
+
   return (
     <div className={`admin-app${section === CUSTOMER_INTELLIGENCE_SECTION.id ? " customer-intelligence-active" : ""}`}>
       <AdminSidebar
         section={section}
         onSectionChange={handleSectionChange}
         connections={connections}
+        brandInfo={brandInfo}
+        setupProgress={setupProgress}
       />
       <div className="admin-main">
         {section === DASHBOARD_SECTION.id
           ? <BrandDashboardPage />
+          : section === CAMPAIGNS_SECTION.id
+          ? <CampaignsPlaceholderPage />
           : section === CUSTOMER_INTELLIGENCE_SECTION.id
+          ? <MagnetsPage />
+          : section === CUSTOMER_INSIGHTS_SECTION.id
           ? <CustomerIntelligencePage />
-          : section === ORDERS_DELIVERY_SECTION.id
-          ? <OrdersDeliveryPage />
+          : section === ANALYTICS_OVERVIEW_SECTION.id
+          ? <DashboardPage />
           : section === DASHBOARD_PRE_SECTION.id
           ? <DashboardPage />
-          : section === BRAND_COLLECT_SECTION.id
+          : section === BRAND_COLLECT_SECTION.id && !brandInfo.complete
             ? <BrandCollectPage readOnly={brandInfoReadOnly} />
             : section === PRODUCT_ADD_SECTION.id
               ? <ProductAddPage readOnly={configReadOnly} />
@@ -405,6 +640,9 @@ function AdminApp() {
                 onSubChange={handleSectionChange}
                 onLogout={handleLogout}
                 readOnly={configReadOnly}
+                setupComplete={setupProgress.complete}
+                brandInfoReadOnly={brandInfoReadOnly}
+                onSkipSetup={setupProgress.complete ? null : dismissSetup}
               />
             )
             : (

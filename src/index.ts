@@ -70,6 +70,7 @@ import {
 } from "./api/tap-choice-surveys.js";
 import {
   handleAuthCallback,
+  handleAuthImpersonateLink,
   handleAuthLogin,
   handleAuthLogout,
   handleAuthMe,
@@ -151,6 +152,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/auth/callback") {
     await handleAuthCallback(req, res, url);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/impersonate-link") {
+    await handleAuthImpersonateLink(req, res);
     return;
   }
 

@@ -1,10 +1,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createClient } from "@supabase/supabase-js";
 import { readJsonBody, json, errorJson } from "../http.js";
 import { createSupabaseServer } from "../../lib/supabase/server.js";
 import { getCurrentCustomer } from "../../lib/auth/getCurrentCustomer.js";
 import { ensureCurrentCustomer } from "../../lib/auth/ensureCurrentCustomer.js";
 import { safeRedirectPath } from "../../lib/auth/safe-redirect.js";
 import { readCookie, serializeCookie, appendSetCookies } from "../../lib/supabase/cookies.js";
+import { requireApiKey } from "../../lib/auth/api-key.js";
+import { env } from "../../config/env.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -180,5 +183,56 @@ export async function handleAuthCallback(
     const message = err instanceof Error ? err.message : "callback_failed";
     console.log("[auth/callback] exception:", message);
     redirect(res, `/login?error=${encodeURIComponent(message)}`);
+  }
+}
+
+export async function handleAuthImpersonateLink(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  if (!requireApiKey(req, res)) return;
+
+  try {
+    const body = await readJsonBody<{ email?: string; next?: string }>(req);
+    const email = body.email?.trim().toLowerCase();
+    if (!email) {
+      errorJson(res, 400, "email is required");
+      return;
+    }
+
+    const next = safeRedirectPath(body.next) ?? "/";
+    const siteUrl = env.publicSiteUrl || `http://localhost:${env.port}`;
+    const redirectTo = `${siteUrl.replace(/\/$/, "")}/api/auth/callback?next=${encodeURIComponent(next)}`;
+
+    const admin = createClient(env.supabaseUrl(), env.supabaseServiceRoleKey(), {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data, error } = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: { redirectTo },
+    });
+
+    if (error) {
+      errorJson(res, 400, error.message);
+      return;
+    }
+
+    const hashedToken = data?.properties?.hashed_token;
+    if (!hashedToken) {
+      errorJson(res, 500, "Failed to generate login link");
+      return;
+    }
+
+    const url = `${siteUrl.replace(/\/$/, "")}/api/auth/callback?token_hash=${encodeURIComponent(hashedToken)}&type=magiclink&next=${encodeURIComponent(next)}`;
+
+    json(res, 200, {
+      url,
+      expires_in: 300,
+      email,
+    });
+  } catch (err) {
+    errorJson(res, 500, err instanceof Error ? err.message : "Failed to issue login link");
   }
 }

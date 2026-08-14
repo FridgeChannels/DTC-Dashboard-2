@@ -126,7 +126,7 @@ export async function getSurveyCampaignDashboardForCustomer(
   query: SurveyDashboardQuery = {},
 ): Promise<SurveyCampaignDashboard> {
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, campaignId);
-  if (!campaign) throw new Error("Survey campaign not found");
+  if (!campaign) throw new Error("Quiz campaign not found");
 
   const dateFilter = { startAt: query.startAt ?? null, endAt: query.endAt ?? null };
 
@@ -362,7 +362,7 @@ export async function getSurveyCampaignOtherReviewForCustomer(
   query: SurveyDashboardQuery = {},
 ): Promise<{ entries: SurveyOtherReviewEntry[] }> {
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, campaignId);
-  if (!campaign) throw new Error("Survey campaign not found");
+  if (!campaign) throw new Error("Quiz campaign not found");
 
   const dateFilter = { startAt: query.startAt ?? null, endAt: query.endAt ?? null };
   const [events, questions] = await Promise.all([

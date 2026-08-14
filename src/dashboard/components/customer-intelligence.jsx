@@ -111,7 +111,7 @@ function AnswerFilters({ source, topic, search, topics, onSource, onTopic, onSea
       <select className="cfg-input" value={source} onChange={(event) => onSource(event.target.value)} aria-label="Question origin">
         <option value="all">All question origins</option>
         <option value="customer_signal">FC standard questions</option>
-        <option value="survey_campaign">Brand survey questions</option>
+        <option value="survey_campaign">Brand quiz questions</option>
       </select>
       <select className="cfg-input" value={topic} onChange={(event) => onTopic(event.target.value)} aria-label="Question topic">
         <option value="all">All topics</option>
@@ -212,7 +212,7 @@ function AnswersView({ intelligence }) {
                 <button type="button" className="ci-question-trigger" onClick={() => selectQuestion(question.key)} aria-expanded={selectedQuestionKey === question.key}>
                   <span>
                     <strong>{question.text}</strong>
-                    <small>{question.source === "survey_campaign" ? "Brand survey" : "FC standard"} · {question.topicLabel} · {question.campaignName}</small>
+                    <small>{question.source === "survey_campaign" ? "Brand quiz" : "FC standard"} · {question.topicLabel} · {question.campaignName}</small>
                   </span>
                   <span className="ci-question-metrics">
                     <span>{ciInt(question.answered)} answers</span>
@@ -270,8 +270,8 @@ function ciRuleLabel(node, questions = []) {
   if (node.field === "consent.marketing") return node.value === true ? "Marketing eligibility passes the current check (verify before activation)" : "Marketing eligibility does not pass the current check";
   if (node.field === "order.days_since_last_purchase") return node.operator === "exists" ? "Purchase history is available" : `Last purchase was ${ageOperator} ${value} days ago`;
   if (node.field === "order.verified_purchase_count") return `Verified coupon-attributed purchase count is ${ageOperator} ${value}`;
-  if (node.field === "engagement.survey_impression_count") return `Survey impression count is ${ageOperator} ${value}`;
-  if (node.field === "engagement.days_since_last_survey_impression") return node.operator === "exists" ? "Survey impression history is available" : `Last survey impression was ${ageOperator} ${value} days ago`;
+  if (node.field === "engagement.survey_impression_count") return `Quiz impression count is ${ageOperator} ${value}`;
+  if (node.field === "engagement.days_since_last_survey_impression") return node.operator === "exists" ? "Quiz impression history is available" : `Last quiz impression was ${ageOperator} ${value} days ago`;
   if (node.field === "coupon.assignment_count") return `Coupon assignment count is ${ageOperator} ${value}`;
   if (node.field === "coupon.redemption_count") return `Coupon redemption count is ${ageOperator} ${value}`;
   if (node.field === "coupon.days_since_last_assigned") return node.operator === "exists" ? "Coupon assignment history is available" : `Last coupon assignment was ${ageOperator} ${value} days ago`;
@@ -330,7 +330,7 @@ function ciAggregateEvidence(evidence = [], questions = []) {
     verified_purchase: "Verified coupon-attributed purchases",
     coupon_assignment: "Coupon assignments",
     coupon_redemption: "Coupon redemptions",
-    survey_impression: "Survey impressions",
+    survey_impression: "Quiz impressions",
   };
   const operationalGroups = [...byOperationalKind.values()].map((bucket) => ({
     questionKey: `operational:${bucket.kind}`,
@@ -663,7 +663,7 @@ function RecommendationsView({ data, answerSummary, questions, loading, error, o
     <div className="ci-flat-empty ci-recommendation-empty">
       <strong>{data?.configured ? "No AI recommendation has been generated yet" : "AI recommendations are not configured"}</strong>
       <span>{data?.configured
-        ? `${ciInt(answerSummary?.answers)} submitted answers from ${ciInt(answerSummary?.respondents)} respondents are available, including ${ciInt(answerSummary?.reachableCustomers)} reachable customers. AI also uses connected purchase, coupon, survey-impression, and identity signals. A Ready recommendation needs at least ${data?.policy?.minimumSupportingAnswers ?? 5} supporting facts, ${data?.policy?.minimumReachableCustomers ?? 1} matching reachable customer, and evidence from the last ${data?.policy?.evidenceMaxAgeDays ?? 90} days.`
+        ? `${ciInt(answerSummary?.answers)} submitted answers from ${ciInt(answerSummary?.respondents)} respondents are available, including ${ciInt(answerSummary?.reachableCustomers)} reachable customers. AI also uses connected purchase, coupon, quiz-impression, and identity signals. A Ready recommendation needs at least ${data?.policy?.minimumSupportingAnswers ?? 5} supporting facts, ${data?.policy?.minimumReachableCustomers ?? 1} matching reachable customer, and evidence from the last ${data?.policy?.evidenceMaxAgeDays ?? 90} days.`
         : "Answers remain available. Configure the dedicated AI recommendation provider to generate suggestions."}</span>
       {data?.configured ? <button type="button" className="btn primary" onClick={onReanalyze}>Analyze answers</button> : null}
     </div>

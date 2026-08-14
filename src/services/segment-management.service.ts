@@ -6,6 +6,9 @@ import type { IntelligenceRuleNode } from "./intelligence-rule.types.js";
 import { segmentRuleHash } from "./segment-rule-hash.js";
 import { recommendSegmentDecision, type ComparableSegment } from "./segment-similarity.service.js";
 import * as activationRepo from "../repositories/segment-activation.repo.js";
+import { listProfileSegmentsByCustomerId } from "../repositories/klaviyo-profile-segment.repo.js";
+import { listMagnetDirectoryRows, type MagnetDirectoryIdentityRow } from "../repositories/magnet-directory.repo.js";
+import { listMagnetDirectory, type MagnetDirectoryItem } from "./magnet-directory.service.js";
 
 const EMPTY_EXCLUSIONS: IntelligenceRuleNode = { any: [] };
 
@@ -20,6 +23,57 @@ export interface SegmentListItem {
   updatedAt: string | null;
   external: boolean;
   activationState: string;
+  magnetCount: number;
+  magnets: Array<{ id: number; number: string; email: string | null; firstName: string | null; lastName: string | null }>;
+}
+
+function magnetNumberMap(magnets: Awaited<ReturnType<typeof listMagnetDirectoryRows>>["magnets"]) {
+  return new Map(magnets.map((magnet) => [magnet.id, magnet.sn || String(magnet.id)]));
+}
+
+function magnetSummaries(
+  identities: MagnetDirectoryIdentityRow[],
+  numbers: Map<number, string>,
+  userKeys: Set<string>,
+) {
+  const directMagnetIds = new Set(
+    [...userKeys]
+      .filter((key) => key.startsWith("magnet:"))
+      .map((key) => Number(key.slice(7)))
+      .filter(Number.isFinite),
+  );
+  return identities
+    .filter((identity) => identity.magnet_id != null && (
+      userKeys.has(`fc:${identity.fc_user_id}`)
+      || userKeys.has(identity.fc_user_id)
+      || directMagnetIds.has(identity.magnet_id)
+    ))
+    .map((identity) => ({
+      id: identity.magnet_id as number,
+      number: numbers.get(identity.magnet_id as number) || String(identity.magnet_id),
+      email: identity.email,
+      firstName: null,
+      lastName: null,
+    }))
+    .filter((magnet, index, all) => all.findIndex((item) => item.id === magnet.id) === index)
+    .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+}
+
+function enrichMagnetSummaries(
+  magnets: SegmentListItem["magnets"],
+  directory: MagnetDirectoryItem[],
+): SegmentListItem["magnets"] {
+  const byId = new Map(directory.map((magnet) => [magnet.magnetId, magnet]));
+  return magnets.map((magnet) => {
+    const enriched = byId.get(magnet.id);
+    return {
+      ...magnet,
+      number: enriched?.magnetNumber || magnet.number,
+      email: enriched?.shopifyAccount ?? magnet.email,
+      firstName: enriched?.firstName ?? null,
+      lastName: enriched?.lastName ?? null,
+    };
+  });
 }
 
 async function currentVersion(customerId: number, segment: segmentRepo.FcSegmentRow) {
@@ -27,35 +81,92 @@ async function currentVersion(customerId: number, segment: segmentRepo.FcSegment
 }
 
 export async function listManagedSegments(customerId: number): Promise<SegmentListItem[]> {
-  const [local, klaviyo, activations] = await Promise.all([segmentRepo.listSegments(customerId), listKlaviyoSegmentsByCustomerId(customerId), activationRepo.listSegmentActivations(customerId)]);
+  const [local, klaviyo, activations, profileSegments, directory] = await Promise.all([
+    segmentRepo.listSegments(customerId),
+    listKlaviyoSegmentsByCustomerId(customerId),
+    activationRepo.listSegmentActivations(customerId),
+    listProfileSegmentsByCustomerId(customerId),
+    listMagnetDirectoryRows(customerId),
+  ]);
+  const numbers = magnetNumberMap(directory.magnets);
   const localRows = await Promise.all(local.map(async (segment) => {
     const version = await currentVersion(customerId, segment);
+    const members = version ? await segmentRepo.listSegmentMembers(customerId, version.id) : [];
+    const magnets = magnetSummaries(directory.identities, numbers, new Set(members.map((member) => member.user_key)));
     return {
       id: segment.id, name: segment.name, source: segment.source, status: segment.status, syncState: segment.sync_state,
       memberCount: version?.member_count ?? 0, reachableCount: version?.reachable_count ?? 0, updatedAt: segment.updated_at, external: false,
       activationState: activations.find((activation) => activation.segment_id === segment.id)?.status ?? "not_configured",
+      magnetCount: magnets.length, magnets,
     } satisfies SegmentListItem;
   }));
   const mirroredIds = new Set(local.filter((segment) => segment.external_provider === "klaviyo").map((segment) => segment.external_segment_id));
-  const externalRows = klaviyo.filter((segment) => !mirroredIds.has(segment.segment_id)).map((segment) => ({
-    id: `klaviyo:${segment.segment_id}`, name: segment.name ?? "Untitled Klaviyo segment", source: "klaviyo" as const,
-    status: segment.is_processing ? "processing" : segment.is_active === false ? "inactive" : "active",
-    syncState: "synced", memberCount: 0, reachableCount: 0, updatedAt: segment.synced_at, external: true, activationState: "external",
-  }));
+  const externalRows = klaviyo.filter((segment) => !mirroredIds.has(segment.segment_id)).map((segment) => {
+    const userKeys = new Set(profileSegments.filter((row) => row.segment_id === segment.segment_id).map((row) => `fc:${row.fc_user_id}`));
+    const magnets = magnetSummaries(directory.identities, numbers, userKeys);
+    return {
+      id: `klaviyo:${segment.segment_id}`, name: segment.name ?? "Untitled Klaviyo segment", source: "klaviyo" as const,
+      status: segment.is_processing ? "processing" : segment.is_active === false ? "inactive" : "active",
+      syncState: "synced", memberCount: userKeys.size, reachableCount: userKeys.size, updatedAt: segment.synced_at, external: true, activationState: "external",
+      magnetCount: magnets.length, magnets,
+    };
+  });
   return [...localRows, ...externalRows].sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.name.localeCompare(b.name));
 }
 
 export async function getManagedSegment(customerId: number, id: string) {
   if (id.startsWith("klaviyo:")) {
-    return (await listManagedSegments(customerId)).find((item) => item.id === id) ?? null;
+    const item = (await listManagedSegments(customerId)).find((candidate) => candidate.id === id) ?? null;
+    const externalId = id.slice("klaviyo:".length);
+    const profileSegments = item ? await listProfileSegmentsByCustomerId(customerId) : [];
+    const members = profileSegments
+      .filter((row) => row.segment_id === externalId)
+      .map((row) => ({
+        user_key: `fc:${row.fc_user_id}`,
+        identity_status: "reachable" as const,
+        reachable: true,
+        evidence: [] as string[],
+        reasons: ["Member of the synced Klaviyo Segment"],
+        evaluated_at: row.synced_at ?? item?.updatedAt ?? new Date(0).toISOString(),
+      }));
+    const magnets = item?.magnets.length
+      ? enrichMagnetSummaries(item.magnets, await listMagnetDirectory(customerId))
+      : [];
+    return item ? {
+      ...item,
+      magnets,
+      rules: null,
+      exclusions: null,
+      conditionSource: "klaviyo",
+      conditionSummary: "Conditions are managed in Klaviyo and are not stored in FridgeChannel.",
+      members,
+    } : null;
   }
   const segment = await segmentRepo.getSegment(customerId, id);
   if (!segment) return null;
   const version = await currentVersion(customerId, segment);
-  const [members, lineage, activations] = version ? await Promise.all([
-    segmentRepo.listSegmentMembers(customerId, version.id), segmentRepo.listSegmentLineage(customerId, segment.id), activationRepo.listSegmentActivations(customerId, segment.id),
-  ]) : [[], [], []];
-  return { ...segment, version, members, lineage, activations, activationState: activations[0]?.status ?? "not_configured", external: false };
+  const [members, lineage, activations, directory] = version ? await Promise.all([
+    segmentRepo.listSegmentMembers(customerId, version.id), segmentRepo.listSegmentLineage(customerId, segment.id), activationRepo.listSegmentActivations(customerId, segment.id), listMagnetDirectoryRows(customerId),
+  ]) : [[], [], [], await listMagnetDirectoryRows(customerId)];
+  const magnets = magnetSummaries(directory.identities, magnetNumberMap(directory.magnets), new Set(members.map((member) => member.user_key)));
+  const enrichedMagnets = magnets.length
+    ? enrichMagnetSummaries(magnets, await listMagnetDirectory(customerId))
+    : [];
+  return {
+    ...segment,
+    version,
+    rules: version?.rules ?? null,
+    exclusions: version?.exclusions ?? null,
+    conditionSource: "fc",
+    conditionSummary: null,
+    members,
+    magnets: enrichedMagnets,
+    magnetCount: enrichedMagnets.length,
+    lineage,
+    activations,
+    activationState: activations[0]?.status ?? "not_configured",
+    external: false,
+  };
 }
 
 async function composeRules(customerId: number, rules: IntelligenceRuleNode, exclusions: IntelligenceRuleNode, parentSegmentId?: string | null) {

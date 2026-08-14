@@ -34,6 +34,8 @@ export async function serveStatic(
     pathname === "/" ||
     pathname === "/onboarding" ||
     pathname === "/dashboard" ||
+    pathname === "/campaigns" ||
+    pathname === "/analytics" ||
     pathname === "/magnets" ||
     pathname === "/customers" ||
     pathname === "/customer-intelligence" ||

@@ -12,7 +12,6 @@ const ONBOARDING_SECTION = { id: "onboarding", label: "Finish setup" };
 const CAMPAIGNS_SECTION = { id: "campaigns", label: "Campaigns" };
 const CUSTOMER_INTELLIGENCE_SECTION = { id: "customer-intelligence", label: "Magnets" };
 const CUSTOMER_INSIGHTS_SECTION = { id: "customer-insights", label: "Customer Insights" };
-const ANALYTICS_OVERVIEW_SECTION = { id: "analytics-overview", label: "Overview" };
 const ORDERS_DELIVERY_SECTION = { id: "orders-delivery", label: "Orders & Delivery" };
 
 // 旧版（mock 数据）Dashboard，保留为 dashboard_pre
@@ -26,7 +25,7 @@ const PRODUCT_ADD_SECTION = { id: "product-add", label: "Add Product" };
 
 // 营销活动（对外投放）
 const COUPON_CAMPAIGNS_SECTION = { id: "discounts", label: "Coupons" };
-const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Surveys" };
+const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Quizzes" };
 
 // 受众与规则
 const SEGMENT_CONFIG_SECTION = { id: "segment-config", label: "Segment Coupons" };
@@ -51,7 +50,6 @@ const ALL_SECTIONS = [
   CAMPAIGNS_SECTION,
   CUSTOMER_INTELLIGENCE_SECTION,
   CUSTOMER_INSIGHTS_SECTION,
-  ANALYTICS_OVERVIEW_SECTION,
   ORDERS_DELIVERY_SECTION,
   BRAND_COLLECT_SECTION,
   PRODUCT_ADD_SECTION,
@@ -76,14 +74,19 @@ function buildNavGroups(conn, brandInfo, setupProgress) {
         progress: `${setupProgress.completed}/3`,
       }],
     }]),
-    { items: [{ ...DASHBOARD_SECTION, icon: I.navDashboard }] },
-    { items: [{ ...CAMPAIGNS_SECTION, icon: I.navProduct, placeholder: true }] },
+    {
+      label: "Campaigns",
+      expandable: true,
+      items: [
+        { ...CAMPAIGNS_SECTION, icon: I.navProduct, locked: !shopifyReady || !klaviyoReady, lockHint: "Connect Shopify and Klaviyo before configuring Campaigns." },
+      ],
+    },
     {
       label: "Customers",
       expandable: true,
       items: [
         { ...CUSTOMER_INTELLIGENCE_SECTION, icon: I.navIntelligence },
-        { ...SEGMENT_CONFIG_SECTION, label: "Segments", icon: I.navSegments, locked: !klaviyoReady, lockHint: "Connect Klaviyo and sync segments before configuring coupons." },
+        { ...SEGMENT_CONFIG_SECTION, label: "Segments", icon: I.navSegments, locked: !klaviyoReady, lockHint: "Connect Klaviyo to view synced Segments." },
       ],
     },
     {
@@ -91,14 +94,14 @@ function buildNavGroups(conn, brandInfo, setupProgress) {
       expandable: true,
       items: [
         { ...COUPON_CAMPAIGNS_SECTION, icon: I.navCoupons, locked: !shopifyReady, lockHint: "Connect Shopify before creating coupons." },
-        { ...SURVEY_CAMPAIGNS_SECTION, icon: I.navSurveys, locked: !klaviyoReady, lockHint: "Connect Klaviyo before running surveys." },
+        { ...SURVEY_CAMPAIGNS_SECTION, icon: I.navSurveys, locked: !klaviyoReady, lockHint: "Connect Klaviyo before running quizzes." },
       ],
     },
     {
       label: "Analytics",
       expandable: true,
       items: [
-        { ...ANALYTICS_OVERVIEW_SECTION, icon: I.navDashboard },
+        { ...DASHBOARD_SECTION, icon: I.navDashboard },
         { ...CUSTOMER_INSIGHTS_SECTION, icon: I.navIntelligence },
       ],
     },
@@ -111,11 +114,13 @@ function buildNavGroups(conn, brandInfo, setupProgress) {
 function parseSection() {
   const params = new URLSearchParams(window.location.search);
   if (window.location.pathname === "/onboarding" || params.get("section") === ONBOARDING_SECTION.id) return ONBOARDING_SECTION.id;
-  if (window.location.pathname === "/" || window.location.pathname === "/dashboard") return DASHBOARD_SECTION.id;
+  if (window.location.pathname === "/") return CAMPAIGNS_SECTION.id;
+  if (window.location.pathname === "/dashboard") return DASHBOARD_SECTION.id;
   if (window.location.pathname === "/magnets" || window.location.pathname === "/customers") return CUSTOMER_INTELLIGENCE_SECTION.id;
   if (window.location.pathname === "/customer-intelligence") return CUSTOMER_INTELLIGENCE_SECTION.id;
   if (window.location.pathname === "/customer-insights") return CUSTOMER_INSIGHTS_SECTION.id;
-  if (window.location.pathname === "/analytics") return ANALYTICS_OVERVIEW_SECTION.id;
+  // The former Overview route now resolves to the main Dashboard for old bookmarks.
+  if (window.location.pathname === "/analytics") return DASHBOARD_SECTION.id;
   if (window.location.pathname === "/campaigns") return CAMPAIGNS_SECTION.id;
   if (window.location.pathname === "/orders-delivery") return ORDERS_DELIVERY_SECTION.id;
   if (window.location.pathname === "/dashboard-pre") return DASHBOARD_PRE_SECTION.id;
@@ -140,7 +145,6 @@ function pathForSection(section) {
   if (section === ORDERS_DELIVERY_SECTION.id) return "/orders-delivery";
   if (section === CUSTOMER_INTELLIGENCE_SECTION.id) return "/magnets";
   if (section === CUSTOMER_INSIGHTS_SECTION.id) return "/customer-insights";
-  if (section === ANALYTICS_OVERVIEW_SECTION.id) return "/analytics";
   if (section === CAMPAIGNS_SECTION.id) return "/campaigns";
   return `/brand-config?section=${section}`;
 }
@@ -184,7 +188,7 @@ function AdminNavItem({ item, active, onSelect }) {
 function AdminSidebar({ section, onSectionChange, connections, brandInfo, setupProgress }) {
   const groups = buildNavGroups(connections, brandInfo, setupProgress);
   const [menuOpen, setMenuOpen] = useStateAdmin(false);
-  const [expandedGroups, setExpandedGroups] = useStateAdmin({ Customers: true, Content: true, Analytics: true });
+  const [expandedGroups, setExpandedGroups] = useStateAdmin({ Campaigns: true, Customers: true, Content: true, Analytics: true });
   const sidebarRef = useRefAdmin(null);
   const currentLabel = ALL_SECTIONS.find((item) => item.id === section)?.label || "Menu";
 
@@ -310,7 +314,6 @@ function AccountsPage({ section, user, connections, onSubChange, onLogout, readO
     <div className="accounts-layout">
       <aside className="accounts-subnav" aria-label="Accounts navigation">
         <div className="admin-nav-group-label">Accounts</div>
-        {subItem(ACCOUNT_SECTION.id, "Account")}
         {subItem(ORDERS_DELIVERY_SECTION.id, "Orders & Delivery", null, <I.navOrders />)}
         {setupComplete && (
           <>
@@ -355,18 +358,6 @@ function FcAccountView({ user, onLogout }) {
         </CfgActions>
       </CfgSection>
     </div>
-  );
-}
-
-function CampaignsPlaceholderPage() {
-  return (
-    <main className="admin-content">
-      <div className="nav-placeholder">
-        <span className="nav-placeholder-icon" aria-hidden="true">{I.navProduct({ size: 24 })}</span>
-        <h1>Campaigns</h1>
-        <p>Campaign management is coming soon.</p>
-      </div>
-    </main>
   );
 }
 
@@ -618,13 +609,11 @@ function AdminApp() {
         {section === DASHBOARD_SECTION.id
           ? <BrandDashboardPage />
           : section === CAMPAIGNS_SECTION.id
-          ? <CampaignsPlaceholderPage />
+          ? <CampaignsPage readOnly={configReadOnly} />
           : section === CUSTOMER_INTELLIGENCE_SECTION.id
           ? <MagnetsPage />
           : section === CUSTOMER_INSIGHTS_SECTION.id
           ? <CustomerIntelligencePage />
-          : section === ANALYTICS_OVERVIEW_SECTION.id
-          ? <DashboardPage />
           : section === DASHBOARD_PRE_SECTION.id
           ? <DashboardPage />
           : section === BRAND_COLLECT_SECTION.id && !brandInfo.complete

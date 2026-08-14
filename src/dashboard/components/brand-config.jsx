@@ -1820,7 +1820,7 @@ function BrandConfigPage({ section = "shopify", readOnly = false, onSkip = null,
       setConfig(apiToLocal(data));
       setOauthNotice({
         tone: "pos",
-        text: "Klaviyo authorization removed. Segment sync and survey targeting are disabled until you connect again.",
+        text: "Klaviyo authorization removed. Segment sync and quiz targeting are disabled until you connect again.",
       });
       setShowKlaviyoDisconnectConfirm(false);
     } catch (err) {
@@ -2519,7 +2519,7 @@ function BrandConfigPage({ section = "shopify", readOnly = false, onSkip = null,
       {showKlaviyoDisconnectConfirm && (
         <ConfirmModal
           title="Disconnect Klaviyo"
-          message="FridgeChannel will remove the saved OAuth tokens. Segment sync and survey targeting will be disabled until you connect again."
+          message="FridgeChannel will remove the saved OAuth tokens. Segment sync and quiz targeting will be disabled until you connect again."
           confirmLabel="Disconnect"
           cancelLabel="Cancel"
           confirming={klaviyoDisconnecting}

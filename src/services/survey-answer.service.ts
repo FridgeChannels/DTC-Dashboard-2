@@ -64,7 +64,7 @@ async function validateAndSaveOneAnswer(
   // §19.1 检查 Survey 是否 Open
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, campaignId);
   if (!campaign || campaign.status !== "open") {
-    throw new SurveyTapError("Survey campaign not found or not open", 404, "campaign_not_found");
+    throw new SurveyTapError("Quiz campaign not found or not open", 404, "campaign_not_found");
   }
 
   const question = await questionRepo.findQuestionById(questionId);
@@ -234,7 +234,7 @@ export async function submitFullSurvey(
   // §19.1 检查 Survey 是否 Open
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, surveyId);
   if (!campaign || campaign.status !== "open") {
-    throw new SurveyTapError("Survey not found or not open", 404, "survey_not_open");
+    throw new SurveyTapError("Quiz not found or not open", 404, "survey_not_open");
   }
 
   const fcUserId = request.fcUserId?.trim() || null;
@@ -302,7 +302,7 @@ export async function recordSurveyEvent(
 ): Promise<void> {
   const { customerId } = await loadMagnetContext(magnetIdRaw);
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, surveyId);
-  if (!campaign) throw new SurveyTapError("Survey not found", 404);
+  if (!campaign) throw new SurveyTapError("Quiz not found", 404);
   const userId = (user.fcUserId?.trim() || user.anonymousId?.trim() || null) ?? null;
   await eventRepo.insertSurveyEvent({ surveyId, userId, eventType });
 }

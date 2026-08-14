@@ -35,6 +35,7 @@ import {
   handlePutSegmentCouponConfig,
   handlePostSegmentCouponConfigDefault,
 } from "./api/segment-coupon-config.js";
+import { handleGetCampaignAudienceConfig, handlePostCampaignAudienceConfig, handlePutCampaignAudienceConfig } from "./api/campaign-audience-config.js";
 import { handleGetAvailableCouponCampaigns } from "./api/available-coupon-campaigns.js";
 import {
   handleListSurveyCampaigns,
@@ -293,6 +294,21 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/segment-coupon-config/default") {
     await handlePostSegmentCouponConfigDefault(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/campaign-audience-config") {
+    await handleGetCampaignAudienceConfig(req, res);
+    return;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/campaign-audience-config") {
+    await handlePutCampaignAudienceConfig(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/campaign-audience-config") {
+    await handlePostCampaignAudienceConfig(req, res);
     return;
   }
 

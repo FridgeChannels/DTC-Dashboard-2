@@ -6,6 +6,7 @@ export interface MagnetDirectoryMagnetRow {
 }
 
 export interface MagnetDirectoryIdentityRow {
+  fc_user_id: string;
   magnet_id: number | null;
   shopify_customer_id: string | null;
   email: string | null;
@@ -20,7 +21,7 @@ export async function listMagnetDirectoryRows(customerId: number): Promise<{
     db.from("magnet").select("id,sn").eq("customer_id", customerId).order("id", { ascending: true }),
     db
       .from("fc_user_identity")
-      .select("magnet_id,shopify_customer_id,email")
+      .select("fc_user_id,magnet_id,shopify_customer_id,email")
       .eq("customer_id", customerId)
       .not("magnet_id", "is", null),
   ]);

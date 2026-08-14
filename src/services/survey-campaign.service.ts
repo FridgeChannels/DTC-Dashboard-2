@@ -282,7 +282,7 @@ async function buildCampaignDetail(
   campaignId: string,
 ): Promise<SurveyCampaignDetail> {
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, campaignId);
-  if (!campaign) throw new Error("Survey campaign not found");
+  if (!campaign) throw new Error("Quiz campaign not found");
 
   const [segments, questions, responseCount] = await Promise.all([
     segmentRepo.listSegmentsByCampaignId(campaignId),
@@ -348,9 +348,9 @@ async function evaluatePublishCheck(
 ): Promise<PublishCheckResult> {
   const missing: string[] = [];
 
-  if (!detail.surveyName?.trim()) missing.push("Survey name");
+  if (!detail.surveyName?.trim()) missing.push("Quiz name");
   if (!detail.surveyPurpose || !VALID_PURPOSES.includes(detail.surveyPurpose)) {
-    missing.push("Survey purpose");
+    missing.push("Quiz purpose");
   }
 
   const activeQuestions = detail.questions.filter((q) => q.status === "active");
@@ -598,7 +598,7 @@ export async function updateSurveyCampaignForCustomer(
   if (!campaignId) throw new Error("campaign_id is required");
 
   const existing = await campaignRepo.findSurveyCampaignById(customerId, campaignId);
-  if (!existing) throw new Error("Survey campaign not found");
+  if (!existing) throw new Error("Quiz campaign not found");
 
   const audienceType = input.audienceType ?? existing.audience_type;
   const startType = input.startType ?? existing.start_type;
@@ -661,16 +661,16 @@ export async function publishSurveyCampaignForCustomer(
   if (!id) throw new Error("campaign_id is required");
 
   const existing = await campaignRepo.findSurveyCampaignById(customerId, id);
-  if (!existing) throw new Error("Survey campaign not found");
+  if (!existing) throw new Error("Quiz campaign not found");
 
   if (existing.status !== "draft") {
-    throw new Error(`Cannot publish a survey in "${existing.status}" state`);
+    throw new Error(`Cannot publish a quiz in "${existing.status}" state`);
   }
 
   const check = await runPublishCheck(customerId, id);
   if (!check.ok) {
     throw new Error(
-      `This survey cannot be published. Missing: ${check.missing.join(", ")}`,
+      `This quiz cannot be published. Missing: ${check.missing.join(", ")}`,
     );
   }
 
@@ -717,11 +717,11 @@ export async function transitionSurveyCampaignForCustomer(
   if (!rule) throw new Error(`Unsupported action: ${action}`);
 
   const existing = await campaignRepo.findSurveyCampaignById(customerId, id);
-  if (!existing) throw new Error("Survey campaign not found");
+  if (!existing) throw new Error("Quiz campaign not found");
 
   if (!rule.from.includes(existing.status)) {
     throw new Error(
-      `Cannot ${action} a survey in "${existing.status}" state`,
+      `Cannot ${action} a quiz in "${existing.status}" state`,
     );
   }
 
@@ -760,7 +760,7 @@ export async function duplicateSurveyCampaignForCustomer(
 ): Promise<SurveyCampaignDetail> {
   const id = campaignId.trim();
   const original = await campaignRepo.findSurveyCampaignById(customerId, id);
-  if (!original) throw new Error("Survey campaign not found");
+  if (!original) throw new Error("Quiz campaign not found");
 
   const detail = await buildCampaignDetail(customerId, id);
 
@@ -866,7 +866,7 @@ export async function replaceSurveyQuestionsForCustomer(
   if (!id) throw new Error("survey_campaign_id is required");
 
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, id);
-  if (!campaign) throw new Error("Survey campaign not found");
+  if (!campaign) throw new Error("Quiz campaign not found");
 
   // §16 Active + responses 不允许改 Questions
   await assertCanEditQuestions(campaign);
@@ -969,7 +969,7 @@ export async function createSurveyQuestionForCustomer(
   if (!campaignId) throw new Error("survey_campaign_id is required");
 
   const campaign = await campaignRepo.findSurveyCampaignById(customerId, campaignId);
-  if (!campaign) throw new Error("Survey campaign not found");
+  if (!campaign) throw new Error("Quiz campaign not found");
 
   // §16 Active + responses 不允许改 Questions
   await assertCanEditQuestions(campaign);
@@ -1041,7 +1041,7 @@ export async function updateSurveyQuestionForCustomer(
     customerId,
     question.survey_campaign_id,
   );
-  if (!campaign) throw new Error("Survey campaign not found");
+  if (!campaign) throw new Error("Quiz campaign not found");
 
   await assertCanEditQuestions(campaign);
 
@@ -1074,7 +1074,7 @@ export async function deleteSurveyQuestionForCustomer(
     customerId,
     question.survey_campaign_id,
   );
-  if (!campaign) throw new Error("Survey campaign not found");
+  if (!campaign) throw new Error("Quiz campaign not found");
 
   await assertCanEditQuestions(campaign);
 
@@ -1117,7 +1117,7 @@ export async function createSurveyOptionForCustomer(
     customerId,
     question.survey_campaign_id,
   );
-  if (!campaign) throw new Error("Survey campaign not found");
+  if (!campaign) throw new Error("Quiz campaign not found");
 
   await assertCanEditQuestions(campaign);
 
@@ -1155,7 +1155,7 @@ export async function updateSurveyOptionForCustomer(
     customerId,
     question.survey_campaign_id,
   );
-  if (!campaign) throw new Error("Survey campaign not found");
+  if (!campaign) throw new Error("Quiz campaign not found");
 
   await assertCanEditQuestions(campaign);
 

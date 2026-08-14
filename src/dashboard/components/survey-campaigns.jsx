@@ -38,8 +38,8 @@ const AUDIENCE_OPTIONS = [
 ];
 
 const WIZARD_STEPS = [
-  { key: "build", label: "Build Survey" },
-  { key: "configure", label: "Configure Survey" },
+  { key: "build", label: "Build Quiz" },
+  { key: "configure", label: "Configure Quiz" },
   { key: "publish", label: "Preview & Publish" },
 ];
 
@@ -48,12 +48,12 @@ const LOCAL_SURVEY_DRAFT_KEY = "fc-admin:survey-create-draft:v1";
 const SurveyAPI = {
   async listCampaigns() {
     const res = await fetch("/api/survey-campaigns");
-    if (!res.ok) throw new Error((await res.json()).error || "Failed to load surveys");
+    if (!res.ok) throw new Error((await res.json()).error || "Failed to load quizzes");
     return res.json();
   },
   async getCampaign(id) {
     const res = await fetch(`/api/survey-campaigns/detail?id=${encodeURIComponent(id)}`);
-    if (!res.ok) throw new Error((await res.json()).error || "Failed to load survey");
+    if (!res.ok) throw new Error((await res.json()).error || "Failed to load quiz");
     return res.json();
   },
   async listSegments() {
@@ -73,7 +73,7 @@ const SurveyAPI = {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to create survey");
+    if (!res.ok) throw new Error(data.error || "Failed to create quiz");
     return data;
   },
   async updateCampaign(payload) {
@@ -83,7 +83,7 @@ const SurveyAPI = {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to update survey");
+    if (!res.ok) throw new Error(data.error || "Failed to update quiz");
     return data;
   },
   async publishCampaign(campaignId) {
@@ -93,7 +93,7 @@ const SurveyAPI = {
       body: JSON.stringify({ campaign_id: campaignId }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to publish survey");
+    if (!res.ok) throw new Error(data.error || "Failed to publish quiz");
     return data;
   },
   async transition(campaignId, action) {
@@ -103,7 +103,7 @@ const SurveyAPI = {
       body: JSON.stringify({ campaign_id: campaignId, action }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to update survey status");
+    if (!res.ok) throw new Error(data.error || "Failed to update quiz status");
     return data;
   },
   async duplicate(campaignId) {
@@ -113,7 +113,7 @@ const SurveyAPI = {
       body: JSON.stringify({ campaign_id: campaignId }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to duplicate survey");
+    if (!res.ok) throw new Error(data.error || "Failed to duplicate quiz");
     return data;
   },
   async createQuestion(payload) {
@@ -269,8 +269,8 @@ function validateBuildStep(questions) {
 
 function validateConfigureStep(form, klaviyoConnected) {
   const missing = [];
-  if (!form.surveyName?.trim()) missing.push("Survey name");
-  if (!form.surveyPurpose) missing.push("Survey purpose");
+  if (!form.surveyName?.trim()) missing.push("Quiz name");
+  if (!form.surveyPurpose) missing.push("Quiz purpose");
   if (!form.audienceType) missing.push("Audience");
   if (form.audienceType === "klaviyo_segment") {
     if (!klaviyoConnected) missing.push("Connect Klaviyo");
@@ -600,7 +600,7 @@ function SurveyQuestionCard({
   const handleToggleRequired = (checked) => onPatch(question.id, { isRequired: checked });
 
   const handleDeleteQuestion = () => {
-    if (!window.confirm("Remove this question from the survey?")) return;
+    if (!window.confirm("Remove this question from the quiz?")) return;
     onDelete(question.id);
   };
 
@@ -639,7 +639,7 @@ function SurveyQuestionCard({
         </div>
         <div className="survey-user-q">{question.questionText || "Question title is required"}</div>
         <SurveyQuestionAnswerDisplay question={question} compact />
-        {editDisabled && <div className="cfg-hint" style={{ marginTop: 8 }}>This survey already has responses. Duplicate it to edit questions.</div>}
+        {editDisabled && <div className="cfg-hint" style={{ marginTop: 8 }}>This quiz already has responses. Duplicate it to edit questions.</div>}
       </div>
     );
   }
@@ -765,29 +765,67 @@ function SurveyQuestionCard({
 // =====================================================================
 function RowActionMenu({ items }) {
   const [open, setOpen] = useStateSV(false);
+  const [menuPosition, setMenuPosition] = useStateSV(null);
   const ref = useRefSV(null);
+  const buttonRef = useRefSV(null);
+  const menuRef = useRefSV(null);
+
+  const positionMenu = useCallbackSV(() => {
+    const button = buttonRef.current;
+    if (!button) return;
+
+    const trigger = button.getBoundingClientRect();
+    const menuWidth = menuRef.current?.offsetWidth || 180;
+    const menuHeight = menuRef.current?.offsetHeight || (items.length * 40) + 8;
+    const viewportGap = 8;
+    const left = Math.max(viewportGap, Math.min(
+      trigger.right - menuWidth,
+      window.innerWidth - menuWidth - viewportGap,
+    ));
+    const hasRoomBelow = window.innerHeight - trigger.bottom >= menuHeight + viewportGap;
+    const top = hasRoomBelow
+      ? trigger.bottom + 4
+      : Math.max(viewportGap, trigger.top - menuHeight - 4);
+
+    setMenuPosition({ left, top });
+  }, [items.length]);
 
   useEffectSV(() => {
     if (!open) return;
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      const clickedTrigger = ref.current?.contains(e.target);
+      const clickedMenu = menuRef.current?.contains(e.target);
+      if (!clickedTrigger && !clickedMenu) setOpen(false);
     };
+    const frame = window.requestAnimationFrame(positionMenu);
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("mousedown", handler);
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+    };
+  }, [open, positionMenu]);
 
   if (!items.length) return <span className="muted">—</span>;
   return (
     <div className={`row-menu${open ? " open" : ""}`} ref={ref}>
       <button
+        ref={buttonRef}
         type="button"
         className="btn icon-btn"
         aria-label="More actions"
         title="More actions"
         onClick={() => setOpen((v) => !v)}
       >⋯</button>
-      {open && (
-        <div className="row-menu-list">
+      {open && ReactDOM.createPortal(
+        <div
+          ref={menuRef}
+          className="row-menu-list row-menu-portal"
+          style={menuPosition ? menuPosition : { visibility: "hidden" }}
+        >
           {items.map((it, i) => (
             <button
               key={i}
@@ -799,7 +837,8 @@ function RowActionMenu({ items }) {
               {it.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -824,8 +863,8 @@ function SurveyCampaignTable({ campaigns, onAction, statusFilter, readOnly = fal
   if (!campaigns.length) {
     return (
       <EmptyState
-        title="No surveys yet"
-        note="Create your first survey to start collecting responses."
+        title="No quizzes yet"
+        note="Create your first quiz to start collecting responses."
         compact
       />
     );
@@ -840,7 +879,7 @@ function SurveyCampaignTable({ campaigns, onAction, statusFilter, readOnly = fal
         <table className="data">
           <thead>
             <tr>
-              <th>Survey</th>
+              <th>Quiz</th>
               <th>Purpose</th>
               <th>Questions</th>
               <th>Audience</th>
@@ -871,7 +910,7 @@ function SurveyCampaignTable({ campaigns, onAction, statusFilter, readOnly = fal
             {!pageRows.length && (
               <tr>
                 <td colSpan={8} className="muted" style={{ textAlign: "center", padding: "24px 0" }}>
-                  No surveys match this status.
+                  No quizzes match this status.
                 </td>
               </tr>
             )}
@@ -946,7 +985,7 @@ function statusActions(c, onAction, readOnly = false) {
   if (s === "open") {
     return [
       { label: "View responses", onClick: dispatch("dashboard") },
-      { label: "Close Survey", onClick: dispatch("close") },
+      { label: "Close Quiz", onClick: dispatch("close") },
       { label: "Preview", onClick: dispatch("preview") },
     ];
   }
@@ -995,7 +1034,7 @@ function StepBuild({
     <div className="survey-questions-tab">
       {!canEditQuestions && (
         <p className="cfg-hint" style={{ marginBottom: 12 }}>
-          This survey already has responses. Duplicate it to edit questions.
+          This quiz already has responses. Duplicate it to edit questions.
         </p>
       )}
       {activeQuestions.map((q, idx) => (
@@ -1010,7 +1049,7 @@ function StepBuild({
           canEditQuestions={canEditQuestions} />
       ))}
       {!activeQuestions.length && (
-        <p className="cfg-hint">No questions yet — add your first question below. A survey needs at least 1 question before publishing.</p>
+    <p className="cfg-hint">No questions yet — add your first question below. A quiz needs at least 1 question before publishing.</p>
       )}
       {canEditQuestions && (
         <div className="survey-add-question-trigger-row">
@@ -1036,13 +1075,13 @@ function StepConfigure({ form, onChange, segments, klaviyoConnected, disabled })
         <div className="survey-layout-card-title">Basic Setup</div>
         <div className="cfg-form">
           <div className="survey-inline-field">
-            <label className="cfg-label">Survey name <ReqStar /></label>
+            <label className="cfg-label">Quiz name <ReqStar /></label>
             <input className="cfg-input" value={form.surveyName} disabled={disabled}
               onChange={(e) => onChange("surveyName", e.target.value)}
               placeholder="" />
           </div>
           <div className="survey-inline-field">
-            <label className="cfg-label">Survey purpose <ReqStar /></label>
+            <label className="cfg-label">Quiz purpose <ReqStar /></label>
             <select className="cfg-input" value={form.surveyPurpose} disabled={disabled}
               onChange={(e) => onChange("surveyPurpose", e.target.value)}>
               {SURVEY_PURPOSE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
@@ -1071,7 +1110,7 @@ function StepConfigure({ form, onChange, segments, klaviyoConnected, disabled })
         <p className="cfg-hint" style={{ marginBottom: 12 }}>
           Choose which group of users will receive this survey.
         </p>
-        <SurveyField label="Who should see this survey?" required fullRow>
+        <SurveyField label="Who should see this quiz?" required fullRow>
           <select className="cfg-input" value={form.audienceType} disabled={disabled}
             onChange={(e) => onChange("audienceType", e.target.value)}>
             {AUDIENCE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
@@ -1175,7 +1214,7 @@ function StepPreview({
   const endLabel = form.endType === "end_at_specific_time" ? (form.endAt || "Not set") : "No end date";
 
   const informationItems = [
-    { label: "Survey name", value: form.surveyName || "Required", invalid: !form.surveyName?.trim() },
+    { label: "Quiz name", value: form.surveyName || "Required", invalid: !form.surveyName?.trim() },
     { label: "Purpose", value: formatPurpose(form.surveyPurpose), invalid: !form.surveyPurpose },
     {
       label: "Audience",
@@ -1217,7 +1256,7 @@ function StepPreview({
       <section className="survey-review-section" aria-labelledby="survey-information-title">
         <div className="survey-review-section-head survey-information-head">
           <div>
-            <h3 id="survey-information-title">Survey information</h3>
+            <h3 id="survey-information-title">Quiz information</h3>
           </div>
         </div>
         <div className="survey-information-grid">
@@ -1268,7 +1307,7 @@ function StepPreview({
         ) : (
           <div className="survey-review-empty">
             <strong>No questions added</strong>
-            <p>Return to Build Survey and add at least one question before publishing.</p>
+            <p>Return to Build Quiz and add at least one question before publishing.</p>
             <button type="button" className="btn" onClick={onEditQuestions}>Add questions</button>
           </div>
         )}
@@ -1452,7 +1491,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
   const openDashboard = (campaign) => {
     // 仅 Open / Closed 才有结果可看;Draft / Scheduled / 未完成状态不进入 Results
     if (campaign.status !== "open" && campaign.status !== "closed") {
-      setError("Only open or closed surveys have results to view.");
+      setError("Only open or closed quizzes have results to view.");
       return;
     }
     setDetail(campaign);
@@ -1710,7 +1749,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
           setForm(campaignToForm(saved.campaign));
           syncDraftFromCampaign(saved.campaign);
           clearLocalSurveyDraft();
-          setError(`Survey was saved but cannot be published. Missing: ${check.missing.join(", ")}`);
+          setError(`Quiz was saved but cannot be published. Missing: ${check.missing.join(", ")}`);
           return;
         }
         const data = await SurveyAPI.publishCampaign(campaignId);
@@ -1718,7 +1757,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
         setDetail(data.campaign);
         setForm(campaignToForm(data.campaign));
         syncDraftFromCampaign(data.campaign);
-        setNotice(`Survey published — status: ${data.campaign.status}.`);
+        setNotice(`Quiz published — status: ${data.campaign.status}.`);
         if (data.campaign) {
           const updated = data.campaign;
           setCampaigns((prev) => prev.map((c) =>
@@ -1738,7 +1777,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
       const data = await SurveyAPI.publishCampaign(detail.id);
       setDetail(data.campaign);
       setForm(campaignToForm(data.campaign));
-      setNotice(`Survey published — status: ${data.campaign.status}.`);
+      setNotice(`Quiz published — status: ${data.campaign.status}.`);
       if (data.campaign) {
         const updated = data.campaign;
         setCampaigns((prev) => prev.map((c) =>
@@ -1776,7 +1815,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
           return;
         }
         const data = await SurveyAPI.publishCampaign(campaign.id);
-        setNotice(`Survey published — status: ${data.campaign.status}.`);
+        setNotice(`Quiz published — status: ${data.campaign.status}.`);
         if (data.campaign) {
           const updated = data.campaign;
           setCampaigns((prev) => prev.map((c) =>
@@ -1793,7 +1832,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
       setBusy(true);
       try {
         const data = await SurveyAPI.duplicate(campaign.id);
-        setNotice("Survey duplicated. New draft created.");
+        setNotice("Quiz duplicated. New draft created.");
         loadList();
       } catch (err) { setError(err.message); }
       finally { setBusy(false); }
@@ -1802,19 +1841,19 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
     // transitions
     const tActions = ["unschedule", "close", "reopen", "delete"];
     if (tActions.includes(action)) {
-      if (action === "delete" && !window.confirm("Delete this survey? This cannot be undone.")) return;
+      if (action === "delete" && !window.confirm("Delete this quiz? This cannot be undone.")) return;
       setBusy(true);
       try {
         const data = await SurveyAPI.transition(campaign.id, action);
         if (data.deleted) {
           setCampaigns((prev) => prev.filter((c) => c.id !== campaign.id));
-          setNotice(`Survey deleted.`);
+          setNotice(`Quiz deleted.`);
         } else if (data.campaign) {
           const updated = data.campaign;
           setCampaigns((prev) => prev.map((c) =>
             c.id === campaign.id ? { ...c, ...updated, status: updated.status ?? c.status } : c
           ));
-          setNotice(action === "close" ? `Survey closed.` : action === "reopen" ? `Survey reopened.` : `Survey ${action}d.`);
+          setNotice(action === "close" ? `Quiz closed.` : action === "reopen" ? `Quiz reopened.` : `Quiz ${action}d.`);
         } else {
           loadList();
         }
@@ -1867,7 +1906,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
     <div className="brand-config survey-campaigns-page">
       {view === "list" && (
         <ModuleHead
-          title="Surveys"
+          title="Quizzes"
           action={
             <div className="survey-head-actions">
               <label className="survey-filter">
@@ -1883,7 +1922,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
                 </select>
               </label>
               <button type="button" className="btn primary" onClick={openCreate} disabled={readOnly || busy}>
-                Create Survey
+                Create Quiz
               </button>
             </div>
           }
@@ -1894,11 +1933,11 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
           <div className="survey-dashboard-head-meta">
             <div className="survey-dashboard-head-context">
               <button type="button" className="icon-btn survey-back-btn" onClick={backToList}
-                aria-label="Back to survey list" title="Back to survey list">←</button>
+                aria-label="Back to quiz list" title="Back to quiz list">←</button>
               <h2 className="module-title survey-detail-title">
                 {detail.isLocalDraft
-                  ? (form.surveyName || "Untitled survey")
-                  : (detail.surveyName || detail.name || "Untitled survey")}
+                  ? (form.surveyName || "Untitled quiz")
+                  : (detail.surveyName || detail.name || "Untitled quiz")}
               </h2>
             </div>
             <div className="survey-dashboard-head-actions">
@@ -1916,7 +1955,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
                   disabled={readOnly || busy || !canPublish}
                   title={canPublish ? undefined : "Complete all required fields before publishing"}
                   onClick={handlePublish}>
-                  {busy ? "Publishing…" : "Publish survey"}
+                  {busy ? "Publishing…" : "Publish quiz"}
                 </button>
               )}
               {(detail.status === "open" || detail.status === "closed") && (
@@ -1930,7 +1969,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
       )}
 
       {notice && (<div className="cfg-alert pos" style={{ marginBottom: 16 }}><I.info /> {notice}</div>)}
-      {readOnly && (<div className="cfg-alert warn" style={{ marginBottom: 16 }}><I.info /> This account can view surveys only.</div>)}
+      {readOnly && (<div className="cfg-alert warn" style={{ marginBottom: 16 }}><I.info /> This account can view quizzes only.</div>)}
       {error && (<div className="cfg-alert warn" style={{ marginBottom: 16 }}><I.info /> {error}</div>)}
 
       {view === "list" && (
@@ -1992,7 +2031,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
       {discardPrompt && (
         <ConfirmModal
           title="Discard unsaved changes?"
-          message="You've edited this survey's questions but haven't saved yet. Leaving now discards those changes — click Continue in the editor to save them."
+          message="You've edited this quiz's questions but haven't saved yet. Leaving now discards those changes — click Continue in the editor to save them."
           confirmLabel="Discard changes"
           cancelLabel="Keep editing"
           onConfirm={() => { const fn = discardPrompt.onConfirm; setDiscardPrompt(null); fn(); }}

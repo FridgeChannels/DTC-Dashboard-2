@@ -88,7 +88,7 @@ function SurveyOverviewGrid({ overview }) {
     <div className="survey-stats-grid">
       <SurveyStatCard title="Responses" value={window.FCFmt.fmtInt(overview.responses)} sub="Completed submissions" />
       <SurveyStatCard title="Completion rate" value={fmtRate(overview.completionRate)} sub="Responses / Starts" />
-      <SurveyStatCard title="Starts" value={window.FCFmt.fmtInt(overview.starts)} sub="Times survey was started" />
+      <SurveyStatCard title="Starts" value={window.FCFmt.fmtInt(overview.starts)} sub="Times quiz was started" />
     </div>
   );
 }
@@ -128,7 +128,7 @@ function SurveyAnswerInsights({ questions }) {
 
 function SurveyMagnetBreakdownTable({ rows }) {
   if (!rows?.length) {
-    return (<EmptyState title="No magnet activity yet" note="Breakdown by magnet appears after survey impressions are recorded." compact />);
+    return (<EmptyState title="No magnet activity yet" note="Breakdown by magnet appears after quiz impressions are recorded." compact />);
   }
   return (
     <div className="table-wrap">
@@ -177,7 +177,7 @@ function SurveyOpenEndedTable({ entries }) {
 
 function SurveyIndividualResponsesTable({ responses, questions }) {
   if (!responses?.length) {
-    return (<EmptyState title="No submitted responses yet" note="Individual responses appear after users submit the survey." compact />);
+    return (<EmptyState title="No submitted responses yet" note="Individual responses appear after users submit the quiz." compact />);
   }
   return (
     <div className="table-wrap">
@@ -247,7 +247,7 @@ function SurveyCampaignDashboardPage({ campaign, onBack }) {
   useEffectDash(() => { loadData(); }, [loadData]);
 
   const rangeLabel = SURVEY_DATE_RANGES.find((r) => r.id === dateRange)?.label || "Last 30 days";
-  const campaignName = campaign?.surveyName || campaign?.name || "Untitled survey";
+  const campaignName = campaign?.surveyName || campaign?.name || "Untitled quiz";
   const hasResponses = (dashboard?.overview?.responses ?? 0) > 0;
   const hasOpenEnded = openEnded.length > 0;
 
@@ -257,9 +257,9 @@ function SurveyCampaignDashboardPage({ campaign, onBack }) {
         <div className="survey-dashboard-head-meta">
           <div className="survey-dashboard-head-context">
             <button type="button" className="icon-btn survey-back-btn" onClick={onBack}
-              aria-label="Back to survey list" title="Back to survey list">←</button>
+              aria-label="Back to quiz list" title="Back to quiz list">←</button>
             <div>
-              <div className="muted" style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Survey Results</div>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Quiz Results</div>
               <h2 className="module-title survey-detail-title">{campaignName}</h2>
             </div>
           </div>
@@ -274,7 +274,7 @@ function SurveyCampaignDashboardPage({ campaign, onBack }) {
       {error && (<div className="cfg-alert warn" style={{ marginBottom: 16 }}><I.info /> {error}</div>)}
 
       {loading ? (<PageLoading />) : !hasResponses ? (
-        <EmptyState title="No responses yet" note="Results appear here once users start submitting this survey." />
+        <EmptyState title="No responses yet" note="Results appear here once users start submitting this quiz." />
       ) : (
         <>
           <Panel title="Overview" sub={rangeLabel}>

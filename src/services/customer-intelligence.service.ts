@@ -398,7 +398,7 @@ function normalizeQuestions(rows: CustomerIntelligenceRows): QuestionDefinition[
       source: "survey_campaign",
       sourceLabel: "Brand survey questions",
       campaignId: question.survey_campaign_id,
-      campaignName: campaign?.survey_name || campaign?.name || "Survey",
+      campaignName: campaign?.survey_name || campaign?.name || "Quiz",
       category: "survey_campaign",
       categoryLabel: CATEGORY_LABELS.survey_campaign,
       ...brandTopic(question.intelligence_topic, campaign?.survey_purpose),

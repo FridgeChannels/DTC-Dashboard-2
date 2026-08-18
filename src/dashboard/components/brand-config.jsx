@@ -1664,7 +1664,7 @@ function AddCodesModal({ campaign, onClose, onUpdated }) {
   );
 }
 
-function BrandConfigPage({ section = "shopify", readOnly = false, onSkip = null, skipLabel = "Skip for now", onboardingReturnTo = null }) {
+function BrandConfigPage({ section = "shopify", readOnly = false, onSkip = null, onSaved = null, skipLabel = "Skip for now", onboardingReturnTo = null }) {
   const [config, setConfig] = useStateBC(null);
   const [loading, setLoading] = useStateBC(true);
   const [saving, setSaving] = useStateBC(false);
@@ -1845,6 +1845,7 @@ function BrandConfigPage({ section = "shopify", readOnly = false, onSkip = null,
       setConfig(local);
       setShopifySavedBaseline(serializeShopifyForCompare(local.shopify));
       setOauthNotice({ tone: "pos", text: "Configuration saved." });
+      onSaved?.();
     } catch (err) {
       setError(err.message);
     } finally {

@@ -100,7 +100,7 @@ function buildNavGroups(conn, brandInfo, setupProgress) {
         { ...DASHBOARD_SECTION, icon: I.navDashboard },
       ],
     },
-    { items: [{ ...ACCOUNTS_SECTION, label: "Accounts", icon: I.navAccounts }], account: true },
+    { items: [{ ...ACCOUNTS_SECTION, label: "Accounts", icon: I.navAccounts, activeMatch: [ACCOUNTS_SECTION.id, ...ACCOUNT_MATCH] }], account: true },
   ];
   return groups;
 }
@@ -141,7 +141,8 @@ function pathForSection(section) {
   if (section === CUSTOMER_INTELLIGENCE_SECTION.id) return "/magnets";
   if (section === CUSTOMER_INSIGHTS_SECTION.id) return "/customer-insights";
   if (section === CAMPAIGNS_SECTION.id) return "/segment-config";
-  if (section === ACCOUNTS_SECTION.id) return "/brand-config?section=accounts";
+  // Accounts is a container entry; opening it defaults to the Account view.
+  if (section === ACCOUNTS_SECTION.id) return "/brand-config?section=account";
   return `/brand-config?section=${section}`;
 }
 
@@ -431,7 +432,10 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
       onRefresh();
       go("klaviyo");
     }
-    if (params.get("klaviyo_oauth") === "success") onRefresh();
+    if (params.get("klaviyo_oauth") === "success") {
+      window.sessionStorage.setItem("fc-onboarding-completion-pending", "1");
+      onRefresh();
+    }
   }, []);
 
   const handleSkip = () => {
@@ -463,7 +467,7 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
         <div className="onboarding-body">
           {stepId === "brand"
             ? <BrandCollectPage readOnly={brandInfoReadOnly} onSkip={current.complete ? null : handleSkip} onSaved={() => { onRefresh(); go("shopify"); }} />
-            : <BrandConfigPage section={current.Section} readOnly={configReadOnly} onSkip={current.complete ? null : handleSkip} skipLabel="Skip for now" onboardingReturnTo={onboardingPath(stepId)} />}
+            : <BrandConfigPage section={current.Section} readOnly={configReadOnly} onSkip={current.complete ? null : handleSkip} onSaved={() => { onRefresh(); go("klaviyo"); }} skipLabel="Skip for now" onboardingReturnTo={onboardingPath(stepId)} />}
         </div>
       </div>
     </div>
@@ -612,11 +616,17 @@ function AdminApp() {
   useEffectAdmin(() => {
     if (!setupLoaded.brand || !setupLoaded.connections) return;
     if (!setupProgress.complete || section !== ONBOARDING_SECTION.id) return;
+    if (window.sessionStorage.getItem("fc-onboarding-completion-pending") === "1") return;
     setSection(DASHBOARD_SECTION.id);
     window.history.replaceState({}, "", pathForSection(DASHBOARD_SECTION.id));
   }, [section, setupLoaded.brand, setupLoaded.connections, setupProgress.complete]);
 
   const handleSectionChange = (nextSection) => {
+    if (nextSection === ACCOUNTS_SECTION.id) {
+      setSection(ACCOUNT_SECTION.id);
+      window.history.replaceState({}, "", pathForSection(ACCOUNTS_SECTION.id));
+      return;
+    }
     if (nextSection === ONBOARDING_SECTION.id) {
       setSection(ONBOARDING_SECTION.id);
       const step = nextSetupSection === BRAND_COLLECT_SECTION.id ? "brand" : nextSetupSection;
@@ -633,6 +643,7 @@ function AdminApp() {
   };
 
   const dismissSetup = () => {
+    window.sessionStorage.removeItem("fc-onboarding-completion-pending");
     handleSectionChange(DASHBOARD_SECTION.id);
   };
   const skipSetupStep = (step) => {

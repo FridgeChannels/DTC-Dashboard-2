@@ -78,6 +78,13 @@ function buildNavGroups(conn, brandInfo, setupProgress) {
       }],
     }]),
     {
+      label: "Analytics",
+      expandable: true,
+      items: [
+        { ...DASHBOARD_SECTION, icon: I.navDashboard },
+      ],
+    },
+    {
       label: "Customers",
       expandable: true,
       items: [
@@ -91,13 +98,6 @@ function buildNavGroups(conn, brandInfo, setupProgress) {
       items: [
         { ...COUPON_CAMPAIGNS_SECTION, icon: I.navCoupons, locked: !shopifyReady, lockHint: "Connect Shopify before creating coupons." },
         { ...SURVEY_CAMPAIGNS_SECTION, icon: I.navSurveys, locked: !klaviyoReady, lockHint: "Connect Klaviyo before running quizzes." },
-      ],
-    },
-    {
-      label: "Analytics",
-      expandable: true,
-      items: [
-        { ...DASHBOARD_SECTION, icon: I.navDashboard },
       ],
     },
     { items: [{ ...ACCOUNTS_SECTION, label: "Accounts", icon: I.navAccounts, activeMatch: [ACCOUNTS_SECTION.id, ...ACCOUNT_MATCH] }], account: true },

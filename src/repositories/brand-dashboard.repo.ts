@@ -25,6 +25,24 @@ export interface RedemptionRow {
   redeemed_at: string | null;
 }
 
+export async function listAllAssignments(customerId: number): Promise<AssignmentRow[]> {
+  const { data, error } = await getSupabase()
+    .from("fc_coupon_assignment")
+    .select("assignment_id, campaign_id, coupon_code_id, fc_user_id, magnet_id, assigned_at")
+    .eq("customer_id", customerId);
+  if (error) throw error;
+  return (data ?? []) as AssignmentRow[];
+}
+
+export async function listAllRedemptions(customerId: number): Promise<RedemptionRow[]> {
+  const { data, error } = await getSupabase()
+    .from("fc_coupon_redemption")
+    .select("redemption_id, assignment_id, coupon_code_id, fc_user_id, shopify_order_id, order_total, total_discounts, redeemed_at")
+    .eq("customer_id", customerId);
+  if (error) throw error;
+  return (data ?? []) as RedemptionRow[];
+}
+
 export interface CampaignRow {
   campaign_id: string;
   name: string | null;

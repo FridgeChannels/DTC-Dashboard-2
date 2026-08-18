@@ -3,6 +3,11 @@ import * as bindingRepo from "../repositories/coupon-campaign-segment.repo.js";
 import * as segmentRepo from "../repositories/klaviyo-segment.repo.js";
 import { listSegmentBindableCampaignsForCustomer } from "./coupon-campaign.service.js";
 import type { CampaignSuccessMode } from "../repositories/coupon-campaign-segment.repo.js";
+import * as dashboardRepo from "../repositories/brand-dashboard.repo.js";
+import * as magnetRepo from "../repositories/magnet-directory.repo.js";
+import { getShopifyConfigByCustomerId } from "../repositories/customer-shopify-config.repo.js";
+import { buildCampaignResults } from "./campaign-results.service.js";
+import { getCustomerIntelligenceForCustomer } from "./customer-intelligence.service.js";
 
 export interface SaveCampaignAudienceInput {
   customerId: number;
@@ -31,11 +36,16 @@ function campaignName(segmentName: string | null, startsAt: string) {
 }
 
 export async function listCampaignAudienceConfig(customerId: number) {
-  const [campaigns, segments, coupons, links] = await Promise.all([
+  const [campaigns, segments, coupons, links, assignments, redemptions, magnets, shopifyConfig, intelligence] = await Promise.all([
     audienceRepo.listAudienceCampaigns(customerId),
     segmentRepo.listKlaviyoSegmentsByCustomerId(customerId),
     listSegmentBindableCampaignsForCustomer(customerId),
     audienceRepo.listAudienceCampaignCoupons(customerId),
+    dashboardRepo.listAllAssignments(customerId),
+    dashboardRepo.listAllRedemptions(customerId),
+    magnetRepo.listMagnetDirectoryRows(customerId),
+    getShopifyConfigByCustomerId(customerId),
+    getCustomerIntelligenceForCustomer(customerId).catch(() => null),
   ]);
   const couponById = new Map(coupons.map((coupon) => [coupon.id, coupon]));
   const linksByCampaign = new Map<string, string[]>();
@@ -44,8 +54,7 @@ export async function listCampaignAudienceConfig(customerId: number) {
     current.push(link.coupon_campaign_id);
     linksByCampaign.set(link.audience_campaign_id, current);
   }
-  return {
-    campaigns: campaigns.map((campaign) => ({
+  const campaignRows = campaigns.map((campaign) => ({
       campaignId: campaign.id,
       name: campaign.name,
       targetSegment: { id: campaign.target_segment_id, name: campaign.target_segment_name },
@@ -59,7 +68,39 @@ export async function listCampaignAudienceConfig(customerId: number) {
         : null,
       status: campaign.status,
       createdAt: campaign.created_at,
+  }));
+  const resultsByCampaign = buildCampaignResults({
+    campaigns: campaignRows.map((campaign) => ({
+      campaignId: campaign.campaignId,
+      startsAt: campaign.startsAt,
+      endsAt: campaign.endsAt,
+      status: campaign.status,
+      couponIds: campaign.couponIds,
+      coupons: campaign.coupons.map((coupon) => ({ id: coupon!.id, name: coupon!.name })),
+      successMode: campaign.successMode,
+      successSegmentName: campaign.successSegment?.name ?? null,
+      audienceAtLaunch: null,
     })),
+    assignments,
+    redemptions,
+    magnetNames: new Map(magnets.magnets.map((magnet) => [magnet.id, magnet.sn || `Magnet ${magnet.id}`])),
+    insightAnswers: (intelligence?.answers ?? [])
+      .filter((answer) => answer.action === "answered")
+      .map((answer) => ({
+        questionKey: answer.questionKey,
+        questionId: answer.questionId,
+        question: answer.questionText,
+        answer: answer.answerLabel,
+        value: answer.value,
+        sourceQuizId: answer.campaignId,
+        userKey: answer.userKey,
+        magnetId: answer.magnetId,
+        answeredAt: answer.answeredAt,
+      })),
+    shopifyConnected: Boolean(shopifyConfig?.access_token_ref && shopifyConfig.status === "active"),
+  });
+  return {
+    campaigns: campaignRows.map((campaign) => ({ ...campaign, results: resultsByCampaign.get(campaign.campaignId) })),
     segments: segmentOptions(segments),
     coupons,
   };
@@ -134,8 +175,12 @@ export async function createCampaignAudienceConfig(input: SaveCampaignAudienceIn
 
 export async function saveCampaignAudienceConfig(input: SaveCampaignAudienceInput) {
   const campaignId = input.campaignId?.trim();
-  if (!campaignId || !(await audienceRepo.findAudienceCampaign(input.customerId, campaignId))) {
+  const existing = campaignId ? await audienceRepo.findAudienceCampaign(input.customerId, campaignId) : null;
+  if (!campaignId || !existing) {
     throw new Error("Campaign does not belong to this brand");
   }
+  const now = Date.now();
+  const isUpcoming = existing.status === "active" && now < Date.parse(existing.starts_at);
+  if (!isUpcoming) throw new Error("Only Upcoming Campaigns can be edited");
   return persistCampaign({ ...input, campaignId }, false);
 }

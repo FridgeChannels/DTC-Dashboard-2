@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, json, errorJson } from "../http.js";
 import { createSupabaseServer } from "../../lib/supabase/server.js";
+import { getSupabase } from "../../lib/supabase/admin.js";
 import { getCurrentCustomer } from "../../lib/auth/getCurrentCustomer.js";
 import { ensureCurrentCustomer } from "../../lib/auth/ensureCurrentCustomer.js";
 import { safeRedirectPath } from "../../lib/auth/safe-redirect.js";
@@ -26,6 +27,28 @@ function clearPostLoginRedirectCookie(res: ServerResponse): void {
       sameSite: "lax",
     }),
   ]);
+}
+
+async function claimFirstDashboardLogin(customerId: number): Promise<boolean> {
+  const { data, error } = await getSupabase()
+    .from("customer")
+    .update({ setup_first_login_seen_at: new Date().toISOString() })
+    .eq("id", customerId)
+    .is("setup_first_login_seen_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    const missingSetupColumn =
+      (error.code === "42703" || error.code === "PGRST204")
+      && error.message.includes("setup_first_login_seen_at");
+    if (missingSetupColumn) {
+      console.warn("[auth] setup first-login migration is pending; continuing without automatic setup");
+      return false;
+    }
+    throw error;
+  }
+  return Boolean(data);
 }
 
 export async function handleAuthLogin(
@@ -89,12 +112,15 @@ export async function handleAuthMe(
       return;
     }
 
+    const isFirstLogin = await claimFirstDashboardLogin(Number(current.customer.id));
+
     json(res, 200, {
       authUser: {
         id: current.authUser.id,
         email: current.authUser.email,
       },
       customer: current.customer,
+      isFirstLogin,
       access: {
         status: Number(current.customer.status),
         configCustomerId:

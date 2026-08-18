@@ -42,6 +42,14 @@ function buildSurveyOtherReviewUrl(campaignId, rangeId) {
   return `/api/survey-campaigns/other-review?${params.toString()}`;
 }
 
+function buildQuizInsightsUrl(campaignId, rangeId) {
+  const params = new URLSearchParams({ survey_id: campaignId });
+  const range = surveyRangeToQuery(rangeId);
+  if (range.start_at) params.set("start_at", range.start_at);
+  if (range.end_at) params.set("end_at", range.end_at);
+  return `/api/customer-intelligence?${params.toString()}`;
+}
+
 function fmtRate(value) {
   if (value == null || !Number.isFinite(value)) return "—";
   return window.FCFmt.fmtPct(value, 1);
@@ -217,10 +225,115 @@ function SurveyIndividualResponsesTable({ responses, questions }) {
   );
 }
 
+function quizRuleLabel(rule) {
+  if (!rule || typeof rule !== "object") return "Audience conditions unavailable";
+  if (Array.isArray(rule.all)) return rule.all.map(quizRuleLabel).join(" AND ");
+  if (Array.isArray(rule.any)) return rule.any.map(quizRuleLabel).join(" OR ");
+  const value = Array.isArray(rule.value) ? rule.value.join(", ") : rule.value;
+  const question = rule.questionKey ? rule.questionKey.split(":").pop() : "Quiz answer";
+  return `${question} ${rule.operator || "is"} ${value ?? ""}`.trim();
+}
+
+function SurveyCustomerInsights({ intelligence, recommendations }) {
+  const [reviewing, setReviewing] = useStateDash(null);
+  const [preview, setPreview] = useStateDash(null);
+  const [reviewLoading, setReviewLoading] = useStateDash(false);
+  const [reviewError, setReviewError] = useStateDash("");
+  const [createdSegment, setCreatedSegment] = useStateDash(null);
+  const questions = (intelligence?.questions || []).filter((question) => question.source === "survey_campaign");
+  if (!questions.length) {
+    return <EmptyState title="No customer insights yet" note="Insights will appear here as customers answer this quiz." compact />;
+  }
+  const reviewAudience = async (recommendation) => {
+    setReviewing(recommendation); setPreview(null); setReviewError(""); setReviewLoading(true);
+    try {
+      const response = await fetch("/api/segments/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rules: recommendation.rules, exclusions: recommendation.exclusions, purpose: recommendation.summary, action: "Create Segment" }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Could not preview audience");
+      setPreview(payload.preview);
+    } catch (error) { setReviewError(error instanceof Error ? error.message : "Could not preview audience"); }
+    finally { setReviewLoading(false); }
+  };
+  const createSegment = async () => {
+    if (!reviewing || !preview || preview.matchedCount <= 0) return;
+    setReviewLoading(true); setReviewError("");
+    try {
+      const response = await fetch("/api/segments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: reviewing.name, rules: preview.rules, exclusions: preview.exclusions, expectedRuleHash: preview.ruleHash, recommendationId: reviewing.id, recommendationVersionId: reviewing.versionId, purpose: reviewing.summary, recommendedAction: "Create Segment" }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Could not create Segment");
+      setCreatedSegment(payload.segment); setReviewing(null); setPreview(null);
+    } catch (error) { setReviewError(error instanceof Error ? error.message : "Could not create Segment"); }
+    finally { setReviewLoading(false); }
+  };
+  return (
+    <div>
+      <div className="survey-insights-context muted">One insight stream for this Quiz · {intelligence.summary.answers} answers</div>
+      <div className="survey-insights-list">
+        {questions.map((question) => (
+          <div className="survey-insight-row" key={question.id}>
+            <div>
+              <div className="survey-preview-q-meta"><span className="survey-preview-q-num">Q{question.displayOrder}</span><span>{question.topicLabel}</span></div>
+              <strong>{question.text}</strong>
+              <div className="muted" style={{ marginTop: 4 }}>{question.answered} answered · {fmtRate(question.answerRate)} answer rate</div>
+            </div>
+            <div className="survey-insight-answer-list">
+              {question.options.slice().sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 3).map((option) => (
+                <span key={option.id}>{option.label} · {option.count}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {(recommendations?.length || intelligence.opportunities?.length) ? (
+        <div className="survey-insight-findings">
+          <div className="survey-insights-context"><strong>Recommended actions</strong><span className="muted"> · based on this Quiz</span></div>
+          {recommendations?.slice(0, 3).map((recommendation) => (
+            <div className="survey-insight-finding" key={recommendation.id}>
+              {(() => {
+                const createSegment = recommendation.segmentSuggestion?.action === "create_segment";
+                const suggestCoupon = recommendation.couponSuggestion?.action === "suggest_coupon";
+                const action = createSegment ? "Create Segment" : suggestCoupon ? "Choose Coupon" : "No recommendation yet";
+                const offer = recommendation.couponSuggestion?.offerIdea || "—";
+                const durationMatch = offer.match(/(?:valid|for)\s+(\d+\s+days?)/i);
+                return <>
+                  <div>
+                    <strong>{recommendation.name}</strong>
+                    <div className="survey-recommendation-specs">
+                      <span><b>Audience</b>{createSegment ? recommendation.segmentSuggestion?.summary || "Segment to be created" : "—"}</span>
+                      {action === "Choose Coupon" ? <span><b>Offer idea</b>{offer}</span> : null}
+                    </div>
+                  </div>
+                  <div className="survey-insight-action"><span className="cfg-pill">{action}</span>{action === "Create Segment" ? <button type="button" className="btn linkish" onClick={() => reviewAudience(recommendation)}>Review audience →</button> : null}</div>
+                </>;
+              })()}
+            </div>
+          ))}
+          {!recommendations?.length && intelligence.opportunities.slice(0, 3).map((opportunity) => (
+            <div className="survey-insight-finding" key={opportunity.id}>
+              <div><strong>{opportunity.label}</strong><div className="muted">{opportunity.description}</div></div>
+              <span className="cfg-pill">{opportunity.recommendedAction || "No recommendation yet"}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {createdSegment ? <div className="survey-segment-created"><strong>Segment created</strong><span>{createdSegment.name} · {createdSegment.memberCount ?? createdSegment.member_count ?? "—"} customers</span><button type="button" className="btn primary" onClick={() => { window.location.href = `/campaigns?new=1&segment=${encodeURIComponent(createdSegment.id)}&duration=14`; }}>Create Campaign →</button></div> : null}
+      {reviewing ? <div className="survey-audience-review" role="dialog" aria-label="Review audience">
+        <div className="survey-audience-review-head"><strong>Audience definition</strong><button type="button" className="btn linkish" onClick={() => { setReviewing(null); setPreview(null); }}>Back</button></div>
+        <p>Customers who match all of these conditions:</p>
+        <div className="survey-audience-rules">{preview?.rules ? <span>{quizRuleLabel(preview.rules)}</span> : <span>{quizRuleLabel(reviewing.rules)}</span>}</div>
+        {reviewLoading ? <div className="muted">Checking matching customers…</div> : preview ? <><strong>Estimated audience: {preview.matchedCount}</strong>{preview.matchedCount <= 0 ? <p className="cfg-alert warn">No customers match all selected conditions. Remove a condition or widen the audience.</p> : <button type="button" className="btn primary" onClick={createSegment}>Create Segment</button>}</> : null}
+        {reviewError ? <div className="cfg-alert warn">{reviewError}</div> : null}
+      </div> : null}
+    </div>
+  );
+}
+
 function SurveyCampaignDashboardPage({ campaign, onBack }) {
   const [dateRange, setDateRange] = useStateDash("30day");
   const [dashboard, setDashboard] = useStateDash(null);
   const [openEnded, setOpenEnded] = useStateDash([]);
+  const [intelligence, setIntelligence] = useStateDash(null);
+  const [recommendations, setRecommendations] = useStateDash([]);
   const [loading, setLoading] = useStateDash(true);
   const [error, setError] = useStateDash(null);
   const [activeTab, setActiveTab] = useStateDash("magnets");
@@ -239,8 +352,19 @@ function SurveyCampaignDashboardPage({ campaign, onBack }) {
       if (!reviewRes.ok) throw new Error(reviewData.error || "Failed to load open-ended responses");
       setDashboard(dashData.dashboard);
       setOpenEnded(reviewData.entries || []);
+      const insightsRes = await fetch(buildQuizInsightsUrl(campaign.id, dateRange));
+      const insightsData = await insightsRes.json();
+      if (insightsRes.ok) setIntelligence(insightsData.intelligence || null);
+      const recommendationsRes = await fetch("/api/customer-intelligence/recommendations");
+      const recommendationsData = await recommendationsRes.json();
+      if (recommendationsRes.ok) {
+        const scoped = (recommendationsData.recommendations || []).filter((item) =>
+          (item.evidence || []).some((evidence) => String(evidence?.evidenceId || "").startsWith("survey_campaign:"))
+        );
+        setRecommendations(scoped);
+      }
     } catch (err) {
-      setError(err.message); setDashboard(null); setOpenEnded([]);
+      setError(err.message); setDashboard(null); setOpenEnded([]); setIntelligence(null); setRecommendations([]);
     } finally { setLoading(false); }
   }, [campaign?.id, dateRange]);
 
@@ -283,6 +407,10 @@ function SurveyCampaignDashboardPage({ campaign, onBack }) {
 
           <Panel title="Answer insights" sub="Option share and count per question">
             <SurveyAnswerInsights questions={dashboard?.questions} />
+          </Panel>
+
+          <Panel title="Customer Insights" sub="Findings generated from this Quiz">
+            <SurveyCustomerInsights intelligence={intelligence} recommendations={recommendations} />
           </Panel>
 
           {hasOpenEnded && (

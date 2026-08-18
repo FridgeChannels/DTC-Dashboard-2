@@ -30,13 +30,15 @@ const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Quizzes" };
 // 受众与规则
 const SEGMENT_CONFIG_SECTION = { id: "segment-config", label: "Segment Coupons" };
 
-// Accounts 区（底部）：FC Account + 集成 Shopify / Klaviyo
+// Accounts 区（底部）：Accounts overview + FC Account / integrations
+const ACCOUNTS_SECTION = { id: "accounts", label: "Accounts" };
 const ACCOUNT_SECTION = { id: "account", label: "FC Account" };
 const SHOPIFY_SECTION = { id: "shopify", label: "Shopify" };
 const KLAVIYO_SECTION = { id: "klaviyo", label: "Klaviyo" };
 
 // Account owns account settings, completed brand setup, and operational settings.
 const ACCOUNT_MATCH = [
+  ACCOUNTS_SECTION.id,
   ACCOUNT_SECTION.id,
   SHOPIFY_SECTION.id,
   KLAVIYO_SECTION.id,
@@ -56,6 +58,7 @@ const ALL_SECTIONS = [
   COUPON_CAMPAIGNS_SECTION,
   SURVEY_CAMPAIGNS_SECTION,
   SEGMENT_CONFIG_SECTION,
+  ACCOUNTS_SECTION,
   ACCOUNT_SECTION,
   SHOPIFY_SECTION,
   KLAVIYO_SECTION,
@@ -74,13 +77,6 @@ function buildNavGroups(conn, brandInfo, setupProgress) {
         progress: `${setupProgress.completed}/3`,
       }],
     }]),
-    {
-      label: "Campaigns",
-      expandable: true,
-      items: [
-        { ...CAMPAIGNS_SECTION, icon: I.navProduct, locked: !shopifyReady || !klaviyoReady, lockHint: "Connect Shopify and Klaviyo before configuring Campaigns." },
-      ],
-    },
     {
       label: "Customers",
       expandable: true,
@@ -102,10 +98,9 @@ function buildNavGroups(conn, brandInfo, setupProgress) {
       expandable: true,
       items: [
         { ...DASHBOARD_SECTION, icon: I.navDashboard },
-        { ...CUSTOMER_INSIGHTS_SECTION, icon: I.navIntelligence },
       ],
     },
-    { items: [{ ...ACCOUNT_SECTION, label: "Account", icon: I.navAccounts }], account: true },
+    { items: [{ ...ACCOUNTS_SECTION, label: "Accounts", icon: I.navAccounts }], account: true },
   ];
   return groups;
 }
@@ -114,14 +109,14 @@ function buildNavGroups(conn, brandInfo, setupProgress) {
 function parseSection() {
   const params = new URLSearchParams(window.location.search);
   if (window.location.pathname === "/onboarding" || params.get("section") === ONBOARDING_SECTION.id) return ONBOARDING_SECTION.id;
-  if (window.location.pathname === "/") return CAMPAIGNS_SECTION.id;
+  if (window.location.pathname === "/") return DASHBOARD_SECTION.id;
   if (window.location.pathname === "/dashboard") return DASHBOARD_SECTION.id;
   if (window.location.pathname === "/magnets" || window.location.pathname === "/customers") return CUSTOMER_INTELLIGENCE_SECTION.id;
   if (window.location.pathname === "/customer-intelligence") return CUSTOMER_INTELLIGENCE_SECTION.id;
   if (window.location.pathname === "/customer-insights") return CUSTOMER_INSIGHTS_SECTION.id;
   // The former Overview route now resolves to the main Dashboard for old bookmarks.
   if (window.location.pathname === "/analytics") return DASHBOARD_SECTION.id;
-  if (window.location.pathname === "/campaigns") return CAMPAIGNS_SECTION.id;
+  if (window.location.pathname === "/campaigns") return SEGMENT_CONFIG_SECTION.id;
   if (window.location.pathname === "/orders-delivery") return ORDERS_DELIVERY_SECTION.id;
   if (window.location.pathname === "/dashboard-pre") return DASHBOARD_PRE_SECTION.id;
   if (window.location.pathname === "/brand-collect") return BRAND_COLLECT_SECTION.id;
@@ -145,12 +140,46 @@ function pathForSection(section) {
   if (section === ORDERS_DELIVERY_SECTION.id) return "/orders-delivery";
   if (section === CUSTOMER_INTELLIGENCE_SECTION.id) return "/magnets";
   if (section === CUSTOMER_INSIGHTS_SECTION.id) return "/customer-insights";
-  if (section === CAMPAIGNS_SECTION.id) return "/campaigns";
+  if (section === CAMPAIGNS_SECTION.id) return "/segment-config";
+  if (section === ACCOUNTS_SECTION.id) return "/brand-config?section=accounts";
   return `/brand-config?section=${section}`;
 }
 
 function onboardingPath(step) {
   return `/onboarding?step=${step}`;
+}
+
+function replaceOnboardingStep(step) {
+  window.history.replaceState(
+    { ...(window.history.state || {}), fcOnboarding: true },
+    "",
+    onboardingPath(step),
+  );
+}
+
+function openOnboarding(step) {
+  if (window.location.pathname === "/onboarding" && window.history.state?.fcOnboarding) {
+    replaceOnboardingStep(step);
+    return;
+  }
+
+  window.history.replaceState(
+    { ...(window.history.state || {}), fcSetupBase: true },
+    "",
+    "/",
+  );
+  window.history.pushState({ fcOnboarding: true }, "", onboardingPath(step));
+}
+
+function ensureOnboardingBackTarget() {
+  if (window.location.pathname !== "/onboarding" || window.history.state?.fcOnboarding) return;
+  const currentOnboardingUrl = `${window.location.pathname}${window.location.search}`;
+  window.history.replaceState(
+    { ...(window.history.state || {}), fcSetupBase: true },
+    "",
+    "/",
+  );
+  window.history.pushState({ fcOnboarding: true }, "", currentOnboardingUrl);
 }
 
 function localBrandInfo() {
@@ -314,6 +343,7 @@ function AccountsPage({ section, user, connections, onSubChange, onLogout, readO
     <div className="accounts-layout">
       <aside className="accounts-subnav" aria-label="Accounts navigation">
         <div className="admin-nav-group-label">Accounts</div>
+        {subItem(ACCOUNT_SECTION.id, "Account", null, <I.navAccounts />)}
         {subItem(ORDERS_DELIVERY_SECTION.id, "Orders & Delivery", null, <I.navOrders />)}
         {setupComplete && (
           <>
@@ -325,7 +355,9 @@ function AccountsPage({ section, user, connections, onSubChange, onLogout, readO
         )}
       </aside>
       <main className="admin-content accounts-body">
-        {section === ACCOUNT_SECTION.id
+        {section === ACCOUNTS_SECTION.id
+          ? <AccountsOverview />
+          : section === ACCOUNT_SECTION.id
           ? <FcAccountView user={user} onLogout={onLogout} />
           : section === BRAND_COLLECT_SECTION.id
             ? <BrandCollectPage readOnly={brandInfoReadOnly} />
@@ -333,6 +365,16 @@ function AccountsPage({ section, user, connections, onSubChange, onLogout, readO
               ? <OrdersDeliveryPage />
               : <BrandConfigPage section={section} readOnly={readOnly} onSkip={onSkipSetup} skipLabel="Skip setup" />}
       </main>
+    </div>
+  );
+}
+
+function AccountsOverview() {
+  return (
+    <div className="cfg-page accounts-overview">
+      <CfgSection title="Accounts" desc="Manage your FridgeChannel account and connected services.">
+        <p className="accounts-overview-note">Choose an item from the Accounts menu to continue.</p>
+      </CfgSection>
     </div>
   );
 }
@@ -373,7 +415,7 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
   const current = steps.find((step) => step.id === stepId) || steps[0];
   const go = (id) => {
     setStepId(id);
-    window.history.replaceState({}, "", onboardingPath(id));
+    replaceOnboardingStep(id);
   };
   const next = () => steps.slice(steps.findIndex((step) => step.id === stepId) + 1).find((step) => !step.complete && !skipped[step.id]);
 
@@ -400,7 +442,15 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
   };
 
   if (progress.complete) {
-    return <div className="onboarding-shell"><div className="onboarding-frame"><span>Setup complete</span><h1>Your workspace is ready</h1><button type="button" className="btn primary" onClick={onExit}>Go to Dashboard</button></div></div>;
+    return (
+      <div className="onboarding-shell">
+        <div className="onboarding-frame">
+          <span>Setup complete</span>
+          <h1>Your workspace is ready</h1>
+          <button type="button" className="btn primary" onClick={onExit}>Go to Dashboard</button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -425,12 +475,18 @@ function AdminApp() {
   const [auth, setAuth] = useStateAdmin({ loading: true, user: null });
   const [connections, setConnections] = useStateAdmin({ shopifyReady: false, klaviyoReady: false });
   const [brandInfo, setBrandInfo] = useStateAdmin({ completedFields: 0, complete: false });
-  const [setupLoaded, setSetupLoaded] = useStateAdmin({ brand: false, connections: false, dismissal: false });
-  const [setupDismissed, setSetupDismissed] = useStateAdmin(false);
+  const [setupLoaded, setSetupLoaded] = useStateAdmin({ brand: false, connections: false });
   const [setupSkipped, setSetupSkipped] = useStateAdmin({});
+  const setupAutoHandled = useRefAdmin(section === ONBOARDING_SECTION.id);
   const access = auth.user?.access ?? {};
   const configReadOnly = auth.loading ? false : access.canWriteConfig === false;
   const brandInfoReadOnly = auth.loading ? false : access.canWriteBrandInfo === false;
+
+  // Skip markers are only meaningful inside the current onboarding pass.
+  // Do not restore them when the user comes back to setup later.
+  useEffectAdmin(() => {
+    if (section === ONBOARDING_SECTION.id) setSetupSkipped({});
+  }, [section]);
 
   useEffectAdmin(() => {
     const syncSectionFromHistory = () => setSection(parseSection());
@@ -524,10 +580,7 @@ function AdminApp() {
 
   useEffectAdmin(() => {
     if (auth.loading || !auth.user) return;
-    const key = `fc-onboarding-dismissed:${auth.user.customer?.id ?? auth.user.authUser?.id ?? "current"}`;
-    setSetupDismissed(window.localStorage.getItem(key) === "true");
-    try { setSetupSkipped(JSON.parse(window.localStorage.getItem(`${key}:steps`) || "{}")); } catch { setSetupSkipped({}); }
-    setSetupLoaded((current) => ({ ...current, dismissal: true }));
+    setSetupSkipped({});
   }, [auth.loading, auth.user]);
 
   const setupProgress = {
@@ -546,18 +599,28 @@ function AdminApp() {
         : DASHBOARD_SECTION.id;
 
   useEffectAdmin(() => {
-    if (!setupLoaded.brand || !setupLoaded.connections || !setupLoaded.dismissal) return;
-    if (section === ONBOARDING_SECTION.id) return;
-    if (setupDismissed || setupProgress.complete || section !== DASHBOARD_SECTION.id) return;
+    if (!setupLoaded.brand || !setupLoaded.connections) return;
+    if (!auth.user?.isFirstLogin || setupAutoHandled.current) return;
+    setupAutoHandled.current = true;
+    if (setupProgress.complete || section === ONBOARDING_SECTION.id) return;
     setSection(ONBOARDING_SECTION.id);
-    window.history.replaceState({}, "", onboardingPath(nextSetupSection === BRAND_COLLECT_SECTION.id ? "brand" : nextSetupSection));
-  }, [section, setupDismissed, setupLoaded, setupProgress.complete, nextSetupSection]);
+    openOnboarding(nextSetupSection === BRAND_COLLECT_SECTION.id ? "brand" : nextSetupSection);
+  }, [auth.user?.isFirstLogin, section, setupLoaded.brand, setupLoaded.connections, setupProgress.complete, nextSetupSection]);
+
+  // Once setup is complete, the onboarding route should never be shown again.
+  // This also handles an old bookmark such as /onboarding?step=shopify.
+  useEffectAdmin(() => {
+    if (!setupLoaded.brand || !setupLoaded.connections) return;
+    if (!setupProgress.complete || section !== ONBOARDING_SECTION.id) return;
+    setSection(DASHBOARD_SECTION.id);
+    window.history.replaceState({}, "", pathForSection(DASHBOARD_SECTION.id));
+  }, [section, setupLoaded.brand, setupLoaded.connections, setupProgress.complete]);
 
   const handleSectionChange = (nextSection) => {
     if (nextSection === ONBOARDING_SECTION.id) {
       setSection(ONBOARDING_SECTION.id);
       const step = nextSetupSection === BRAND_COLLECT_SECTION.id ? "brand" : nextSetupSection;
-      window.history.replaceState({}, "", onboardingPath(step));
+      openOnboarding(step);
       return;
     }
     setSection(nextSection);
@@ -570,15 +633,10 @@ function AdminApp() {
   };
 
   const dismissSetup = () => {
-    const key = `fc-onboarding-dismissed:${auth.user?.customer?.id ?? auth.user?.authUser?.id ?? "current"}`;
-    window.localStorage.setItem(key, "true");
-    setSetupDismissed(true);
     handleSectionChange(DASHBOARD_SECTION.id);
   };
   const skipSetupStep = (step) => {
-    const key = `fc-onboarding-dismissed:${auth.user?.customer?.id ?? auth.user?.authUser?.id ?? "current"}`;
     const next = { ...setupSkipped, [step]: true };
-    window.localStorage.setItem(`${key}:steps`, JSON.stringify(next));
     setSetupSkipped(next);
   };
 
@@ -616,9 +674,7 @@ function AdminApp() {
           ? <CustomerIntelligencePage />
           : section === DASHBOARD_PRE_SECTION.id
           ? <DashboardPage />
-          : section === BRAND_COLLECT_SECTION.id && !brandInfo.complete
-            ? <BrandCollectPage readOnly={brandInfoReadOnly} />
-            : section === PRODUCT_ADD_SECTION.id
+          : section === PRODUCT_ADD_SECTION.id
               ? <ProductAddPage readOnly={configReadOnly} />
               : ACCOUNT_MATCH.includes(section)
             ? (
@@ -648,4 +704,5 @@ function AdminApp() {
   );
 }
 
+ensureOnboardingBackTarget();
 ReactDOM.createRoot(document.getElementById("root")).render(<AdminApp />);

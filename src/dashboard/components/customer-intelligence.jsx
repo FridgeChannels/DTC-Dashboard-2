@@ -31,8 +31,9 @@ function ciRangeToQuery(rangeId) {
   return { start_at: start.toISOString(), end_at: end.toISOString() };
 }
 
-function buildCustomerIntelligenceUrl(rangeId) {
+function buildCustomerIntelligenceUrl(rangeId, quizId) {
   const params = new URLSearchParams(ciRangeToQuery(rangeId));
+  if (quizId) params.set("survey_id", quizId);
   const query = params.toString();
   return `/api/customer-intelligence${query ? `?${query}` : ""}`;
 }
@@ -166,12 +167,12 @@ function AnswerDetailTable({ answers }) {
   );
 }
 
-function AnswersView({ intelligence }) {
+function AnswersView({ intelligence, initialQuestionKey = null, initialValue = null }) {
   const [source, setSource] = useStateCI("all");
   const [topic, setTopic] = useStateCI("all");
   const [search, setSearch] = useStateCI("");
-  const [selectedQuestionKey, setSelectedQuestionKey] = useStateCI(null);
-  const [selectedValue, setSelectedValue] = useStateCI(null);
+  const [selectedQuestionKey, setSelectedQuestionKey] = useStateCI(initialQuestionKey);
+  const [selectedValue, setSelectedValue] = useStateCI(initialValue);
   const [mode, setMode] = useStateCI("questions");
 
   const topics = useMemoCI(() => [...new Map(intelligence.questions.map((q) => [q.topicId, { value: q.topicId, label: q.topicLabel }])).values()], [intelligence.questions]);
@@ -439,7 +440,7 @@ async function ciPost(url, body) {
 }
 
 function ciSegmentSuggestionLabel(action) {
-  return ({ create_segment: "Create Segment", monitor: "Monitor first", no_segment: "No Segment" })[action] || action;
+  return ({ create_segment: "Create Segment", no_action: "No recommendation yet", monitor: "No recommendation yet", no_segment: "No recommendation yet" })[action] || action;
 }
 
 function ciCouponSuggestionLabel(action) {
@@ -709,8 +710,12 @@ function RecommendationsView({ data, answerSummary, questions, loading, error, o
 }
 
 function CustomerIntelligencePage() {
-  const [dateRange, setDateRange] = useStateCI("30day");
-  const [activeTab, setActiveTab] = useStateCI("answers");
+  const locationParams = new URLSearchParams(window.location.search);
+  const linkedQuizId = locationParams.get("quiz") || locationParams.get("survey_id");
+  const linkedQuestionKey = locationParams.get("question");
+  const linkedValue = locationParams.get("value");
+  const [dateRange, setDateRange] = useStateCI(linkedQuestionKey ? "all" : "30day");
+  const [activeTab, setActiveTab] = useStateCI(locationParams.get("tab") === "recommendations" ? "recommendations" : "answers");
   const [intelligence, setIntelligence] = useStateCI(null);
   const [recommendationData, setRecommendationData] = useStateCI({ configured: false, recommendations: [] });
   const [recommendationLoading, setRecommendationLoading] = useStateCI(false);
@@ -735,7 +740,7 @@ function CustomerIntelligencePage() {
     setLoading(true);
     setError(null);
     try {
-      const payload = await ciFetchJson(buildCustomerIntelligenceUrl(dateRange), {}, { retries: 1 });
+      const payload = await ciFetchJson(buildCustomerIntelligenceUrl(dateRange, linkedQuizId), {}, { retries: 1 });
       setIntelligence(payload.intelligence);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load customer intelligence");
@@ -743,7 +748,7 @@ function CustomerIntelligencePage() {
     } finally {
       setLoading(false);
     }
-  }, [dateRange]);
+  }, [dateRange, linkedQuizId]);
 
   useEffectCI(() => { loadData(); }, [loadData]);
 
@@ -776,7 +781,10 @@ function CustomerIntelligencePage() {
   return (
     <main className="admin-content ci-page">
       <header className="ci-page-head">
-        <h1>Customer Intelligence</h1>
+        <div>
+          <h1>Customer Intelligence</h1>
+          {linkedQuizId && intelligence?.questions?.[0]?.campaignName ? <div className="muted ci-context-line">From Quiz · {intelligence.questions[0].campaignName}</div> : null}
+        </div>
         <div className="ci-page-controls">
           {intelligence?.summary.updatedAt ? <span className="ci-updated">Updated · {ciDate(intelligence.summary.updatedAt, true)}</span> : null}
           <select className="cfg-input" value={dateRange} onChange={(event) => setDateRange(event.target.value)} aria-label="Date range">
@@ -792,7 +800,7 @@ function CustomerIntelligencePage() {
           {intelligence.truncated && <div className="ci-data-note">The selected period reached the 5,000-row display limit. Narrow the date range for a complete view.</div>}
           <CustomerIntelligenceTabs active={activeTab} onChange={setActiveTab} />
           <div className="ci-view" key={activeTab}>
-            {activeTab === "answers" && <AnswersView intelligence={intelligence} />}
+            {activeTab === "answers" && <AnswersView intelligence={intelligence} initialQuestionKey={linkedQuestionKey} initialValue={linkedValue} />}
             {activeTab === "recommendations" && <RecommendationsView data={recommendationData} answerSummary={intelligence.summary} questions={intelligence.questions} loading={recommendationLoading} error={recommendationError} onReload={loadRecommendations} onReanalyze={reanalyze} />}
           </div>
         </>

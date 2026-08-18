@@ -13,7 +13,7 @@ export async function handleListSegments(req: IncomingMessage, res: ServerRespon
 }
 
 export async function handleGetSegment(req: IncomingMessage, res: ServerResponse, id: string) {
-  try { const customerId = await getRequestConfigCustomerId(req, res); const segment = await getManagedSegment(customerId, id); if (!segment) return errorJson(res, 404, "Segment not found"); json(res, 200, { segment }); }
+  try { const customerId = await getRequestConfigCustomerId(req, res); const segmentId = decodeURIComponent(id); const segment = await getManagedSegment(customerId, segmentId); if (!segment) return errorJson(res, 404, "Segment not found"); json(res, 200, { segment }); }
   catch (err) { errorJson(res, statusFor(err), toErrorMessage(err, "Failed to load Segment")); }
 }
 

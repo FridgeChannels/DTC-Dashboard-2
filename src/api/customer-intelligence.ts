@@ -18,6 +18,7 @@ export async function handleGetCustomerIntelligence(
     const intelligence = await getCustomerIntelligenceForCustomer(customerId, {
       startAt: url.searchParams.get("start_at")?.trim() || null,
       endAt: url.searchParams.get("end_at")?.trim() || null,
+      surveyCampaignId: url.searchParams.get("survey_id")?.trim() || url.searchParams.get("quiz")?.trim() || null,
     });
     json(res, 200, { intelligence });
   } catch (err) {

@@ -163,17 +163,21 @@ export async function updateCustomerBrandInfoMagnetBrandParams(input) {
     updatePayload.brand_logo = await uploadImage(brandLogo, 'logos');
   }
 
+  // Magnet IDs are the canonical tenant relationship. Updating through them
+  // first ensures every row for the customer changes together; relying only
+  // on customer_id can update a partial legacy row set and let an older value
+  // reappear when the config is read back after a refresh.
+  const magnetScoped = await updateMagnetBrandParamRows(updatePayload, { customerId });
+  if (magnetScoped.updatedCount > 0) return magnetScoped;
+
+  // Fallback for legacy rows that have customer_id but no matching Magnet row.
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('magnet_brand_param')
     .update(updatePayload)
     .eq('customer_id', customerId)
     .select(BRAND_PARAM_SELECT);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
+  if (error) throw new Error(error.message);
   return {
     updatedCount: data?.length ?? 0,
     records: (data ?? []).map(mapBrandParamRow),
@@ -210,7 +214,24 @@ export async function updateBrandInfoMagnetBrandParams(input) {
   // New tenants may not yet have the two legacy Brand Info magnets. Persist to
   // their available magnets instead of reporting a misleading zero-row save.
   if (preferredMagnets.updatedCount > 0) return preferredMagnets;
-  return updateMagnetBrandParamRows(updatePayload, { customerId });
+  const magnetScoped = await updateMagnetBrandParamRows(updatePayload, { customerId });
+  if (magnetScoped.updatedCount > 0 || !customerId) return magnetScoped;
+
+  // Shared/admin accounts can have Brand Info rows linked by customer_id
+  // while their legacy Magnet records are not tenant-linked. Without this
+  // final fallback the UI only updates localStorage and the old Website comes
+  // back as soon as /api/config is loaded again.
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('magnet_brand_param')
+    .update(updatePayload)
+    .eq('customer_id', customerId)
+    .select(BRAND_PARAM_SELECT);
+  if (error) throw new Error(error.message);
+  return {
+    updatedCount: data?.length ?? 0,
+    records: (data ?? []).map(mapBrandParamRow),
+  };
 }
 
 export async function updateMagnetBrandParamStoreWebsite(storeWebsite, customerId) {

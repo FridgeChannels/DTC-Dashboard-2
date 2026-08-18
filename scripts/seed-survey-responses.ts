@@ -21,6 +21,7 @@ import {
 const SURVEY_NAME = process.env.SURVEY_NAME ?? "iii (Copy)";
 const STARTS = Number(process.env.STARTS ?? 8);
 const COMPLETES = Number(process.env.COMPLETES ?? 5);
+const MAGNET_COUNT = Number(process.env.MAGNET_COUNT ?? 1);
 
 async function main() {
   const sb = getSupabase();
@@ -44,13 +45,13 @@ async function main() {
     .from("magnet")
     .select("id, sn, customer_id")
     .eq("customer_id", campaign.customer_id)
-    .limit(1);
+    .order("id", { ascending: true })
+    .limit(Math.max(1, MAGNET_COUNT));
   if (mErr) throw mErr;
-  const magnet = magnets?.[0];
-  if (!magnet) {
+  if (!magnets?.length || magnets.length < MAGNET_COUNT) {
     throw new Error(`customer ${campaign.customer_id} 下没有 magnet,无法灌数据`);
   }
-  console.log(`Magnet: #${magnet.id} (${magnet.sn ?? "no-sn"})`);
+  console.log(`Magnets: ${magnets.map((magnet) => `#${magnet.id} (${magnet.sn ?? "no-sn"})`).join(", ")}`);
 
   // 3) 拉取 active 问题 + 选项
   const { data: questions, error: qErr } = await sb
@@ -81,6 +82,7 @@ async function main() {
 
   // 4) 灌数据
   for (let i = 0; i < STARTS; i++) {
+    const magnet = magnets[i % magnets.length];
     const anonymousId = `seed-user-${Date.now()}-${i}`;
     const user = { anonymousId, sourceSystem: "seed-script" };
 

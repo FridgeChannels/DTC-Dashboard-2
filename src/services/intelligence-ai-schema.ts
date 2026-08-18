@@ -2,7 +2,7 @@ import { validateIntelligenceRule } from "./intelligence-rule-engine.js";
 import type { IntelligenceRuleNode } from "./intelligence-rule.types.js";
 import type { RecommendationDecisionUse } from "./intelligence-recommendation-validator.js";
 
-export type AiSegmentSuggestionAction = "create_segment" | "monitor" | "no_segment";
+export type AiSegmentSuggestionAction = "create_segment" | "no_action";
 export type AiCouponSuggestionAction = "suggest_coupon" | "no_coupon";
 
 export interface AiSegmentSuggestion {
@@ -94,7 +94,7 @@ export const AI_RECOMMENDATION_JSON_SCHEMA: Record<string, unknown> = {
           segmentSuggestion: {
             type: "object",
             properties: {
-              action: { type: "string", enum: ["create_segment", "monitor", "no_segment"] },
+              action: { type: "string", enum: ["create_segment", "no_action"] },
               summary: {
                 type: "string", minLength: 1, maxLength: 300,
                 description: "What Segment to create or why not to create one yet.",
@@ -165,7 +165,8 @@ export const AI_RECOMMENDATION_JSON_SCHEMA: Record<string, unknown> = {
 };
 
 const DECISION_USES = new Set(["customer_action", "product_decision", "content_decision", "research_only"]);
-const SEGMENT_ACTIONS = new Set(["create_segment", "monitor", "no_segment"]);
+// Accept legacy persisted values while normalizing them to the single no-action state.
+const SEGMENT_ACTIONS = new Set(["create_segment", "no_action", "monitor", "no_segment"]);
 const COUPON_ACTIONS = new Set(["suggest_coupon", "no_coupon"]);
 
 function text(value: unknown, field: string, max = 500): string {
@@ -177,10 +178,11 @@ export function deriveRecommendedAction(output: Pick<AiRecommendationOutput, "se
   const segment = output.segmentSuggestion;
   const coupon = output.couponSuggestion;
   if (segment.action === "create_segment" && coupon.action === "suggest_coupon") {
-    return `Create Segment, then configure coupon: ${coupon.offerIdea}`;
+    return "Create Segment";
   }
   if (coupon.action === "suggest_coupon") return `Configure coupon: ${coupon.offerIdea}`;
-  return segment.summary;
+  if (segment.action === "create_segment") return "Create Segment";
+  return "No recommendation yet";
 }
 
 export function parseAiRecommendationEnvelope(value: unknown): AiRecommendationEnvelope {
@@ -206,6 +208,7 @@ export function parseAiRecommendationEnvelope(value: unknown): AiRecommendationE
       const ruleIssues = validateIntelligenceRule(row.rules);
       const exclusionIssues = validateIntelligenceRule(row.exclusions);
       if (ruleIssues.length || exclusionIssues.length) throw new Error(`recommendations[${index}] contains unsupported rules`);
+      const normalizedSegmentAction = String(segmentRow.action) === "create_segment" ? "create_segment" : "no_action";
       return {
         stableKey: text(row.stableKey, "stableKey", 120),
         name: text(row.name, "name", 120),
@@ -216,7 +219,7 @@ export function parseAiRecommendationEnvelope(value: unknown): AiRecommendationE
         rules: row.rules as IntelligenceRuleNode,
         exclusions: row.exclusions as IntelligenceRuleNode,
         segmentSuggestion: {
-          action: segmentRow.action as AiSegmentSuggestionAction,
+          action: normalizedSegmentAction as AiSegmentSuggestionAction,
           summary: text(segmentRow.summary, "segmentSuggestion.summary", 300),
         },
         couponSuggestion: {

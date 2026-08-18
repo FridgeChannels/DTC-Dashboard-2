@@ -10,6 +10,11 @@ const mocks = vi.hoisted(() => ({
   listCoupons: vi.fn(),
   upsertBinding: vi.fn(),
   listSegments: vi.fn(),
+  listAllAssignments: vi.fn(),
+  listAllRedemptions: vi.fn(),
+  listMagnetDirectoryRows: vi.fn(),
+  getShopifyConfigByCustomerId: vi.fn(),
+  getCustomerIntelligenceForCustomer: vi.fn(),
 }));
 
 vi.mock("../../src/repositories/audience-campaign.repo.js", () => ({
@@ -28,6 +33,19 @@ vi.mock("../../src/repositories/klaviyo-segment.repo.js", () => ({
 }));
 vi.mock("../../src/services/coupon-campaign.service.js", () => ({
   listSegmentBindableCampaignsForCustomer: mocks.listCoupons,
+}));
+vi.mock("../../src/repositories/brand-dashboard.repo.js", () => ({
+  listAllAssignments: mocks.listAllAssignments,
+  listAllRedemptions: mocks.listAllRedemptions,
+}));
+vi.mock("../../src/repositories/magnet-directory.repo.js", () => ({
+  listMagnetDirectoryRows: mocks.listMagnetDirectoryRows,
+}));
+vi.mock("../../src/repositories/customer-shopify-config.repo.js", () => ({
+  getShopifyConfigByCustomerId: mocks.getShopifyConfigByCustomerId,
+}));
+vi.mock("../../src/services/customer-intelligence.service.js", () => ({
+  getCustomerIntelligenceForCustomer: mocks.getCustomerIntelligenceForCustomer,
 }));
 
 import { createCampaignAudienceConfig, listCampaignAudienceConfig, saveCampaignAudienceConfig } from "../../src/services/campaign-audience-config.service.js";
@@ -67,6 +85,11 @@ describe("manual Campaign configuration", () => {
     mocks.listCoupons.mockResolvedValue([coupon]);
     mocks.listSegments.mockResolvedValue(segments);
     mocks.upsertBinding.mockResolvedValue({});
+    mocks.listAllAssignments.mockResolvedValue([]);
+    mocks.listAllRedemptions.mockResolvedValue([]);
+    mocks.listMagnetDirectoryRows.mockResolvedValue({ magnets: [], identities: [] });
+    mocks.getShopifyConfigByCustomerId.mockResolvedValue(null);
+    mocks.getCustomerIntelligenceForCustomer.mockResolvedValue({ answers: [] });
   });
 
   it("keeps the Campaign list empty even when active Coupons exist", async () => {
@@ -98,10 +121,47 @@ describe("manual Campaign configuration", () => {
   });
 
   it("saves a brand-selected After conversion Segment", async () => {
+    mocks.findAudienceCampaign.mockResolvedValue({
+      ...audienceCampaign,
+      starts_at: "2026-09-15T00:00:00.000Z",
+      ends_at: "2026-09-30T00:00:00.000Z",
+    });
     await saveCampaignAudienceConfig({ ...input, campaignId: "audience-1", successMode: "existing_segment", successSegmentId: "reactivated" });
     expect(mocks.updateAudienceCampaign).toHaveBeenCalledWith(8, "audience-1", expect.objectContaining({
       successMode: "existing_segment", successSegmentId: "reactivated", successSegmentName: "Reactivated",
     }));
+  });
+
+  it("rejects edits while a Campaign is Live", async () => {
+    mocks.findAudienceCampaign.mockResolvedValue({
+      ...audienceCampaign,
+      starts_at: "2020-01-01T00:00:00.000Z",
+      ends_at: "2099-01-01T00:00:00.000Z",
+      status: "active",
+    });
+    await expect(saveCampaignAudienceConfig({ ...input, campaignId: "audience-1" }))
+      .rejects.toThrow("Only Upcoming Campaigns can be edited");
+    expect(mocks.updateAudienceCampaign).not.toHaveBeenCalled();
+  });
+
+  it("rejects edits for paused and ended Campaigns", async () => {
+    mocks.findAudienceCampaign.mockResolvedValue({
+      ...audienceCampaign,
+      status: "paused",
+      starts_at: "2026-09-15T00:00:00.000Z",
+      ends_at: "2026-09-30T00:00:00.000Z",
+    });
+    await expect(saveCampaignAudienceConfig({ ...input, campaignId: "audience-1" }))
+      .rejects.toThrow("Only Upcoming Campaigns can be edited");
+
+    mocks.findAudienceCampaign.mockResolvedValue({
+      ...audienceCampaign,
+      status: "active",
+      starts_at: "2020-01-01T00:00:00.000Z",
+      ends_at: "2020-01-31T00:00:00.000Z",
+    });
+    await expect(saveCampaignAudienceConfig({ ...input, campaignId: "audience-1" }))
+      .rejects.toThrow("Only Upcoming Campaigns can be edited");
   });
 
   it("requires an end after the start", async () => {

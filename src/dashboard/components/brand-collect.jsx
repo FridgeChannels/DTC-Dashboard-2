@@ -151,7 +151,10 @@ function BrandCollectPage({ readOnly = false, onSkip = null, skipLabel = "Skip f
         brandLogo: brandLogo,
         colors,
       });
-      applyServerConfig(result.records?.[0] || savedBrand);
+      // Keep the form aligned with the values the user just submitted. The
+      // API may return a mixed legacy row set while those records are being
+      // normalized, which must not put an old Website back into the input.
+      applyServerConfig(savedBrand);
       window.dispatchEvent(new Event("brand-info-saved"));
       showNotice(result.updatedCount > 0
         ? `Brand info updated (${result.updatedCount} magnet${result.updatedCount === 1 ? "" : "s"}).`

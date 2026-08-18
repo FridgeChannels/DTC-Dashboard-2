@@ -320,7 +320,7 @@ function buildResponsesInput(_bundle: IntelligenceAiEvidenceBundle, compact = co
     "Only use an operational rule family when its corresponding operationalSignals kind is present. Do not infer no purchase from missing verified_purchase events because completeShopifyOrders is false.",
     "Executable operational fields are order.verified_purchase_count, order.days_since_last_purchase, engagement.survey_impression_count, engagement.days_since_last_survey_impression, coupon.assignment_count, coupon.redemption_count, and coupon.days_since_last_assigned.",
     "decisionUse must be customer_action, product_decision, content_decision, or research_only. Only customer_action may use segmentSuggestion.action=create_segment and couponSuggestion.action=suggest_coupon.",
-    "For weak evidence use segmentSuggestion.action=monitor or no_segment, and couponSuggestion.action=no_coupon with offerIdea=None.",
+    "For weak or inconclusive evidence use segmentSuggestion.action=no_action and couponSuggestion.action=no_coupon with offerIdea=None. Do not recommend monitoring as an action.",
     "When crossSignalOpportunities is non-empty, at least one create_segment recommendation MUST choose one opportunity and combine BOTH conditions under rules.all: answer.value with that exact questionKey/answerValue, and the supplied operationalRule. A coupon-only or answer-only rule is invalid for that cross-signal recommendation.",
     "Cite evidenceIds only from questions[].answers[].sampleEvidenceIds, operationalSignals[].sampleEvidenceIds, or crossSignalOpportunities[].sampleEvidenceIds.",
     "Avoid duplicate or recently issued coupons by using coupon signals when available. Reachability is not marketing consent; activation must verify consent separately.",

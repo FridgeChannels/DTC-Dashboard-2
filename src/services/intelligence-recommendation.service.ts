@@ -134,13 +134,15 @@ function dto(base: recommendationRepo.IntelligenceRecommendationRow, version: re
   const output = version.ai_output;
   const segmentSuggestion = (output.segmentSuggestion && typeof output.segmentSuggestion === "object"
     ? output.segmentSuggestion
-    : { action: "monitor", summary: String(output.recommendedAction ?? "Review the evidence before creating a Segment.") }) as AiSegmentSuggestion;
+    : { action: "no_action", summary: String(output.recommendedAction ?? "No recommendation yet.") }) as AiSegmentSuggestion;
   const couponSuggestion = (output.couponSuggestion && typeof output.couponSuggestion === "object"
     ? output.couponSuggestion
     : { action: "no_coupon", offerIdea: "None" }) as AiCouponSuggestion;
   const normalizedSegment: AiSegmentSuggestion = {
-    action: segmentSuggestion.action === "create_segment" || segmentSuggestion.action === "no_segment" ? segmentSuggestion.action : "monitor",
-    summary: String(segmentSuggestion.summary ?? ""),
+    action: segmentSuggestion.action === "create_segment" ? "create_segment" : "no_action",
+    summary: segmentSuggestion.action === "create_segment"
+      ? String(segmentSuggestion.summary ?? "")
+      : "No recommendation yet.",
   };
   const normalizedCoupon: AiCouponSuggestion = {
     action: couponSuggestion.action === "suggest_coupon" ? "suggest_coupon" : "no_coupon",

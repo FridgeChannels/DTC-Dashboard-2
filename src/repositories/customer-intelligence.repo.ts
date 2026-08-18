@@ -121,6 +121,7 @@ export interface CustomerIntelligenceRows {
 export interface CustomerIntelligenceDateFilter {
   startAt?: string | null;
   endAt?: string | null;
+  surveyCampaignId?: string | null;
 }
 
 function throwIfError(error: unknown): void {
@@ -137,6 +138,9 @@ export async function listCustomerIntelligenceRows(
     .from("survey_response")
     .select("id,user_key,magnet_id,customer_id,question_id,option_id,value,action,other_text,response_time_ms,created_at")
     .eq("customer_id", customerId);
+  // A quiz-scoped view only includes campaign answers. Keep the query valid
+  // for the UUID column while returning no standard responses in that scope.
+  if (filter.surveyCampaignId) standardResponseQuery = standardResponseQuery.eq("customer_id", -1);
   if (filter.startAt) standardResponseQuery = standardResponseQuery.gte("created_at", filter.startAt);
   if (filter.endAt) standardResponseQuery = standardResponseQuery.lte("created_at", filter.endAt);
 
@@ -153,6 +157,10 @@ export async function listCustomerIntelligenceRows(
     .eq("customer_id", customerId);
   if (filter.startAt) campaignImpressionQuery = campaignImpressionQuery.gte("shown_at", filter.startAt);
   if (filter.endAt) campaignImpressionQuery = campaignImpressionQuery.lte("shown_at", filter.endAt);
+  if (filter.surveyCampaignId) {
+    campaignAnswerQuery = campaignAnswerQuery.eq("survey_campaign_id", filter.surveyCampaignId);
+    campaignImpressionQuery = campaignImpressionQuery.eq("survey_campaign_id", filter.surveyCampaignId);
+  }
 
   const [
     standardQuestionResult,
@@ -173,10 +181,14 @@ export async function listCustomerIntelligenceRows(
       .select("campaign_id,question_id,option_id,value,label,display_order,is_other_option,allow_text_input")
       .order("display_order", { ascending: true }),
     standardResponseQuery.order("created_at", { ascending: false }).limit(CUSTOMER_INTELLIGENCE_ROW_LIMIT),
-    db
-      .from("q_survey_campaigns")
-      .select("id,name,survey_name,survey_purpose")
-      .eq("customer_id", customerId),
+    (() => {
+      let query = db
+        .from("q_survey_campaigns")
+        .select("id,name,survey_name,survey_purpose")
+        .eq("customer_id", customerId);
+      if (filter.surveyCampaignId) query = query.eq("id", filter.surveyCampaignId);
+      return query;
+    })(),
     campaignAnswerQuery.order("created_at", { ascending: false }).limit(CUSTOMER_INTELLIGENCE_ROW_LIMIT),
     campaignImpressionQuery.order("shown_at", { ascending: false }).limit(CUSTOMER_INTELLIGENCE_ROW_LIMIT),
     db
@@ -240,8 +252,8 @@ export async function listCustomerIntelligenceRows(
   const campaignImpressions = (campaignImpressionResult.data ?? []) as CampaignImpressionRow[];
 
   return {
-    standardQuestions: (standardQuestionResult.data ?? []) as StandardQuestionRow[],
-    standardOptions: (standardOptionResult.data ?? []) as StandardOptionRow[],
+    standardQuestions: filter.surveyCampaignId ? [] : (standardQuestionResult.data ?? []) as StandardQuestionRow[],
+    standardOptions: filter.surveyCampaignId ? [] : (standardOptionResult.data ?? []) as StandardOptionRow[],
     standardResponses,
     campaigns,
     campaignQuestions,

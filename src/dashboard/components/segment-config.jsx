@@ -316,7 +316,7 @@ function couponValue(coupon) {
 }
 
 function campaignWindow(campaign) {
-  const date = (value) => value ? new Date(value).toLocaleDateString() : null;
+  const date = (value) => value ? new Date(value).toLocaleDateString(undefined, { timeZone: "UTC" }) : null;
   return `${date(campaign.startsAt) || "Now"} – ${date(campaign.endsAt) || "No end date"}`;
 }
 
@@ -326,12 +326,48 @@ function successLabel(campaign) {
   return "FC managed";
 }
 
+const CAMPAIGN_STATUS_LABELS = { upcoming: "Upcoming", live: "Live", paused: "Paused", ended: "Ended" };
+
+function CampaignStatus({ status }) {
+  const tone = status === "live" ? "pos" : status === "paused" ? "warn" : "neutral";
+  return <span className={`cfg-pill ${tone}`}><span className="d" />{CAMPAIGN_STATUS_LABELS[status] || "Upcoming"}</span>;
+}
+
+function campaignDisplayStatus(campaign) {
+  if (campaign.results?.status) return campaign.results.status;
+  if (campaign.status === "paused") return "paused";
+  const now = Date.now();
+  if (now < Date.parse(campaign.startsAt)) return "upcoming";
+  if (now > Date.parse(campaign.endsAt)) return "ended";
+  return "live";
+}
+
+function campaignMoney(value) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+function campaignPercent(value) {
+  return value == null ? "—" : `${(Number(value) * 100).toFixed(1)}%`;
+}
+
+function campaignShortDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 function localDateTimeValue(value) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+function defaultCampaignDateTimes(durationDays = 14) {
+  const start = new Date();
+  const end = new Date(start.getTime() + durationDays * 24 * 60 * 60 * 1000);
+  return { startsAt: localDateTimeValue(start.toISOString()), endsAt: localDateTimeValue(end.toISOString()) };
 }
 
 function CampaignDateInput({ label, value, onChange }) {
@@ -363,10 +399,14 @@ function CampaignEditor({ campaign, segments, coupons, creating, editing, readOn
   const [error, setError] = useStateSC("");
 
   useEffectSC(() => {
+    const params = new URLSearchParams(window.location.search);
+    const recommendedSegmentId = creating ? params.get("segment") || "" : "";
+    const recommendedDuration = creating ? Math.max(1, Number(params.get("duration")) || 14) : 14;
+    const defaults = defaultCampaignDateTimes(recommendedDuration);
     setForm({
-      targetSegmentId: campaign?.targetSegment?.id || "",
-      startsAt: localDateTimeValue(campaign?.startsAt),
-      endsAt: localDateTimeValue(campaign?.endsAt),
+      targetSegmentId: campaign?.targetSegment?.id || recommendedSegmentId,
+      startsAt: localDateTimeValue(campaign?.startsAt) || (creating ? defaults.startsAt : ""),
+      endsAt: localDateTimeValue(campaign?.endsAt) || (creating ? defaults.endsAt : ""),
       couponIds: campaign?.couponIds || [],
       successMode: campaign?.successMode || "auto_fc",
       successSegmentId: campaign?.successSegment?.id || "",
@@ -503,6 +543,175 @@ function campaignLocationState() {
   return { campaignId: params.get("campaign"), creating: params.get("new") === "1" };
 }
 
+function CampaignResultTrend({ points = [] }) {
+  const [metric, setMetric] = useStateSC("revenue");
+  const values = points.map((point) => Number(point[metric] || 0));
+  const max = Math.max(...values, 1);
+  const width = 720;
+  const height = 210;
+  const padX = 10;
+  const padY = 16;
+  const plotHeight = height - padY * 2;
+  const coordinates = values.map((value, index) => ({
+    x: points.length <= 1 ? width / 2 : padX + (index / (points.length - 1)) * (width - padX * 2),
+    y: padY + plotHeight - (value / max) * plotHeight,
+  }));
+  const path = coordinates.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+  const area = coordinates.length ? `${path} L${coordinates[coordinates.length - 1].x},${height - padY} L${coordinates[0].x},${height - padY} Z` : "";
+  const peakIndex = values.indexOf(Math.max(...values));
+  return (
+    <section className="campaign-results-section campaign-trend-section">
+      <div className="campaign-results-section-head">
+        <h2>Results trend</h2>
+        <div className="campaign-trend-toggle" role="tablist" aria-label="Trend metric">
+          {[{ id: "revenue", label: "Revenue" }, { id: "orders", label: "Orders" }, { id: "converted", label: "Converted" }].map((item) => (
+            <button type="button" role="tab" aria-selected={metric === item.id} className={metric === item.id ? "active" : ""} key={item.id} onClick={() => setMetric(item.id)}>{item.label}</button>
+          ))}
+        </div>
+      </div>
+      {points.length ? (
+        <div className="campaign-trend-chart">
+          <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metric} over the Campaign cycle`} preserveAspectRatio="none">
+            <defs><linearGradient id="campaignTrendFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="currentColor" stopOpacity=".2" /><stop offset="100%" stopColor="currentColor" stopOpacity="0" /></linearGradient></defs>
+            <path className="campaign-trend-area" d={area} />
+            <path className="campaign-trend-line" d={path} />
+            {coordinates[peakIndex] ? <circle className="campaign-trend-peak" cx={coordinates[peakIndex].x} cy={coordinates[peakIndex].y} r="4" /> : null}
+          </svg>
+          <div className="campaign-trend-axis"><span>{campaignShortDate(points[0]?.date)}</span><span>{campaignShortDate(points[points.length - 1]?.date)}</span></div>
+        </div>
+      ) : <p className="campaign-results-empty">Trend data will appear during the Campaign cycle.</p>}
+    </section>
+  );
+}
+
+function ResultsDataTable({ columns, rows, label, rowLink }) {
+  return (
+    <div className="campaign-results-table-wrap">
+      <table className="campaign-results-table" aria-label={label}>
+        <thead><tr>{columns.map((column) => <th key={column.key} className={column.numeric ? "num" : ""}>{column.label}</th>)}</tr></thead>
+        <tbody>{rows.map((row, index) => {
+          const href = rowLink ? rowLink(row) : null;
+          const openRow = () => { if (href) window.location.assign(href); };
+          return <tr key={row.id || index} className={href ? "campaign-results-table-row-link" : undefined} onClick={href ? openRow : undefined} onKeyDown={href ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openRow(); } } : undefined} tabIndex={href ? 0 : undefined}>
+            {columns.map((column, columnIndex) => <td key={column.key} className={column.numeric ? "num" : ""} data-label={column.label}>{href && columnIndex === 0 ? <a className="campaign-results-table-link" href={href} onClick={(event) => event.stopPropagation()}>{column.render ? column.render(row[column.key], row) : row[column.key]}</a> : (column.render ? column.render(row[column.key], row) : row[column.key])}</td>)}
+          </tr>;
+        })}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function CampaignResultsPage({ campaign, onEdit }) {
+  const [magnetExpanded, setMagnetExpanded] = useStateSC(false);
+  const results = campaign.results || {};
+  const status = campaignDisplayStatus(campaign);
+  const isEnded = status === "ended";
+  const hasClaims = Number(results.couponsClaimed || 0) > 0;
+  const hasConversions = Number(results.converted || 0) > 0;
+  const conclusionLabel = isEnded ? "Final results" : "Results so far";
+  let conclusion = `This Campaign converted ${results.converted || 0} customers and generated ${campaignMoney(results.revenue)} from ${results.orders || 0} orders.`;
+  if (!results.shopifyConnected) conclusion = "Connect Shopify to see orders and revenue.";
+  else if (!hasClaims) conclusion = "No participation yet. The Campaign is active, but no customers have claimed a Coupon.";
+  else if (!hasConversions) conclusion = `${results.claimingCustomers || 0} customers claimed a Coupon. No paid conversions have been recorded yet.`;
+  const couponColumns = [
+    { key: "name", label: "Coupon" },
+    { key: "claimingCustomers", label: "Claiming customers", numeric: true },
+    { key: "used", label: "Used", numeric: true },
+    { key: "converted", label: "Converted", numeric: true },
+    { key: "orders", label: "Orders", numeric: true },
+    { key: "revenue", label: "Revenue", numeric: true, render: campaignMoney },
+    { key: "useRate", label: "Use rate", numeric: true, render: campaignPercent },
+  ];
+  const magnetColumns = [
+    { key: "magnet", label: "Magnet" },
+    { key: "claimingCustomers", label: "Claiming customers", numeric: true },
+    { key: "converted", label: "Converted", numeric: true },
+    { key: "orders", label: "Orders", numeric: true },
+    { key: "revenue", label: "Revenue", numeric: true, render: campaignMoney },
+  ];
+  const movement = results.audienceMovement || {};
+  const showAudienceMovement = movement.mode === "existing_segment";
+  const magnets = results.magnetPerformance || [];
+  const toggleMagnets = () => setMagnetExpanded((current) => !current);
+  return (
+    <article className="campaign-results">
+      <header className={`campaign-results-hero${status === "live" ? " locked" : ""}`}>
+        <div className="campaign-results-title-row"><h1>{campaign.name}</h1><CampaignStatus status={status} /></div>
+        {status === "upcoming" && onEdit ? <button type="button" className="campaign-results-edit" onClick={onEdit}>Edit setup</button> : null}
+        <p className="campaign-results-kicker">{conclusionLabel}</p>
+        <p className="campaign-results-conclusion">{conclusion}</p>
+      </header>
+
+      <section className="campaign-result-metrics" aria-label="Core results">
+        <div><strong>{campaignMoney(results.revenue)}</strong><span>Revenue</span></div>
+        <div><strong>{window.FCFmt.fmtInt(results.orders || 0)}</strong><span>Orders</span></div>
+        <div><strong>{window.FCFmt.fmtInt(results.converted || 0)}</strong><span>Converted</span></div>
+        <div><strong>{campaignPercent(results.conversionRate)}</strong><span>Conversion rate</span></div>
+      </section>
+
+      <section className="campaign-results-section">
+        <h2>Campaign scope</h2>
+        <dl className="campaign-results-facts">
+          <div><dt>Target Segment</dt><dd>{campaign.targetSegment?.name || "Not configured"}</dd></div>
+          <div><dt>Audience at launch</dt><dd>{results.audienceAtLaunch == null ? "Not captured" : window.FCFmt.fmtInt(results.audienceAtLaunch)}</dd></div>
+          <div><dt>Coupons</dt><dd>{(campaign.coupons || []).map((coupon) => coupon.name).join(" · ") || "None"}</dd></div>
+          <div><dt>Challenge cycle</dt><dd>{campaignWindow(campaign)}</dd></div>
+          <div><dt>After conversion</dt><dd>{successLabel(campaign)}</dd></div>
+        </dl>
+      </section>
+
+      <section className="campaign-results-section">
+        <h2>Conversion funnel</h2>
+        <div className="campaign-result-funnel">
+          {[
+            [results.audienceAtLaunch, "Target customers"],
+            [results.claimingCustomers || 0, "Claiming customers"],
+            [results.converted || 0, "Converted customers"],
+            [results.orders || 0, "Orders"],
+          ].map(([value, label]) => <div key={label}><strong>{value == null ? "—" : window.FCFmt.fmtInt(value)}</strong><span>{label}</span></div>)}
+          <div className="revenue"><strong>{campaignMoney(results.revenue)}</strong><span>Revenue</span></div>
+        </div>
+        <div className="campaign-coupon-summary">
+          <span><strong>{window.FCFmt.fmtInt(results.couponsClaimed || 0)}</strong> Coupons claimed</span>
+          <span><strong>{window.FCFmt.fmtInt(results.couponsUsed || 0)}</strong> Coupons used</span>
+          <span><strong>{campaignPercent(results.couponUseRate)}</strong> Coupon use rate</span>
+        </div>
+      </section>
+
+      <CampaignResultTrend points={results.trend || []} />
+
+      {(campaign.coupons || []).length ? <section className="campaign-results-section">
+        <h2>Coupon performance</h2>
+        <ResultsDataTable columns={couponColumns} rows={results.couponPerformance || []} label="Coupon performance" />
+      </section> : null}
+
+      {showAudienceMovement ? <section className="campaign-results-section">
+        <h2>Audience movement</h2>
+        <div className="campaign-movement">
+          <div><strong>{movement.converted || 0}</strong><span>Converted</span></div>
+          <div><strong>{movement.completed || 0}</strong><span>Added to {movement.destinationName || "Segment"}</span></div>
+          <div><strong>{movement.pending || 0}</strong><span>Pending sync</span></div>
+        </div>
+      </section> : null}
+
+      <section className={`campaign-results-section campaign-magnet-section${magnets.length > 3 ? " interactive" : ""}`} onClick={magnets.length > 3 ? toggleMagnets : undefined}>
+        <div className="campaign-results-section-head campaign-magnet-head">
+          <h2>Magnet performance</h2>
+          {magnets.length > 3 ? <button type="button" aria-expanded={magnetExpanded} onClick={(event) => { event.stopPropagation(); toggleMagnets(); }}>{magnetExpanded ? "Show top 3" : `View all ${magnets.length}`}<span aria-hidden="true">{magnetExpanded ? "⌃" : "⌄"}</span></button> : null}
+        </div>
+        {magnets.length
+          ? <ResultsDataTable columns={magnetColumns} rows={magnetExpanded ? magnets : magnets.slice(0, 3)} label="Magnet performance" rowLink={(row) => `/magnets?magnet=${encodeURIComponent(row.magnetId)}&campaign=${encodeURIComponent(campaign.campaignId)}`} />
+          : <p className="campaign-results-empty">No Magnet-attributed results yet.</p>}
+      </section>
+
+      {(results.unattributed?.assignments || results.unattributed?.orders) ? <section className="campaign-results-section campaign-unattributed">
+        <h2>Unattributed activity</h2>
+        <p>{results.unattributed.orders || 0} {results.unattributed.orders === 1 ? "order" : "orders"} and {campaignMoney(results.unattributed.revenue)} could not be attributed to this Campaign.</p>
+      </section> : null}
+    </article>
+  );
+}
+
 function CampaignsPage({ readOnly = false } = {}) {
   const initialLocation = campaignLocationState();
   const [data, setData] = useStateSC({ campaigns: [], segments: [], coupons: [] });
@@ -574,7 +783,9 @@ function CampaignsPage({ readOnly = false } = {}) {
         {error ? <div className="cfg-alert warn"><I.info /> {error}</div> : null}
         {saved ? <div className="cfg-alert pos"><I.info /> Campaign saved</div> : null}
         {readOnly ? <div className="cfg-alert warn"><I.info /> This account can view Campaigns only.</div> : null}
-        {loading ? <PageLoading /> : <CampaignEditor campaign={selected} segments={data.segments} coupons={data.coupons} creating={creating} editing={editing} readOnly={readOnly} saving={saving} onEdit={() => setEditing(true)} onCancel={() => setEditing(false)} onSave={save} />}
+        {loading ? <PageLoading /> : creating || (editing && campaignDisplayStatus(selected) === "upcoming") || !selected || campaignDisplayStatus(selected) === "upcoming"
+          ? <CampaignEditor campaign={selected} segments={data.segments} coupons={data.coupons} creating={creating} editing={editing} readOnly={readOnly} saving={saving} onEdit={() => setEditing(true)} onCancel={() => setEditing(false)} onSave={save} />
+          : <CampaignResultsPage campaign={selected} onEdit={campaignDisplayStatus(selected) === "upcoming" ? () => setEditing(true) : null} />}
       </main>
     );
   }
@@ -590,20 +801,22 @@ function CampaignsPage({ readOnly = false } = {}) {
           <div className="segment-directory-head campaign-directory-head" role="row">
             <span role="columnheader">Campaign</span>
             <span role="columnheader">Target Segment</span>
-            <span role="columnheader">Coupon</span>
             <span role="columnheader">Challenge cycle</span>
-            <span role="columnheader">After conversion</span>
             <span role="columnheader">Status</span>
+            <span role="columnheader">Converted</span>
+            <span role="columnheader">Orders</span>
+            <span role="columnheader">Revenue</span>
           </div>
           <div className="segment-directory-body campaign-directory-body" role="rowgroup">
             {data.campaigns.map((campaign) => (
               <button type="button" role="row" key={campaign.campaignId} onClick={() => openCampaign(campaign.campaignId)}>
                 <span role="cell" className="segment-directory-name">{campaign.name}</span>
                 <span role="cell" data-label="Target Segment">{campaign.targetSegment?.name || "Not configured"}</span>
-                <span role="cell" data-label="Coupon">{campaign.coupons?.length || 0} Coupon{campaign.coupons?.length === 1 ? "" : "s"}</span>
                 <span role="cell" data-label="Cycle">{campaignWindow(campaign)}</span>
-                <span role="cell" data-label="After conversion">{successLabel(campaign)}</span>
-                <span role="cell" data-label="Status"><SegmentState status={campaign.status} /></span>
+                <span role="cell" data-label="Status"><CampaignStatus status={campaignDisplayStatus(campaign)} /></span>
+                <span role="cell" data-label="Converted">{campaignDisplayStatus(campaign) === "upcoming" ? campaignShortDate(campaign.startsAt) : window.FCFmt.fmtInt(campaign.results?.converted || 0)}</span>
+                <span role="cell" data-label="Orders">{campaignDisplayStatus(campaign) === "upcoming" ? "—" : window.FCFmt.fmtInt(campaign.results?.orders || 0)}</span>
+                <span role="cell" data-label="Revenue">{campaignDisplayStatus(campaign) === "upcoming" ? "—" : campaignMoney(campaign.results?.revenue)}</span>
               </button>
             ))}
           </div>

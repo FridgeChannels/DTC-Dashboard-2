@@ -1,14 +1,26 @@
 // ============================================================
 // FC Admin — sidebar navigation + configuration panels
 // ============================================================
-const { useState: useStateAdmin, useEffect: useEffectAdmin, useRef: useRefAdmin, useCallback: useCallbackAdmin } = React;
+const { useState: useStateAdmin, useEffect: useEffectAdmin, useRef: useRefAdmin } = React;
+
+const {
+  ONBOARDING_SECTION,
+  SESSION_KEY_COMPLETION_PENDING,
+  OnboardingPage,
+  useSetupProgress,
+  openOnboarding,
+  ensureOnboardingBackTarget,
+  buildOnboardingNavGroup,
+  computeNextSetupSection,
+  stepIdForSection,
+  isOnboardingRoute,
+} = window.WorkspaceSetup;
 
 // 新版收入优先 Brand Dashboard
 const DASHBOARD_SECTION = {
   id: "dashboard",
   label: "Dashboard",
 };
-const ONBOARDING_SECTION = { id: "onboarding", label: "Finish setup" };
 const CAMPAIGNS_SECTION = { id: "campaigns", label: "Campaigns" };
 const CUSTOMER_INTELLIGENCE_SECTION = { id: "customer-intelligence", label: "Magnets" };
 const CUSTOMER_INSIGHTS_SECTION = { id: "customer-insights", label: "Customer Insights" };
@@ -64,19 +76,11 @@ const ALL_SECTIONS = [
   KLAVIYO_SECTION,
 ];
 
-// Brand Info is an onboarding blocker until its five core fields are complete.
 function buildNavGroups(conn, brandInfo, setupProgress) {
   const shopifyReady = conn.shopifyReady;
   const klaviyoReady = conn.klaviyoReady;
   const groups = [
-    ...(setupProgress.complete ? [] : [{
-      items: [{
-        ...ONBOARDING_SECTION,
-        icon: I.navBrand,
-        blocker: true,
-        progress: `${setupProgress.completed}/3`,
-      }],
-    }]),
+    ...buildOnboardingNavGroup(setupProgress),
     {
       label: "Analytics",
       expandable: true,
@@ -108,7 +112,7 @@ function buildNavGroups(conn, brandInfo, setupProgress) {
 
 function parseSection() {
   const params = new URLSearchParams(window.location.search);
-  if (window.location.pathname === "/onboarding" || params.get("section") === ONBOARDING_SECTION.id) return ONBOARDING_SECTION.id;
+  if (isOnboardingRoute()) return ONBOARDING_SECTION.id;
   if (window.location.pathname === "/") return DASHBOARD_SECTION.id;
   if (window.location.pathname === "/dashboard") return DASHBOARD_SECTION.id;
   if (window.location.pathname === "/magnets" || window.location.pathname === "/customers") return CUSTOMER_INTELLIGENCE_SECTION.id;
@@ -144,51 +148,6 @@ function pathForSection(section) {
   // Accounts is a container entry; opening it defaults to the Account view.
   if (section === ACCOUNTS_SECTION.id) return "/brand-config?section=account";
   return `/brand-config?section=${section}`;
-}
-
-function onboardingPath(step) {
-  return `/onboarding?step=${step}`;
-}
-
-function replaceOnboardingStep(step) {
-  window.history.replaceState(
-    { ...(window.history.state || {}), fcOnboarding: true },
-    "",
-    onboardingPath(step),
-  );
-}
-
-function openOnboarding(step) {
-  if (window.location.pathname === "/onboarding" && window.history.state?.fcOnboarding) {
-    replaceOnboardingStep(step);
-    return;
-  }
-
-  window.history.replaceState(
-    { ...(window.history.state || {}), fcSetupBase: true },
-    "",
-    "/",
-  );
-  window.history.pushState({ fcOnboarding: true }, "", onboardingPath(step));
-}
-
-function ensureOnboardingBackTarget() {
-  if (window.location.pathname !== "/onboarding" || window.history.state?.fcOnboarding) return;
-  const currentOnboardingUrl = `${window.location.pathname}${window.location.search}`;
-  window.history.replaceState(
-    { ...(window.history.state || {}), fcSetupBase: true },
-    "",
-    "/",
-  );
-  window.history.pushState({ fcOnboarding: true }, "", currentOnboardingUrl);
-}
-
-function localBrandInfo() {
-  try {
-    return JSON.parse(window.localStorage.getItem("fc-brand-info") || "null");
-  } catch {
-    return null;
-  }
 }
 
 function AdminNavItem({ item, active, onSelect }) {
@@ -404,87 +363,22 @@ function FcAccountView({ user, onLogout }) {
   );
 }
 
-function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, brandInfoReadOnly, configReadOnly }) {
-  const steps = [
-    { id: "brand", label: "Brand Info", complete: progress.brandComplete, Section: BRAND_COLLECT_SECTION.id },
-    { id: "shopify", label: "Connect Shopify", complete: progress.shopifyComplete, Section: SHOPIFY_SECTION.id },
-    { id: "klaviyo", label: "Connect Klaviyo", complete: progress.klaviyoComplete, Section: KLAVIYO_SECTION.id },
-  ];
-  const valid = new Set(steps.map((step) => step.id));
-  const initial = new URLSearchParams(window.location.search).get("step");
-  const [stepId, setStepId] = useStateAdmin(valid.has(initial) ? initial : (steps.find((step) => !step.complete)?.id || "klaviyo"));
-  const current = steps.find((step) => step.id === stepId) || steps[0];
-  const go = (id) => {
-    setStepId(id);
-    replaceOnboardingStep(id);
-  };
-  const next = () => steps.slice(steps.findIndex((step) => step.id === stepId) + 1).find((step) => !step.complete && !skipped[step.id]);
-
-  useEffectAdmin(() => {
-    if (!current.complete) return;
-    const target = next();
-    if (target) go(target.id);
-  }, [progress.completed]);
-
-  useEffectAdmin(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("shopify_oauth") === "success") {
-      onRefresh();
-      go("klaviyo");
-    }
-    if (params.get("klaviyo_oauth") === "success") {
-      window.sessionStorage.setItem("fc-onboarding-completion-pending", "1");
-      onRefresh();
-    }
-  }, []);
-
-  const handleSkip = () => {
-    onSkipStep(stepId);
-    const target = steps.slice(steps.findIndex((step) => step.id === stepId) + 1).find((step) => !step.complete);
-    if (target) go(target.id);
-    else onExit();
-  };
-
-  if (progress.complete) {
-    return (
-      <div className="onboarding-shell">
-        <div className="onboarding-frame">
-          <span>Setup complete</span>
-          <h1>Your workspace is ready</h1>
-          <button type="button" className="btn primary" onClick={onExit}>Go to Dashboard</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="onboarding-shell">
-      <div className="onboarding-frame">
-        <header className="onboarding-header"><h1>Set up your workspace</h1></header>
-        <ol className="onboarding-progress-list">
-          {steps.map((step, index) => <li key={step.id} className={step.id === stepId ? "current" : step.complete ? "complete" : skipped[step.id] ? "skipped" : ""}><span>{step.complete ? "✓" : index + 1}</span>{step.label}{skipped[step.id] ? <em>Skipped</em> : null}</li>)}
-        </ol>
-        <div className="onboarding-body">
-          {stepId === "brand"
-            ? <BrandCollectPage readOnly={brandInfoReadOnly} onSkip={current.complete ? null : handleSkip} onSaved={() => { onRefresh(); go("shopify"); }} />
-            : <BrandConfigPage section={current.Section} readOnly={configReadOnly} onSkip={current.complete ? null : handleSkip} onSaved={() => { onRefresh(); go("klaviyo"); }} skipLabel="Skip for now" onboardingReturnTo={onboardingPath(stepId)} />}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AdminApp() {
   const [section, setSection] = useStateAdmin(parseSection);
   const [auth, setAuth] = useStateAdmin({ loading: true, user: null });
-  const [connections, setConnections] = useStateAdmin({ shopifyReady: false, klaviyoReady: false });
-  const [brandInfo, setBrandInfo] = useStateAdmin({ completedFields: 0, complete: false });
-  const [setupLoaded, setSetupLoaded] = useStateAdmin({ brand: false, connections: false });
   const [setupSkipped, setSetupSkipped] = useStateAdmin({});
   const setupAutoHandled = useRefAdmin(section === ONBOARDING_SECTION.id);
   const access = auth.user?.access ?? {};
   const configReadOnly = auth.loading ? false : access.canWriteConfig === false;
   const brandInfoReadOnly = auth.loading ? false : access.canWriteBrandInfo === false;
+
+  const {
+    connections,
+    brandInfo,
+    setupLoaded,
+    setupProgress,
+    refresh: refreshSetup,
+  } = useSetupProgress({ authLoading: auth.loading, authUser: auth.user });
 
   // Skip markers are only meaningful inside the current onboarding pass.
   // Do not restore them when the user comes back to setup later.
@@ -534,73 +428,12 @@ function AdminApp() {
     return () => { cancelled = true; };
   }, []);
 
-  const refreshConnections = useCallbackAdmin(async () => {
-    try {
-      const res = await fetch("/api/brand-config");
-      if (res.ok) {
-        const data = await res.json();
-        setConnections({
-          shopifyReady: Boolean(data.shopify?.hasAccessToken && data.shopify?.shopDomain),
-          klaviyoReady: Boolean(data.klaviyo?.hasOAuthToken),
-        });
-      }
-    } catch {
-      /* Status falls back to disconnected without interrupting navigation. */
-    } finally {
-      setSetupLoaded((current) => ({ ...current, connections: true }));
-    }
-  }, []);
-
-  // Connection state drives navigation progress and dependency states.
-  useEffectAdmin(() => {
-    if (!auth.loading && auth.user) refreshConnections();
-  }, [auth.loading, auth.user, refreshConnections]);
-
-  const loadBrandInfoStatus = async () => {
-    try {
-      const res = await fetch("/api/config");
-      if (res.ok) {
-        const { brand: remoteBrand } = await res.json();
-        const brand = remoteBrand || localBrandInfo();
-        const completedFields = [brand?.brandName, brand?.website, brand?.brandLogo, brand?.primaryColor, brand?.secondaryColor || brand?.accentColor]
-          .filter((value) => typeof value === "string" && value.trim()).length;
-        setBrandInfo({ completedFields, complete: completedFields === 5 });
-      }
-    } catch {
-      // The navigation remains usable if the onboarding status cannot be loaded.
-    } finally {
-      setSetupLoaded((current) => ({ ...current, brand: true }));
-    }
-  };
-
-  useEffectAdmin(() => {
-    if (!auth.loading && auth.user) loadBrandInfoStatus();
-  }, [auth.loading, auth.user]);
-
-  useEffectAdmin(() => {
-    window.addEventListener("brand-info-saved", loadBrandInfoStatus);
-    return () => window.removeEventListener("brand-info-saved", loadBrandInfoStatus);
-  }, []);
-
   useEffectAdmin(() => {
     if (auth.loading || !auth.user) return;
     setSetupSkipped({});
   }, [auth.loading, auth.user]);
 
-  const setupProgress = {
-    brandComplete: brandInfo.complete,
-    shopifyComplete: connections.shopifyReady,
-    klaviyoComplete: connections.klaviyoReady,
-    completed: Number(brandInfo.complete) + Number(connections.shopifyReady) + Number(connections.klaviyoReady),
-    complete: brandInfo.complete && connections.shopifyReady && connections.klaviyoReady,
-  };
-  const nextSetupSection = !brandInfo.complete
-    ? BRAND_COLLECT_SECTION.id
-    : !connections.shopifyReady
-      ? SHOPIFY_SECTION.id
-      : !connections.klaviyoReady
-        ? KLAVIYO_SECTION.id
-        : DASHBOARD_SECTION.id;
+  const nextSetupSection = computeNextSetupSection(brandInfo, connections, DASHBOARD_SECTION.id);
 
   useEffectAdmin(() => {
     if (!setupLoaded.brand || !setupLoaded.connections) return;
@@ -608,7 +441,7 @@ function AdminApp() {
     setupAutoHandled.current = true;
     if (setupProgress.complete || section === ONBOARDING_SECTION.id) return;
     setSection(ONBOARDING_SECTION.id);
-    openOnboarding(nextSetupSection === BRAND_COLLECT_SECTION.id ? "brand" : nextSetupSection);
+    openOnboarding(stepIdForSection(nextSetupSection));
   }, [auth.user?.isFirstLogin, section, setupLoaded.brand, setupLoaded.connections, setupProgress.complete, nextSetupSection]);
 
   // Once setup is complete, the onboarding route should never be shown again.
@@ -616,7 +449,7 @@ function AdminApp() {
   useEffectAdmin(() => {
     if (!setupLoaded.brand || !setupLoaded.connections) return;
     if (!setupProgress.complete || section !== ONBOARDING_SECTION.id) return;
-    if (window.sessionStorage.getItem("fc-onboarding-completion-pending") === "1") return;
+    if (window.sessionStorage.getItem(SESSION_KEY_COMPLETION_PENDING) === "1") return;
     setSection(DASHBOARD_SECTION.id);
     window.history.replaceState({}, "", pathForSection(DASHBOARD_SECTION.id));
   }, [section, setupLoaded.brand, setupLoaded.connections, setupProgress.complete]);
@@ -629,7 +462,7 @@ function AdminApp() {
     }
     if (nextSection === ONBOARDING_SECTION.id) {
       setSection(ONBOARDING_SECTION.id);
-      const step = nextSetupSection === BRAND_COLLECT_SECTION.id ? "brand" : nextSetupSection;
+      const step = stepIdForSection(nextSetupSection);
       openOnboarding(step);
       return;
     }
@@ -643,7 +476,7 @@ function AdminApp() {
   };
 
   const dismissSetup = () => {
-    window.sessionStorage.removeItem("fc-onboarding-completion-pending");
+    window.sessionStorage.removeItem(SESSION_KEY_COMPLETION_PENDING);
     handleSectionChange(DASHBOARD_SECTION.id);
   };
   const skipSetupStep = (step) => {
@@ -662,7 +495,7 @@ function AdminApp() {
   }
 
   if (section === ONBOARDING_SECTION.id) {
-    return <OnboardingPage progress={setupProgress} skipped={setupSkipped} onSkipStep={skipSetupStep} onExit={dismissSetup} onRefresh={() => { loadBrandInfoStatus(); refreshConnections(); }} brandInfoReadOnly={brandInfoReadOnly} configReadOnly={configReadOnly} />;
+    return <OnboardingPage progress={setupProgress} skipped={setupSkipped} onSkipStep={skipSetupStep} onExit={dismissSetup} onRefresh={refreshSetup} brandInfoReadOnly={brandInfoReadOnly} configReadOnly={configReadOnly} />;
   }
 
   return (

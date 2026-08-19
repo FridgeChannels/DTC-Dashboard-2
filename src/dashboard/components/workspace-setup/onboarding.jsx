@@ -33,21 +33,10 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
     replaceOnboardingStep(id);
   };
 
-  const nextIncomplete = () => stepsWithProgress
-    .slice(stepsWithProgress.findIndex((step) => step.id === stepId) + 1)
-    .find((step) => !step.complete && !skipped[step.id]);
-
-  useEffect(() => {
-    if (!current.complete) return;
-    const target = nextIncomplete();
-    if (target) go(target.id);
-  }, [progress.completed]);
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("shopify_oauth") === "success") {
       onRefresh();
-      go(SETUP_STEP_IDS.klaviyo);
     }
     if (params.get("klaviyo_oauth") === "success") {
       window.sessionStorage.setItem(SESSION_KEY_COMPLETION_PENDING, "1");
@@ -57,10 +46,9 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
 
   const handleSkip = () => {
     onSkipStep(stepId);
-    const target = stepsWithProgress
-      .slice(stepsWithProgress.findIndex((step) => step.id === stepId) + 1)
-      .find((step) => !step.complete);
-    if (target) go(target.id);
+    const currentIndex = stepsWithProgress.findIndex((step) => step.id === stepId);
+    const nextStep = stepsWithProgress[currentIndex + 1];
+    if (nextStep) go(nextStep.id);
     else onExit();
   };
 
@@ -97,7 +85,7 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
             ? (
               <BrandCollectPage
                 readOnly={brandInfoReadOnly}
-                onSkip={current.complete ? null : handleSkip}
+                onSkip={handleSkip}
                 onSaved={() => { onRefresh(); go(SETUP_STEP_IDS.shopify); }}
               />
             )
@@ -105,7 +93,7 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
               <BrandConfigPage
                 section={current.sectionId}
                 readOnly={configReadOnly}
-                onSkip={current.complete ? null : handleSkip}
+                onSkip={handleSkip}
                 onSaved={() => { onRefresh(); go(SETUP_STEP_IDS.klaviyo); }}
                 skipLabel="Skip for now"
                 onboardingReturnTo={onboardingPath(stepId)}

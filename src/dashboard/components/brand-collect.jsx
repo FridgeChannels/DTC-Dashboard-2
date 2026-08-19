@@ -2,6 +2,19 @@
 // Brand Info
 // ============================================================
 const { useState, useEffect, useCallback } = React;
+const BRAND_INFO_LOCAL_KEY = "fc-brand-info";
+
+function readLocalBrandInfo() {
+  try {
+    return JSON.parse(window.localStorage.getItem(BRAND_INFO_LOCAL_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalBrandInfo(brand) {
+  window.localStorage.setItem(BRAND_INFO_LOCAL_KEY, JSON.stringify(brand));
+}
 
 function BrandField({ label, hint, children, fullRow }) {
   return (
@@ -13,11 +26,22 @@ function BrandField({ label, hint, children, fullRow }) {
   );
 }
 
-function BrandCollectPage({ readOnly = false } = {}) {
+function brandFormBaseline(brand) {
+  return {
+    brandName: (brand?.brandName || "").trim(),
+    website: (brand?.website || "").trim(),
+    brandLogo: brand?.brandLogo || "",
+    primaryColor: brand?.primaryColor || "",
+    secondaryColor: brand?.secondaryColor || brand?.accentColor || "",
+  };
+}
+
+function BrandCollectPage({ readOnly = false, onSkip = null, skipLabel = "Skip for now", onSaved = null } = {}) {
   const [brandName, setBrandName] = useState("");
   const [brandWebsite, setBrandWebsite] = useState("");
   const [brandLogo, setBrandLogo] = useState("");
   const [colors, setColors] = useState({ primary: "", accent: "" });
+  const [savedBaseline, setSavedBaseline] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,17 +65,41 @@ function BrandCollectPage({ readOnly = false } = {}) {
         primary: brand.primaryColor || "",
         accent: brand.secondaryColor || brand.accentColor || "",
       });
+      setSavedBaseline(brandFormBaseline(brand));
+    } else {
+      setSavedBaseline(brandFormBaseline(null));
     }
   }, []);
+
+  const currentFormSnapshot = useCallback(() => ({
+    brandName: brandName.trim(),
+    website: brandWebsite.trim(),
+    brandLogo,
+    primaryColor: colors.primary || "",
+    secondaryColor: colors.accent || "",
+  }), [brandName, brandWebsite, brandLogo, colors]);
+
+  const hasUnsavedChanges = useCallback(() => {
+    const baseline = savedBaseline ?? brandFormBaseline(null);
+    const current = currentFormSnapshot();
+    return (
+      current.brandName !== baseline.brandName
+      || current.website !== baseline.website
+      || current.brandLogo !== baseline.brandLogo
+      || current.primaryColor !== baseline.primaryColor
+      || current.secondaryColor !== baseline.secondaryColor
+    );
+  }, [savedBaseline, currentFormSnapshot]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const { brand } = await BrandCollectApi.fetchConfiguredInfo();
-        if (!cancelled) applyServerConfig(brand);
+        if (!cancelled) applyServerConfig(brand || readLocalBrandInfo());
       } catch (err) {
         console.warn("Failed to load brand config:", err);
+        if (!cancelled) applyServerConfig(readLocalBrandInfo());
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -114,6 +162,25 @@ function BrandCollectPage({ readOnly = false } = {}) {
     }
   };
 
+  const persistBrand = async ({ notify = true, callOnSaved = false } = {}) => {
+    const savedBrand = currentFormSnapshot();
+    saveLocalBrandInfo(savedBrand);
+    const result = await BrandCollectApi.saveBrand({
+      brandName: savedBrand.brandName,
+      brandWebsite: savedBrand.website,
+      brandLogo: savedBrand.brandLogo,
+      colors,
+    });
+    applyServerConfig(savedBrand);
+    window.dispatchEvent(new Event("brand-info-saved"));
+    if (notify) {
+      showNotice(result.updatedCount > 0
+        ? `Brand info updated (${result.updatedCount} magnet${result.updatedCount === 1 ? "" : "s"}).`
+        : "Brand info saved on this device. It will sync when a magnet is available.");
+    }
+    if (callOnSaved) onSaved?.();
+  };
+
   const handleSave = async () => {
     if (readOnly) return;
     if (!brandName.trim()) {
@@ -123,16 +190,29 @@ function BrandCollectPage({ readOnly = false } = {}) {
     setError("");
     setSaving(true);
     try {
-      const result = await BrandCollectApi.saveBrand({
-        brandName: brandName.trim(),
-        brandWebsite: brandWebsite.trim(),
-        brandLogo: brandLogo,
-        colors,
-      });
-      if (result.records?.[0]) {
-        applyServerConfig(result.records[0]);
-      }
-      showNotice(`Brand info updated (${result.updatedCount} magnet${result.updatedCount === 1 ? "" : "s"}).`);
+      await persistBrand({ notify: true, callOnSaved: true });
+    } catch (err) {
+      setError(err.message || "Failed to save brand info.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSkip = async () => {
+    if (!onSkip) return;
+    if (readOnly || !hasUnsavedChanges()) {
+      onSkip();
+      return;
+    }
+    if (!brandName.trim()) {
+      setError("Brand name is required.");
+      return;
+    }
+    setError("");
+    setSaving(true);
+    try {
+      await persistBrand({ notify: false, callOnSaved: false });
+      onSkip();
     } catch (err) {
       setError(err.message || "Failed to save brand info.");
     } finally {
@@ -259,7 +339,12 @@ function BrandCollectPage({ readOnly = false } = {}) {
               </div>
             </div>
 
-            <div className="row" style={{ gridColumn: "1 / -1", justifyContent: "flex-end" }}>
+            <div className="cfg-actions" style={{ gridColumn: "1 / -1" }}>
+              {onSkip && (
+                <button type="button" className="btn" disabled={saving || extracting || logoUploading} onClick={handleSkip}>
+                  {saving ? "Saving…" : skipLabel}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn primary"

@@ -35,8 +35,8 @@ const API = {
     if (!res.ok) throw new Error(data.error || "Failed to disconnect Shopify");
     return data;
   },
-  async startKlaviyoOAuth() {
-    const res = await fetch("/api/klaviyo/oauth/start", { method: "POST" });
+  async startKlaviyoOAuth(payload = {}) {
+    const res = await fetch("/api/klaviyo/oauth/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to start Klaviyo OAuth");
     return data;
@@ -1664,7 +1664,7 @@ function AddCodesModal({ campaign, onClose, onUpdated }) {
   );
 }
 
-function BrandConfigPage({ section = "shopify", readOnly = false }) {
+function BrandConfigPage({ section = "shopify", readOnly = false, onSkip = null, onSaved = null, skipLabel = "Skip for now", onboardingReturnTo = null }) {
   const [config, setConfig] = useStateBC(null);
   const [loading, setLoading] = useStateBC(true);
   const [saving, setSaving] = useStateBC(false);
@@ -1745,11 +1745,11 @@ function BrandConfigPage({ section = "shopify", readOnly = false }) {
       params.delete("klaviyo_oauth");
     }
 
-    if (shopifyStatus || klaviyoStatus) {
+    if ((shopifyStatus || klaviyoStatus) && !onboardingReturnTo) {
       const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
       window.history.replaceState({}, "", next);
     }
-  }, []);
+  }, [onboardingReturnTo]);
 
   const patch = (fn) => {
     setConfig(fn);
@@ -1798,7 +1798,7 @@ function BrandConfigPage({ section = "shopify", readOnly = false }) {
 
     setKlaviyoConnecting(true);
     try {
-      const result = await API.startKlaviyoOAuth();
+      const result = await API.startKlaviyoOAuth({ returnTo: onboardingReturnTo });
       if (!result?.authorizeUrl) {
         throw new Error("OAuth start did not return an authorize URL.");
       }
@@ -1820,7 +1820,7 @@ function BrandConfigPage({ section = "shopify", readOnly = false }) {
       setConfig(apiToLocal(data));
       setOauthNotice({
         tone: "pos",
-        text: "Klaviyo authorization removed. Segment sync and survey targeting are disabled until you connect again.",
+        text: "Klaviyo authorization removed. Segment sync and quiz targeting are disabled until you connect again.",
       });
       setShowKlaviyoDisconnectConfirm(false);
     } catch (err) {
@@ -1845,6 +1845,7 @@ function BrandConfigPage({ section = "shopify", readOnly = false }) {
       setConfig(local);
       setShopifySavedBaseline(serializeShopifyForCompare(local.shopify));
       setOauthNotice({ tone: "pos", text: "Configuration saved." });
+      onSaved?.();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1879,7 +1880,7 @@ function BrandConfigPage({ section = "shopify", readOnly = false }) {
       setConfig(local);
       setShopifySavedBaseline(serializeShopifyForCompare(local.shopify));
 
-      const result = await API.startShopifyOAuth({ shop: shopDomain });
+      const result = await API.startShopifyOAuth({ shop: shopDomain, returnTo: onboardingReturnTo });
       window.location.href = result.authorizeUrl;
     } catch (err) {
       setError(err.message);
@@ -2270,9 +2271,12 @@ function BrandConfigPage({ section = "shopify", readOnly = false }) {
             </ConfigField>
           </div>
           <CfgActions>
+            {onSkip ? (
+              <button type="button" className="btn" onClick={onSkip}>{skipLabel}</button>
+            ) : null}
             <button
               type="button"
-              className="btn"
+              className="btn primary"
               disabled={readOnly || saving}
               onClick={handleSaveShopifyConfig}
             >
@@ -2348,6 +2352,9 @@ function BrandConfigPage({ section = "shopify", readOnly = false }) {
             </div>
           )}
           <CfgActions>
+            {onSkip ? (
+              <button type="button" className="btn" onClick={onSkip}>{skipLabel}</button>
+            ) : null}
             {klaviyo.hasOAuthToken ? (
               <button
                 type="button"
@@ -2513,7 +2520,7 @@ function BrandConfigPage({ section = "shopify", readOnly = false }) {
       {showKlaviyoDisconnectConfirm && (
         <ConfirmModal
           title="Disconnect Klaviyo"
-          message="FridgeChannel will remove the saved OAuth tokens. Segment sync and survey targeting will be disabled until you connect again."
+          message="FridgeChannel will remove the saved OAuth tokens. Segment sync and quiz targeting will be disabled until you connect again."
           confirmLabel="Disconnect"
           cancelLabel="Cancel"
           confirming={klaviyoDisconnecting}

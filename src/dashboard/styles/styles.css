@@ -2561,6 +2561,13 @@ select.cfg-input-sm {
   background: var(--accent-soft);
   border-color: oklch(0.88 0.04 38);
 }
+.admin-nav-item.blocker {
+  align-items: flex-start;
+  background: var(--accent-soft);
+  color: var(--accent, var(--ink));
+}
+.admin-nav-item.blocker .admin-nav-icon { color: currentColor; }
+.admin-nav-item.blocker .admin-nav-label::before { content: "⚠ "; }
 .admin-nav-item.locked .admin-nav-label { color: var(--ink-3); }
 .admin-nav-item.locked:hover { background: var(--bg-sunken); }
 /* 券线下属规则（Segment Coupons）：缩进表达从属于 Coupons */
@@ -2586,6 +2593,13 @@ select.cfg-input-sm {
   font-size: 15px;
   font-weight: 600;
   color: var(--ink);
+}
+.admin-nav-progress {
+  flex-shrink: 0;
+  padding-top: 1px;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 500;
 }
 .admin-nav-lock { font-size: 13px; line-height: 1; opacity: 0.55; }
 .admin-nav-status {
@@ -4973,4 +4987,27 @@ input:checked + .survey-slider:before {
   .funnel-bar {
     height: 30px;
   }
+}
+
+/* Workspace setup onboarding */
+.onboarding-shell { min-height: 100vh; display: grid; place-items: start center; background: var(--bg); padding: 64px 24px; }
+.onboarding-frame { width: min(920px, 100%); }
+.onboarding-header { margin-bottom: 28px; text-align: center; }
+.onboarding-header h1 { margin: 0; font-size: 32px; letter-spacing: -0.03em; }
+.onboarding-progress-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0 0 30px; padding: 0; list-style: none; }
+.onboarding-progress-list li { display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 14px; }
+.onboarding-progress-list li > span { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--bg-sunken); font-size: 12px; }
+.onboarding-progress-list li.current { color: var(--ink); }
+.onboarding-progress-list li.current > span { background: var(--accent); color: #fff; }
+.onboarding-progress-list li.complete { color: var(--pos); }
+.onboarding-progress-list li.complete > span { background: var(--pos-soft); }
+.onboarding-progress-list em { color: var(--ink-4); font-size: 12px; font-style: normal; }
+.onboarding-body { min-height: 420px; }
+.onboarding-body > .admin-content { padding: 0; background: transparent; }
+.onboarding-body .cfg-page { max-width: none; padding: 0; }
+.onboarding-footer { display: flex; justify-content: flex-end; margin-top: 20px; }
+
+@media (max-width: 720px) {
+  .onboarding-shell { padding: 28px 20px 44px; }
+  .onboarding-progress-list { grid-template-columns: 1fr; gap: 8px; }
 }

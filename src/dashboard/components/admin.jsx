@@ -352,14 +352,6 @@ function AdminApp() {
     openOnboarding(stepIdForSection(nextSetupSection));
   }, [auth.user?.isFirstLogin, section, setupLoaded.brand, setupLoaded.connections, setupProgress.complete, nextSetupSection]);
 
-  useEffectAdmin(() => {
-    if (!setupLoaded.brand || !setupLoaded.connections) return;
-    if (!setupProgress.complete || section !== ONBOARDING_SECTION.id) return;
-    if (window.sessionStorage.getItem(SESSION_KEY_COMPLETION_PENDING) === "1") return;
-    setSection(DASHBOARD_SECTION.id);
-    window.history.replaceState({}, "", pathForSection(DASHBOARD_SECTION.id));
-  }, [section, setupLoaded.brand, setupLoaded.connections, setupProgress.complete]);
-
   const handleSectionChange = (nextSection) => {
     if (nextSection === ONBOARDING_SECTION.id) {
       setSection(ONBOARDING_SECTION.id);

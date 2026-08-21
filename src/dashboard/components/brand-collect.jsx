@@ -128,14 +128,6 @@ function BrandCollectPage({ readOnly = false, onSkip = null, skipLabel = "Skip f
         accent: normalized.accent || "",
       });
       if (!brandName.trim() && data.brandName) setBrandName(data.brandName);
-      if (!brandLogo && data.logo) {
-        try {
-          const url = await BrandCollectApi.uploadImage(data.logo, "logos");
-          setBrandLogo(url);
-        } catch {
-          setBrandLogo(data.logo);
-        }
-      }
       showNotice("Brand colors applied.");
     } catch (err) {
       setError(err.message || "Color extraction failed.");
@@ -183,15 +175,21 @@ function BrandCollectPage({ readOnly = false, onSkip = null, skipLabel = "Skip f
 
   const handleSave = async () => {
     if (readOnly) return;
-    if (!brandName.trim()) {
+    const advanceAfterSave = typeof onSaved === "function";
+    if (!advanceAfterSave && !brandName.trim()) {
       setError("Brand name is required.");
       return;
     }
     setError("");
     setSaving(true);
     try {
-      await persistBrand({ notify: true, callOnSaved: true });
+      await persistBrand({ notify: !advanceAfterSave, callOnSaved: true });
     } catch (err) {
+      if (advanceAfterSave) {
+        // Finish setup: always continue even if save/sync is incomplete.
+        onSaved?.();
+        return;
+      }
       setError(err.message || "Failed to save brand info.");
     } finally {
       setSaving(false);
@@ -204,17 +202,14 @@ function BrandCollectPage({ readOnly = false, onSkip = null, skipLabel = "Skip f
       onSkip();
       return;
     }
-    if (!brandName.trim()) {
-      setError("Brand name is required.");
-      return;
-    }
     setError("");
     setSaving(true);
     try {
       await persistBrand({ notify: false, callOnSaved: false });
       onSkip();
     } catch (err) {
-      setError(err.message || "Failed to save brand info.");
+      // Finish setup / skip: still advance even if sync fails.
+      onSkip();
     } finally {
       setSaving(false);
     }
@@ -265,7 +260,7 @@ function BrandCollectPage({ readOnly = false, onSkip = null, skipLabel = "Skip f
 
             <BrandField
               label="Website"
-              hint="Used to extract brand colors and logo."
+              hint="Used to extract brand colors."
               fullRow
             >
               <div className="cfg-upload-row">

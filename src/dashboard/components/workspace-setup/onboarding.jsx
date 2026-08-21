@@ -23,14 +23,23 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
   }));
 
   const valid = new Set(stepsWithProgress.map((step) => step.id));
+  // Always walk Brand → Shopify → Klaviyo. Do not jump ahead just because
+  // demo/shared config (e.g. status=3 → customer=5) already looks connected.
   const [stepId, setStepId] = useState(
-    initialStepFromUrl(valid, stepsWithProgress.find((step) => !step.complete)?.id || SETUP_STEP_IDS.klaviyo),
+    initialStepFromUrl(valid, SETUP_STEP_IDS.brand),
   );
+  const [wizardDone, setWizardDone] = useState(false);
   const current = stepsWithProgress.find((step) => step.id === stepId) || stepsWithProgress[0];
 
   const go = (id) => {
+    setWizardDone(false);
     setStepId(id);
     replaceOnboardingStep(id);
+  };
+
+  const finishWizard = () => {
+    window.sessionStorage.removeItem(SESSION_KEY_COMPLETION_PENDING);
+    setWizardDone(true);
   };
 
   useEffect(() => {
@@ -41,6 +50,7 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
     if (params.get("klaviyo_oauth") === "success") {
       window.sessionStorage.setItem(SESSION_KEY_COMPLETION_PENDING, "1");
       onRefresh();
+      finishWizard();
     }
   }, []);
 
@@ -49,10 +59,12 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
     const currentIndex = stepsWithProgress.findIndex((step) => step.id === stepId);
     const nextStep = stepsWithProgress[currentIndex + 1];
     if (nextStep) go(nextStep.id);
-    else onExit();
+    else finishWizard();
   };
 
-  if (progress.complete) {
+  // Only after the user finishes all 3 wizard steps — never mid-flow from
+  // progress.complete (status=3 may already show Shopify/Klaviyo as ready).
+  if (wizardDone) {
     return (
       <div className="onboarding-shell">
         <div className="onboarding-frame">
@@ -86,19 +98,39 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
               <BrandCollectPage
                 readOnly={brandInfoReadOnly}
                 onSkip={handleSkip}
-                onSaved={() => { onRefresh(); go(SETUP_STEP_IDS.shopify); }}
+                onSaved={() => {
+                  onRefresh();
+                  go(SETUP_STEP_IDS.shopify);
+                }}
               />
             )
-            : (
-              <BrandConfigPage
-                section={current.sectionId}
-                readOnly={configReadOnly}
-                onSkip={handleSkip}
-                onSaved={() => { onRefresh(); go(SETUP_STEP_IDS.klaviyo); }}
-                skipLabel="Skip for now"
-                onboardingReturnTo={onboardingPath(stepId)}
-              />
-            )}
+            : stepId === SETUP_STEP_IDS.shopify
+              ? (
+                <BrandConfigPage
+                  section={current.sectionId}
+                  readOnly={configReadOnly}
+                  onSkip={handleSkip}
+                  onSaved={() => {
+                    onRefresh();
+                    go(SETUP_STEP_IDS.klaviyo);
+                  }}
+                  skipLabel="Skip for now"
+                  onboardingReturnTo={onboardingPath(stepId)}
+                />
+              )
+              : (
+                <BrandConfigPage
+                  section={current.sectionId}
+                  readOnly={configReadOnly}
+                  onSkip={handleSkip}
+                  onSaved={() => {
+                    onRefresh();
+                    finishWizard();
+                  }}
+                  skipLabel="Skip for now"
+                  onboardingReturnTo={onboardingPath(stepId)}
+                />
+              )}
         </div>
       </div>
     </div>

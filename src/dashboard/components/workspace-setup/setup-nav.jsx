@@ -5,12 +5,11 @@
 const { ONBOARDING_SECTION } = window.WorkspaceSetupConstants;
 
 function buildOnboardingNavGroup(setupProgress) {
-  if (setupProgress.complete) return [];
   return [{
     items: [{
       ...ONBOARDING_SECTION,
       icon: I.navBrand,
-      blocker: true,
+      blocker: !setupProgress.complete,
       progress: `${setupProgress.completed}/3`,
     }],
   }];

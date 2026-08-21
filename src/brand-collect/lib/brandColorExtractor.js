@@ -4,7 +4,6 @@ import path from 'path';
 import { launchBrowserPage, navigateToPage } from './pageBrowser.js';
 import { ensureOutputDir } from './screenshot.js';
 import { collectPageHtmlInfo } from './extractors/extractPageHtmlInfo.js';
-import { extractLogo } from './logoExtractor.js';
 import { analyzeBrandColorsWithDify, buildDifyQuery } from './difyBrandColorAnalyzer.js';
 import { isDifyConfigured } from './difyClient.js';
 
@@ -124,7 +123,6 @@ export async function extractBrandColors(url, options = {}) {
 
     const pageInfo = await collectPageHtmlInfo(page);
     const pagePayload = buildPageInfoPayload(pageInfo);
-    const { logoPath, logoBase64 } = await extractLogo(page, outputDir);
 
     const screenshotPath = path.join(outputDir, 'homepage.png');
     await page.screenshot({ path: screenshotPath, fullPage: false });
@@ -160,14 +158,12 @@ export async function extractBrandColors(url, options = {}) {
       ? {
           runId,
           url: parsedUrl.href,
-          logoFound: Boolean(logoPath),
           pageInfo: pagePayload,
           difyQueryPreview: buildDifyQuery(pagePayload).slice(0, 2000),
           dify: difyResult.dify,
           colors,
           assets: {
             homepage: `/debug-output/${runId}/homepage.png`,
-            logo: logoPath ? `/debug-output/${runId}/logo.png` : null,
           },
           outputDir: path.join(process.cwd(), 'output', runId),
         }
@@ -180,7 +176,6 @@ export async function extractBrandColors(url, options = {}) {
           primaryColor: colors.primary,
           secondaryColor: colors.secondary,
           accentColor: colors.accent,
-          logo: logoBase64 ? `data:image/png;base64,${logoBase64}` : null,
           industry,
           source: 'dify',
           conversationId: difyResult.dify.conversationId,
@@ -194,7 +189,6 @@ export async function extractBrandColors(url, options = {}) {
         {
           brandName,
           colors,
-          logo: logoBase64 ? `data:image/png;base64,${logoBase64}` : null,
           industry,
           source: 'dify',
           conversationId: difyResult.dify.conversationId,
@@ -209,7 +203,6 @@ export async function extractBrandColors(url, options = {}) {
         colors,
         meta: {
           url: parsedUrl.href,
-          logoFound: Boolean(logoPath),
           source: 'dify',
           conversationId: difyResult.dify.conversationId,
         },

@@ -77,6 +77,15 @@ import {
 } from "./api/auth/handlers.js";
 import { serveStatic } from "./api/serve-static.js";
 import { serveFcStatic } from "./api/serve-fc-static.js";
+import { serveReorderStatic } from "./api/serve-reorder-static.js";
+import {
+  handleCreateReorderProduct,
+  handleGetReorderAmazonSetup,
+  handleGetReorderProduct,
+  handleImportReorderProducts,
+  handleListReorderProducts,
+  handlePutReorderAmazonSetup,
+} from "./api/reorder.js";
 import {
   handleGetBrandCollectConfig,
   handlePostBrand,
@@ -187,6 +196,37 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/brand-config") {
     await handleGetBrandConfig(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/reorder/amazon-setup") {
+    await handleGetReorderAmazonSetup(req, res);
+    return;
+  }
+
+  if (req.method === "PUT" && pathname === "/api/reorder/amazon-setup") {
+    await handlePutReorderAmazonSetup(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/reorder/products") {
+    await handleListReorderProducts(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/reorder/products") {
+    await handleCreateReorderProduct(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/reorder/products/import") {
+    await handleImportReorderProducts(req, res);
+    return;
+  }
+
+  const reorderProductMatch = /^\/api\/reorder\/products\/([^/]+)$/.exec(pathname);
+  if (req.method === "GET" && reorderProductMatch) {
+    await handleGetReorderProduct(req, res, reorderProductMatch[1]);
     return;
   }
 
@@ -498,6 +538,12 @@ const server = createServer(async (req, res) => {
   if (req.method === "GET" || req.method === "HEAD") {
     const fcHandled = await serveFcStatic(pathname, res);
     if (fcHandled) return;
+  }
+
+  // ---- FC Reorder Brand Console（与现有 dashboard 前端隔离）----
+  if (req.method === "GET" || req.method === "HEAD") {
+    const reorderHandled = await serveReorderStatic(pathname, res);
+    if (reorderHandled) return;
   }
 
   // ---- 静态前端（dashboard）----

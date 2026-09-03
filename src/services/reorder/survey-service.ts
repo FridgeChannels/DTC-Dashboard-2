@@ -71,9 +71,21 @@ async function hydrate(customerId: number, campaigns: ReorderSurveyCampaignRow[]
 
 export async function listReorderSurveys(customerId: number, filter: { productId?: string | null; status?: string | null } = {}) {
   const surveys = await hydrate(customerId, await surveyRepo.listCampaigns(customerId));
-  return surveys.filter((survey) =>
+  const filtered = surveys.filter((survey) =>
     (!filter.productId || survey.productIds.includes(filter.productId))
     && (!filter.status || survey.status === filter.status));
+  return Promise.all(filtered.map(async (survey) => {
+    const contexts = await surveyRepo.listResponseContexts({ customerId, campaignId: survey.id });
+    const responses = await surveyRepo.listResponses(contexts.map((context) => context.response_id));
+    const starts = responses.filter((response) => Boolean(response.started_at)).length;
+    const completions = responses.filter((response) => response.completion_status === "submitted" && Boolean(response.submitted_at)).length;
+    return {
+      ...survey,
+      starts,
+      completions,
+      completionRate: starts ? Math.round((completions / starts) * 10_000) / 100 : 0,
+    };
+  }));
 }
 
 export async function getReorderSurvey(customerId: number, campaignId: string) {

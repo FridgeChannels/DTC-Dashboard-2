@@ -104,7 +104,10 @@ begin
     if not found or source_row.reorder_version_group_id is null then
       raise exception 'Reorder Survey not found' using errcode = 'P0002';
     end if;
-    if source_row.status not in ('draft', 'scheduled') then
+    if source_row.status not in ('draft', 'scheduled') and not exists (
+      select 1 from public.q_survey_responses
+      where survey_id = p_campaign_id and completion_status = 'submitted'
+    ) then
       raise exception 'Only Draft or Scheduled Reorder Surveys can be edited' using errcode = '55000';
     end if;
   end if;
@@ -196,6 +199,27 @@ begin
   return target_id;
 end;
 $$;
+
+create or replace function public.mark_reorder_survey_locked()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.completion_status = 'submitted' and exists (
+    select 1 from public.reorder_survey_product where survey_campaign_id = new.survey_id
+  ) then
+    update public.q_survey_campaigns
+      set reorder_locked_at = coalesce(reorder_locked_at, now())
+      where id = new.survey_id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists mark_reorder_survey_locked on public.q_survey_responses;
+create trigger mark_reorder_survey_locked
+after insert or update of completion_status on public.q_survey_responses
+for each row execute function public.mark_reorder_survey_locked();
 
 create or replace function public.assert_reorder_survey_product_open_conflict()
 returns trigger
@@ -315,9 +339,11 @@ revoke all on table public.reorder_survey_response_context from public, anon, au
 revoke all on function public.assert_reorder_survey_product_open_conflict() from public;
 revoke all on function public.lock_reorder_survey_structure() from public;
 revoke all on function public.save_reorder_survey(bigint, uuid, jsonb) from public, anon, authenticated;
+revoke all on function public.mark_reorder_survey_locked() from public;
 
 grant select, insert, update, delete on table public.reorder_survey_product to service_role;
 grant select, insert, update, delete on table public.reorder_survey_response_context to service_role;
 grant execute on function public.assert_reorder_survey_product_open_conflict() to service_role;
 grant execute on function public.lock_reorder_survey_structure() to service_role;
 grant execute on function public.save_reorder_survey(bigint, uuid, jsonb) to service_role;
+grant execute on function public.mark_reorder_survey_locked() to service_role;

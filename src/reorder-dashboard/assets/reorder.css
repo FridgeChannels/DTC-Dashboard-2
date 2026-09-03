@@ -5,12 +5,14 @@
   grid-template-columns: var(--reorder-sidebar-width) minmax(0, 1fr);
   background: var(--bg-elev);
   color: var(--ink);
+  min-width: 0;
 }
 
 .reorder-app button,
-.reorder-app input,
+.reorder-app input:not([type="checkbox"]):not([type="radio"]),
 .reorder-app select {
   font: inherit;
+  min-height: 44px;
 }
 
 .reorder-sidebar {
@@ -21,6 +23,8 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-sunken);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .reorder-brand {
@@ -68,6 +72,8 @@
   flex-direction: column;
   gap: 5px;
   padding-top: 10px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .reorder-nav-bottom {
@@ -126,6 +132,7 @@
   margin: 0;
   padding: 0;
   background: var(--bg-elev);
+  min-width: 0;
 }
 
 .reorder-page {
@@ -791,6 +798,232 @@
   display: block;
 }
 
+.reorder-filter-row {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.reorder-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.reorder-filter-row label,
+.reorder-question-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.reorder-filter-row .cfg-input {
+  min-width: 160px;
+}
+
+.reorder-survey-list {
+  display: grid;
+}
+
+.reorder-survey-row {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(6, minmax(86px, auto));
+  align-items: center;
+  gap: 18px;
+  padding: 14px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.reorder-survey-row:hover,
+.reorder-survey-row:focus-visible {
+  background: var(--bg-sunken);
+  outline: none;
+}
+
+.reorder-survey-row > span {
+  display: grid;
+  gap: 2px;
+}
+
+.reorder-survey-row small,
+.reorder-survey-name span {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.reorder-survey-name {
+  display: grid;
+  gap: 4px;
+  color: var(--ink);
+}
+
+.reorder-textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.reorder-field-error {
+  display: block;
+  margin-top: 5px;
+  color: var(--neg);
+  font-size: 12px;
+}
+
+.reorder-survey-editor {
+  width: min(820px, 100%);
+  margin-top: 42px;
+}
+
+.reorder-question-editor {
+  margin: 0 0 30px;
+  border: 0;
+  padding: 0;
+}
+
+.reorder-question-editor legend {
+  margin-bottom: 14px;
+  font-family: var(--font-serif);
+  font-size: 24px;
+}
+
+.reorder-question-controls {
+  display: flex;
+  align-items: end;
+  gap: 18px;
+  margin: 12px 0;
+}
+
+.reorder-question-controls .reorder-inline-check {
+  min-height: 44px;
+  align-items: center;
+}
+
+.reorder-option-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.reorder-option-editor > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.reorder-option-editor .reorder-field-error {
+  grid-column: 1 / -1;
+}
+
+.reorder-question-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.reorder-survey-preview {
+  width: min(430px, 100%);
+  margin-top: 42px;
+  border-radius: 24px;
+  padding: 24px;
+  background: var(--bg-sunken);
+}
+
+.reorder-survey-preview > strong {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 400;
+}
+
+.reorder-survey-preview fieldset {
+  display: grid;
+  gap: 10px;
+  margin: 24px 0 0;
+  border: 0;
+  padding: 0;
+}
+
+.reorder-survey-preview legend {
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.reorder-result-summary {
+  max-width: 620px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+  margin-top: 34px;
+}
+
+.reorder-result-summary div {
+  display: grid;
+  gap: 4px;
+}
+
+.reorder-result-summary strong {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 400;
+}
+
+.reorder-result-summary span,
+.reorder-question-results article > p {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.reorder-question-results {
+  width: min(820px, 100%);
+  display: grid;
+  gap: 40px;
+}
+
+.reorder-question-results h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 25px;
+  font-weight: 400;
+}
+
+.reorder-result-option {
+  position: relative;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 8px;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  overflow: hidden;
+  background: var(--bg-sunken);
+}
+
+.reorder-result-option span,
+.reorder-result-option strong {
+  position: relative;
+  z-index: 1;
+}
+
+.reorder-result-option i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent-soft);
+}
+
 .reorder-consumer-survey span {
   margin-top: 4px;
   color: var(--ink-3);
@@ -814,6 +1047,8 @@
     position: static;
     height: auto;
     padding-bottom: 10px;
+    width: 100%;
+    max-width: 100vw;
   }
 
   .reorder-nav,
@@ -843,6 +1078,14 @@
   .reorder-consumer-preview {
     position: static;
     width: min(390px, 100%);
+  }
+
+  .reorder-survey-row {
+    grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(78px, auto));
+  }
+
+  .reorder-survey-row > span:nth-last-child(-n+3) {
+    display: none;
   }
 }
 
@@ -897,6 +1140,44 @@
 
   .reorder-activation-controls .cfg-input {
     width: 100%;
+  }
+
+  .reorder-filter-row,
+  .reorder-question-controls,
+  .reorder-question-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reorder-filter-row label,
+  .reorder-filter-row .cfg-input {
+    width: 100%;
+  }
+
+  .reorder-survey-row {
+    min-height: 88px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 14px;
+    padding: 12px 8px;
+  }
+
+  .reorder-survey-row > span:nth-child(2),
+  .reorder-survey-row > span:nth-last-child(-n+4) {
+    display: none;
+  }
+
+  .reorder-option-editor > div {
+    grid-template-columns: 1fr;
+  }
+
+  .reorder-option-editor .reorder-text-button {
+    min-height: 44px;
+    justify-self: start;
+  }
+
+  .reorder-result-summary {
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
 }
 

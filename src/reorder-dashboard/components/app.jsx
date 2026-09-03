@@ -4,7 +4,7 @@ const navigation = [
   { label: "Overview", path: "/reorder/overview" },
   { label: "Products & FC", path: "/reorder/products", match: "/reorder/products" },
   { label: "Discounts", path: "/reorder/discounts", match: "/reorder/discounts" },
-  { label: "Surveys", path: "/reorder/surveys", pending: true },
+  { label: "Surveys", path: "/reorder/surveys", match: "/reorder/surveys" },
   { label: "Analytics", path: "/reorder/analytics", pending: true },
 ];
 
@@ -1343,6 +1343,189 @@ function ConsumerPreviewPage({ readOnly }) {
   );
 }
 
+function SurveyStatus({ value, label }) {
+  return <span className={`reorder-status is-${value}`}>{label || humanize(value)}</span>;
+}
+
+function SurveyListPage({ readOnly }) {
+  const [surveys, setSurveys] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [filter, setFilter] = useState({ productId: "", status: "" });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    Promise.all([api("/api/reorder/surveys"), api("/api/reorder/products")])
+      .then(([surveyData, productData]) => {
+        if (!active) return;
+        setSurveys(surveyData.surveys || []);
+        setProducts(productData.products || []);
+      })
+      .catch((err) => active && setError(err.message))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, []);
+  const productMap = new Map(products.map((product) => [product.id, product.product_name]));
+  const visible = surveys.filter((survey) =>
+    (!filter.productId || survey.productIds.includes(filter.productId))
+    && (!filter.status || survey.status === filter.status));
+  const openRow = (event, id) => {
+    if (event.type === "click" || event.key === "Enter" || event.key === " ") navigate(`/reorder/surveys/${id}`);
+  };
+  return (
+    <div className="reorder-page">
+      <PageHeader title="Surveys" action={<button className="btn primary" disabled={readOnly} onClick={() => navigate("/reorder/surveys/new")}>Create survey</button>} />
+      <div className="reorder-filter-row" aria-label="Survey filters">
+        <label><span>Product</span><select className="cfg-input" value={filter.productId} onChange={(event) => setFilter({ ...filter, productId: event.target.value })}><option value="">All Products</option>{products.map((product) => <option key={product.id} value={product.id}>{product.product_name}</option>)}</select></label>
+        <label><span>Status</span><select className="cfg-input" value={filter.status} onChange={(event) => setFilter({ ...filter, status: event.target.value })}><option value="">All statuses</option><option value="draft">Draft</option><option value="scheduled">Scheduled</option><option value="open">Active</option><option value="closed">Ended</option></select></label>
+      </div>
+      {loading && <PageState>Loading Surveys…</PageState>}
+      {error && <PageState tone="error">{error}</PageState>}
+      {!loading && !error && visible.length === 0 && <PageState>No Surveys match these filters.</PageState>}
+      {visible.length > 0 && <div className="reorder-survey-list" role="list">{visible.map((survey) => (
+        <div className="reorder-survey-row" role="link" tabIndex="0" key={survey.id} onClick={(event) => openRow(event, survey.id)} onKeyDown={(event) => openRow(event, survey.id)}>
+          <div className="reorder-survey-name"><strong>{survey.title}</strong><span>{survey.productIds.map((id) => productMap.get(id) || "Product").join(" · ")}</span></div>
+          <span>{survey.questions.length} {survey.questions.length === 1 ? "question" : "questions"}</span>
+          <SurveyStatus value={survey.status} label={survey.statusLabel} />
+          <span><strong>{formatNumber(survey.starts)}</strong><small>Starts</small></span>
+          <span><strong>{formatNumber(survey.completions)}</strong><small>Completions</small></span>
+          <span><strong>{survey.completionRate}%</strong><small>Completion</small></span>
+          <span><strong>{formatDate(survey.updatedAt)}</strong><small>Updated</small></span>
+        </div>
+      ))}</div>}
+    </div>
+  );
+}
+
+function blankSurveyQuestion() {
+  return { type: "single_choice", prompt: "", required: true, options: [{ label: "" }, { label: "" }] };
+}
+
+function SurveyEditorPage({ surveyId, readOnly }) {
+  const [products, setProducts] = useState([]);
+  const [form, setForm] = useState({ title: "", description: "", productIds: [], startsAt: "", endsAt: "", questions: [blankSurveyQuestion()] });
+  const [source, setSource] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [errors, setErrors] = useState([]);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const requests = [api("/api/reorder/products"), ...(surveyId ? [api(`/api/reorder/surveys/${surveyId}`)] : [])];
+    Promise.all(requests).then(([productData, survey]) => {
+      setProducts(productData.products || []);
+      if (survey) {
+        setSource(survey);
+        setForm({
+          title: survey.title,
+          description: survey.description || "",
+          productIds: survey.productIds,
+          startsAt: survey.startsAt ? survey.startsAt.slice(0, 16) : "",
+          endsAt: survey.endsAt ? survey.endsAt.slice(0, 16) : "",
+          questions: survey.questions.map((question) => ({ type: question.type, prompt: question.prompt, required: question.required, options: question.options.map((option) => ({ label: option.label })) })),
+        });
+      }
+    }).catch((err) => setError(err.message)).finally(() => setLoading(false));
+  }, [surveyId]);
+  const fieldError = (field) => errors.find((item) => item.field === field)?.message;
+  const updateQuestion = (index, patch) => setForm((current) => ({ ...current, questions: current.questions.map((question, questionIndex) => questionIndex === index ? { ...question, ...patch } : question) }));
+  const updateOption = (questionIndex, optionIndex, label) => updateQuestion(questionIndex, { options: form.questions[questionIndex].options.map((option, index) => index === optionIndex ? { ...option, label } : option) });
+  const toggleProduct = (id) => setForm({ ...form, productIds: form.productIds.includes(id) ? form.productIds.filter((value) => value !== id) : [...form.productIds, id] });
+  const save = async () => {
+    setSaving(true); setError(""); setErrors([]);
+    try {
+      const payload = { ...form, startsAt: form.startsAt ? new Date(form.startsAt).toISOString() : null, endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : null };
+      const survey = await api(surveyId ? `/api/reorder/surveys/${surveyId}` : "/api/reorder/surveys", { method: surveyId ? "PUT" : "POST", body: JSON.stringify(payload) });
+      navigate(`/reorder/surveys/${survey.id}`);
+    } catch (err) { setError(err.message); setErrors(err.details || []); } finally { setSaving(false); }
+  };
+  if (loading) return <div className="reorder-page"><PageHeader title="Survey" /><PageState>Loading Survey…</PageState></div>;
+  return (
+    <div className="reorder-page">
+      <PageHeader title={surveyId ? (source?.lockedAt ? "Create new Survey version" : "Edit survey") : "Create survey"} action={<button className="btn" onClick={() => navigate(surveyId ? `/reorder/surveys/${surveyId}` : "/reorder/surveys")}>Cancel</button>} />
+      {source?.lockedAt && <PageState>This Survey already has responses. Saving creates a new Draft version and preserves the current Results.</PageState>}
+      {error && <PageState tone="error">{error}</PageState>}
+      <section className="cfg-section">
+        <div className="reorder-section-label">Survey</div>
+        <div className="cfg-form grid grid-2">
+          <label className="cfg-field cfg-field-full"><span className="cfg-label">Survey title</span><input className="cfg-input" maxLength="120" value={form.title} disabled={readOnly} onChange={(event) => setForm({ ...form, title: event.target.value })} />{fieldError("title") && <small className="reorder-field-error">{fieldError("title")}</small>}</label>
+          <label className="cfg-field cfg-field-full"><span className="cfg-label">Short description</span><textarea className="cfg-input reorder-textarea" maxLength="120" value={form.description} disabled={readOnly} onChange={(event) => setForm({ ...form, description: event.target.value })} /><span className="cfg-hint">{form.description.length}/120</span>{fieldError("description") && <small className="reorder-field-error">{fieldError("description")}</small>}</label>
+          <label className="cfg-field"><span className="cfg-label">Start (optional)</span><input className="cfg-input" type="datetime-local" value={form.startsAt} disabled={readOnly} onChange={(event) => setForm({ ...form, startsAt: event.target.value })} /></label>
+          <label className="cfg-field"><span className="cfg-label">End (optional)</span><input className="cfg-input" type="datetime-local" value={form.endsAt} disabled={readOnly} onChange={(event) => setForm({ ...form, endsAt: event.target.value })} />{fieldError("endsAt") && <small className="reorder-field-error">{fieldError("endsAt")}</small>}</label>
+        </div>
+      </section>
+      <section className="cfg-section">
+        <div className="reorder-section-label">Eligible Products</div>
+        <div className="reorder-product-options">{products.map((product) => <label key={product.id}><input type="checkbox" checked={form.productIds.includes(product.id)} disabled={readOnly} onChange={() => toggleProduct(product.id)} /><span>{product.product_name}<small>{product.asin}</small></span></label>)}</div>
+        {fieldError("productIds") && <small className="reorder-field-error">{fieldError("productIds")}</small>}
+      </section>
+      <section className="reorder-survey-editor">
+        <div className="reorder-section-label">Questions</div>
+        {form.questions.map((question, questionIndex) => <fieldset className="reorder-question-editor" key={questionIndex}>
+          <legend>Question {questionIndex + 1}</legend>
+          <label className="cfg-field"><span className="cfg-label">Question</span><input className="cfg-input" maxLength="80" value={question.prompt} disabled={readOnly} onChange={(event) => updateQuestion(questionIndex, { prompt: event.target.value })} />{fieldError(`questions[${questionIndex}].prompt`) && <small className="reorder-field-error">{fieldError(`questions[${questionIndex}].prompt`)}</small>}</label>
+          <div className="reorder-question-controls"><label><span>Type</span><select className="cfg-input" value={question.type} disabled={readOnly} onChange={(event) => updateQuestion(questionIndex, { type: event.target.value })}><option value="single_choice">Single choice</option><option value="multiple_choice">Multiple choice</option></select></label><label className="reorder-inline-check"><input type="checkbox" checked={question.required} disabled={readOnly} onChange={(event) => updateQuestion(questionIndex, { required: event.target.checked })} /> Required</label></div>
+          <div className="reorder-option-editor">{question.options.map((option, optionIndex) => <div key={optionIndex}><input className="cfg-input" aria-label={`Question ${questionIndex + 1} option ${optionIndex + 1}`} value={option.label} disabled={readOnly} onChange={(event) => updateOption(questionIndex, optionIndex, event.target.value)} /><button className="reorder-text-button" disabled={readOnly || question.options.length <= 2} onClick={() => updateQuestion(questionIndex, { options: question.options.filter((_, index) => index !== optionIndex) })}>Remove</button>{fieldError(`questions[${questionIndex}].options[${optionIndex}].label`) && <small className="reorder-field-error">{fieldError(`questions[${questionIndex}].options[${optionIndex}].label`)}</small>}</div>)}</div>
+          <div className="reorder-question-footer"><button className="btn" disabled={readOnly || question.options.length >= 5} onClick={() => updateQuestion(questionIndex, { options: [...question.options, { label: "" }] })}>Add option</button><button className="reorder-text-button" disabled={readOnly || form.questions.length <= 1} onClick={() => setForm({ ...form, questions: form.questions.filter((_, index) => index !== questionIndex) })}>Remove question</button></div>
+        </fieldset>)}
+        <button className="btn" disabled={readOnly || form.questions.length >= 3} onClick={() => setForm({ ...form, questions: [...form.questions, blankSurveyQuestion()] })}>Add question</button>
+      </section>
+      {previewing && <section className="reorder-survey-preview" aria-label="Survey preview"><div className="reorder-section-label">Consumer Preview</div><strong>{form.title || "Untitled Survey"}</strong><p>{form.description}</p>{form.questions.map((question, index) => <fieldset key={index}><legend>{question.prompt || `Question ${index + 1}`}</legend>{question.options.map((option, optionIndex) => <label key={optionIndex}><input disabled type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={`preview-${index}`} /> {option.label || `Option ${optionIndex + 1}`}</label>)}</fieldset>)}</section>}
+      <div className="reorder-editor-actions"><button className="btn" type="button" onClick={() => setPreviewing((value) => !value)}>{previewing ? "Hide Preview" : "Preview"}</button><button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Saving…" : source?.lockedAt ? "Save as new version" : "Save survey"}</button></div>
+    </div>
+  );
+}
+
+function SurveyDetailPage({ surveyId, readOnly }) {
+  const [result, setResult] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [batches, setBatches] = useState([]);
+  const [filter, setFilter] = useState({ productId: "", batchId: "", from: "", to: "" });
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
+  const load = async (next = filter) => {
+    setWorking(true); setError("");
+    const params = new URLSearchParams();
+    if (next.productId) params.set("product_id", next.productId);
+    if (next.batchId) params.set("batch_id", next.batchId);
+    if (next.from) params.set("from", new Date(`${next.from}T00:00:00`).toISOString());
+    if (next.to) params.set("to", new Date(`${next.to}T23:59:59.999`).toISOString());
+    try { setResult(await api(`/api/reorder/surveys/${surveyId}/results?${params}`)); }
+    catch (err) { setError(err.message); }
+    finally { setWorking(false); }
+  };
+  useEffect(() => {
+    Promise.all([api("/api/reorder/products"), api("/api/reorder/orders-batches")])
+      .then(([productData, fulfillment]) => { setProducts(productData.products || []); setBatches(fulfillment.batches || []); return load(); })
+      .catch((err) => { setError(err.message); setWorking(false); });
+  }, [surveyId]);
+  const transition = async (action) => {
+    setWorking(true); setError("");
+    try { await api(`/api/reorder/surveys/${surveyId}/${action}`, { method: "POST" }); await load(); }
+    catch (err) { setError(err.message); setWorking(false); }
+  };
+  const exportCsv = () => {
+    const query = new URLSearchParams();
+    if (filter.productId) query.set("product_id", filter.productId);
+    if (filter.batchId) query.set("batch_id", filter.batchId);
+    if (filter.from) query.set("from", new Date(`${filter.from}T00:00:00`).toISOString());
+    if (filter.to) query.set("to", new Date(`${filter.to}T23:59:59.999`).toISOString());
+    window.location.href = `/api/reorder/surveys/${surveyId}/results.csv?${query}`;
+  };
+  if (!result && working) return <div className="reorder-page"><PageHeader title="Survey" /><PageState>Loading Results…</PageState></div>;
+  const survey = result?.survey;
+  if (!survey) return <div className="reorder-page"><PageHeader title="Survey" />{error && <PageState tone="error">{error}</PageState>}</div>;
+  const productMap = new Map(products.map((product) => [product.id, product.product_name]));
+  const actions = <div className="reorder-header-actions"><button className="btn" onClick={exportCsv}>Export responses</button>{!readOnly && (survey.status === "draft" || survey.lockedAt) && <button className="btn" onClick={() => navigate(`/reorder/surveys/${survey.id}/edit`)}>{survey.lockedAt ? "New version" : "Edit"}</button>}{!readOnly && survey.status === "draft" && survey.startsAt && <button className="btn" disabled={working} onClick={() => transition("schedule")}>Schedule</button>}{!readOnly && ["draft", "scheduled"].includes(survey.status) && <button className="btn primary" disabled={working} onClick={() => transition("open")}>Publish</button>}{!readOnly && ["scheduled", "open"].includes(survey.status) && <button className="btn" disabled={working} onClick={() => transition("close")}>End</button>}</div>;
+  return <div className="reorder-page">
+    <PageHeader title={survey.title} action={actions} />
+    {error && <PageState tone="error">{error}</PageState>}
+    <section className="reorder-flat-section"><div className="reorder-section-label">Survey Overview</div><dl className="reorder-detail-grid"><div><dt>Status</dt><dd><SurveyStatus value={survey.status} label={survey.statusLabel} /></dd></div><div><dt>Version</dt><dd>{survey.version}</dd></div><div className="is-wide"><dt>Eligible Products</dt><dd>{survey.productIds.map((id) => productMap.get(id) || id).join(" · ")}</dd></div><div><dt>Active Period</dt><dd>{formatDate(survey.startsAt)} – {formatDate(survey.endsAt)}</dd></div><div><dt>Questions</dt><dd>{survey.questions.length}</dd></div></dl><div className="reorder-result-summary"><div><strong>{result.starts}</strong><span>Starts</span></div><div><strong>{result.completions}</strong><span>Completions</span></div><div><strong>{result.completionRate}%</strong><span>Completion Rate</span></div></div></section>
+    <section className="reorder-flat-section"><div className="reorder-section-label">Results filters</div><div className="reorder-filter-row"><label><span>From</span><input className="cfg-input" type="date" value={filter.from} onChange={(event) => setFilter({ ...filter, from: event.target.value })} /></label><label><span>To</span><input className="cfg-input" type="date" value={filter.to} onChange={(event) => setFilter({ ...filter, to: event.target.value })} /></label><label><span>Product</span><select className="cfg-input" value={filter.productId} onChange={(event) => setFilter({ ...filter, productId: event.target.value, batchId: "" })}><option value="">All Products</option>{survey.productIds.map((id) => <option key={id} value={id}>{productMap.get(id) || "Product"}</option>)}</select></label><label><span>FC Batch</span><select className="cfg-input" value={filter.batchId} onChange={(event) => setFilter({ ...filter, batchId: event.target.value })}><option value="">All Batches</option>{batches.filter((batch) => !filter.productId || batch.product_version_id === filter.productId).map((batch) => <option key={batch.id} value={batch.id}>{batch.batch_code}</option>)}</select></label><button className="btn" disabled={working} onClick={() => load(filter)}>Apply</button></div></section>
+    <section className="reorder-flat-section"><div className="reorder-section-label">Question Results</div><span className="reorder-sr-only">Each option shows its Response count and Percentage.</span><div className="reorder-question-results">{result.questions.map((question, index) => <article key={question.id}><h2>{index + 1}. {question.prompt}</h2><p>{humanize(question.type)} · {question.respondents} respondents</p>{question.options.map((option) => <div className="reorder-result-option" key={option.id}><span>{option.label}</span><strong>{option.responses} · {option.percentage}%</strong><i style={{ width: `${Math.min(option.percentage, 100)}%` }} /></div>)}</article>)}</div></section>
+  </div>;
+}
+
 function PendingPage({ title }) {
   return <div className="reorder-page"><PageHeader title={title} /><PageState>This module is queued after Products and FC Order allocation.</PageState></div>;
 }
@@ -1363,7 +1546,12 @@ function resolvePage(path, readOnly) {
   if (path === "/reorder/discounts/new") return <AddDiscountPage readOnly={readOnly} />;
   const discountMatch = /^\/reorder\/discounts\/([0-9a-f-]{36})$/i.exec(path);
   if (discountMatch) return <DiscountDetailPage discountId={discountMatch[1]} readOnly={readOnly} />;
-  if (path === "/reorder/surveys") return <PendingPage title="Surveys" />;
+  if (path === "/reorder/surveys") return <SurveyListPage readOnly={readOnly} />;
+  if (path === "/reorder/surveys/new") return <SurveyEditorPage readOnly={readOnly} />;
+  const surveyEditMatch = /^\/reorder\/surveys\/([0-9a-f-]{36})\/edit$/i.exec(path);
+  if (surveyEditMatch) return <SurveyEditorPage surveyId={surveyEditMatch[1]} readOnly={readOnly} />;
+  const surveyMatch = /^\/reorder\/surveys\/([0-9a-f-]{36})$/i.exec(path);
+  if (surveyMatch) return <SurveyDetailPage surveyId={surveyMatch[1]} readOnly={readOnly} />;
   if (path === "/reorder/analytics") return <PendingPage title="Analytics" />;
   if (path === "/reorder/settings/data-sources") return <PendingPage title="Data sources" />;
   if (path === "/reorder/preview") return <ConsumerPreviewPage readOnly={readOnly} />;

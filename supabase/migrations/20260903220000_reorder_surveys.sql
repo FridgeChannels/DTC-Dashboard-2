@@ -76,6 +76,127 @@ create index if not exists reorder_survey_response_filter_idx
   on public.reorder_survey_response_context
   (customer_id, survey_campaign_id, product_version_id, batch_id, created_at desc);
 
+create or replace function public.save_reorder_survey(
+  p_customer_id bigint,
+  p_campaign_id uuid,
+  p_payload jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_id uuid;
+  source_row public.q_survey_campaigns%rowtype;
+  version_group uuid;
+  version_number integer;
+  question_item jsonb;
+  option_item jsonb;
+  question_id uuid;
+  product_id uuid;
+begin
+  if p_campaign_id is not null then
+    select * into source_row
+    from public.q_survey_campaigns
+    where id = p_campaign_id and customer_id = p_customer_id
+    for update;
+    if not found or source_row.reorder_version_group_id is null then
+      raise exception 'Reorder Survey not found' using errcode = 'P0002';
+    end if;
+    if source_row.status not in ('draft', 'scheduled') then
+      raise exception 'Only Draft or Scheduled Reorder Surveys can be edited' using errcode = '55000';
+    end if;
+  end if;
+
+  if p_campaign_id is not null and exists (
+    select 1 from public.q_survey_responses
+    where survey_id = p_campaign_id and completion_status = 'submitted'
+  ) then
+    target_id := gen_random_uuid();
+    version_group := source_row.reorder_version_group_id;
+    select coalesce(max(reorder_version_number), 0) + 1 into version_number
+    from public.q_survey_campaigns
+    where customer_id = p_customer_id and reorder_version_group_id = version_group;
+  elsif p_campaign_id is not null then
+    target_id := p_campaign_id;
+    version_group := source_row.reorder_version_group_id;
+    version_number := source_row.reorder_version_number;
+    delete from public.reorder_survey_product where survey_campaign_id = target_id;
+    delete from public.q_survey_questions where survey_campaign_id = target_id;
+  else
+    target_id := gen_random_uuid();
+    version_group := gen_random_uuid();
+    version_number := 1;
+  end if;
+
+  if target_id <> coalesce(p_campaign_id, '00000000-0000-0000-0000-000000000000'::uuid) then
+    insert into public.q_survey_campaigns (
+      id, customer_id, name, survey_name, user_facing_title,
+      user_facing_description, campaign_goal, survey_purpose, scope_type,
+      audience_type, status, start_type, start_at, end_type, end_at,
+      question_order_policy, max_questions_per_user, allow_skip,
+      one_response_per_user, frequency_cap, reorder_version_group_id,
+      reorder_version_number, reorder_previous_version_id
+    ) values (
+      target_id, p_customer_id, btrim(p_payload->>'title'), btrim(p_payload->>'title'),
+      btrim(p_payload->>'title'), nullif(btrim(p_payload->>'description'), ''),
+      'other', 'other', 'all_users', 'all_users', 'draft',
+      case when nullif(p_payload->>'startsAt', '') is null then 'start_now' else 'start_later' end,
+      nullif(p_payload->>'startsAt', '')::timestamptz,
+      case when nullif(p_payload->>'endsAt', '') is null then 'no_end_date' else 'end_at_specific_time' end,
+      nullif(p_payload->>'endsAt', '')::timestamptz,
+      'fixed_order', jsonb_array_length(p_payload->'questions'), false, true,
+      'once_per_user', version_group, version_number, p_campaign_id
+    );
+  else
+    update public.q_survey_campaigns set
+      name = btrim(p_payload->>'title'),
+      survey_name = btrim(p_payload->>'title'),
+      user_facing_title = btrim(p_payload->>'title'),
+      user_facing_description = nullif(btrim(p_payload->>'description'), ''),
+      start_type = case when nullif(p_payload->>'startsAt', '') is null then 'start_now' else 'start_later' end,
+      start_at = nullif(p_payload->>'startsAt', '')::timestamptz,
+      end_type = case when nullif(p_payload->>'endsAt', '') is null then 'no_end_date' else 'end_at_specific_time' end,
+      end_at = nullif(p_payload->>'endsAt', '')::timestamptz,
+      max_questions_per_user = jsonb_array_length(p_payload->'questions'),
+      updated_at = now()
+    where id = target_id and customer_id = p_customer_id;
+  end if;
+
+  for product_id in select jsonb_array_elements_text(p_payload->'productIds')::uuid loop
+    insert into public.reorder_survey_product (survey_campaign_id, product_version_id, customer_id)
+    values (target_id, product_id, p_customer_id);
+  end loop;
+
+  for question_item in select value from jsonb_array_elements(p_payload->'questions') with ordinality loop
+    question_id := gen_random_uuid();
+    insert into public.q_survey_questions (
+      id, survey_campaign_id, question_text, question_type, display_order,
+      is_required, allow_skip, answer_policy, status
+    ) values (
+      question_id, target_id, btrim(question_item->>'prompt'), question_item->>'type',
+      (select count(*) from public.q_survey_questions where survey_campaign_id = target_id),
+      coalesce((question_item->>'required')::boolean, false),
+      not coalesce((question_item->>'required')::boolean, false), 'once_per_user', 'active'
+    );
+    for option_item in select value from jsonb_array_elements(question_item->'options') with ordinality loop
+      insert into public.q_survey_question_options (
+        survey_question_id, label, value, display_order, is_other_option,
+        allow_text_input, other_text_required, status
+      ) values (
+        question_id, btrim(option_item->>'label'),
+        'option_' || (select count(*) + 1 from public.q_survey_question_options where survey_question_id = question_id),
+        (select count(*) from public.q_survey_question_options where survey_question_id = question_id),
+        false, false, false, 'active'
+      );
+    end loop;
+  end loop;
+
+  return target_id;
+end;
+$$;
+
 create or replace function public.assert_reorder_survey_product_open_conflict()
 returns trigger
 language plpgsql
@@ -193,8 +314,10 @@ revoke all on table public.reorder_survey_product from public, anon, authenticat
 revoke all on table public.reorder_survey_response_context from public, anon, authenticated;
 revoke all on function public.assert_reorder_survey_product_open_conflict() from public;
 revoke all on function public.lock_reorder_survey_structure() from public;
+revoke all on function public.save_reorder_survey(bigint, uuid, jsonb) from public, anon, authenticated;
 
 grant select, insert, update, delete on table public.reorder_survey_product to service_role;
 grant select, insert, update, delete on table public.reorder_survey_response_context to service_role;
 grant execute on function public.assert_reorder_survey_product_open_conflict() to service_role;
 grant execute on function public.lock_reorder_survey_structure() to service_role;
+grant execute on function public.save_reorder_survey(bigint, uuid, jsonb) to service_role;

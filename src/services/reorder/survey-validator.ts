@@ -80,7 +80,7 @@ export function validateReorderSurveyDraft(input: ReorderSurveyDraft): ReorderSu
     }
     const prompt = typeof question.prompt === "string" ? question.prompt.trim() : "";
     if (!prompt) issues.push(issue("required", `${prefix}.prompt`, "Question text is required."));
-    if (prompt.length > 160) issues.push(issue("too_long", `${prefix}.prompt`, "Question text must be 160 characters or fewer."));
+    if (prompt.length > 80) issues.push(issue("too_long", `${prefix}.prompt`, "Question text must be 80 characters or fewer."));
     if (!Array.isArray(question.options) || question.options.length < 2 || question.options.length > 5) {
       issues.push(issue("option_count", `${prefix}.options`, "Add between two and five options."));
     }
@@ -110,4 +110,3 @@ export function validateReorderSurveyDraft(input: ReorderSurveyDraft): ReorderSu
 
   return issues;
 }
-

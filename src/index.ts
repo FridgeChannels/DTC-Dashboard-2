@@ -103,6 +103,12 @@ import {
   handleUpdateReorderDiscount,
   handleListReorderProducts,
   handlePutReorderAmazonSetup,
+  handleCreateReorderSurvey,
+  handleGetReorderSurvey,
+  handleGetReorderSurveyResults,
+  handleListReorderSurveys,
+  handleTransitionReorderSurvey,
+  handleUpdateReorderSurvey,
 } from "./api/reorder.js";
 import {
   handleGetBrandCollectConfig,
@@ -251,6 +257,43 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && pathname === "/api/reorder/products/import") {
     await handleImportReorderProducts(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/reorder/surveys") {
+    await handleListReorderSurveys(req, res, url);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/reorder/surveys") {
+    await handleCreateReorderSurvey(req, res);
+    return;
+  }
+
+  const reorderSurveyResultsMatch = /^\/api\/reorder\/surveys\/([^/]+)\/results(\.csv)?$/.exec(pathname);
+  if (req.method === "GET" && reorderSurveyResultsMatch) {
+    await handleGetReorderSurveyResults(req, res, reorderSurveyResultsMatch[1], url, Boolean(reorderSurveyResultsMatch[2]));
+    return;
+  }
+
+  const reorderSurveyTransitionMatch = /^\/api\/reorder\/surveys\/([^/]+)\/(schedule|open|close)$/.exec(pathname);
+  if (req.method === "POST" && reorderSurveyTransitionMatch) {
+    await handleTransitionReorderSurvey(
+      req,
+      res,
+      reorderSurveyTransitionMatch[1],
+      reorderSurveyTransitionMatch[2] as "schedule" | "open" | "close",
+    );
+    return;
+  }
+
+  const reorderSurveyMatch = /^\/api\/reorder\/surveys\/([^/]+)$/.exec(pathname);
+  if (req.method === "GET" && reorderSurveyMatch) {
+    await handleGetReorderSurvey(req, res, reorderSurveyMatch[1]);
+    return;
+  }
+  if (req.method === "PUT" && reorderSurveyMatch) {
+    await handleUpdateReorderSurvey(req, res, reorderSurveyMatch[1]);
     return;
   }
 

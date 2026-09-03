@@ -40,6 +40,16 @@ import {
   resolvePublishedReorderExperience,
 } from "../services/reorder-consumer.service.js";
 import {
+  ReorderSurveyValidationError,
+  exportAnonymousSurveyResponses,
+  getReorderSurvey,
+  getReorderSurveyResults,
+  listReorderSurveys,
+  saveReorderSurvey,
+  transitionReorderSurvey,
+} from "../services/reorder/survey-service.js";
+import type { ReorderSurveyDraft } from "../services/reorder/survey-contract.js";
+import {
   assertRequestCanWriteConfig,
   getRequestConfigCustomerId,
   getRequestCustomerId,
@@ -52,6 +62,10 @@ function handleError(res: ServerResponse, error: unknown, fallback: string): voi
     return;
   }
   if (error instanceof ReorderValidationError) {
+    if (error instanceof ReorderSurveyValidationError) {
+      json(res, error.statusCode, { error: error.message, errors: error.issues });
+      return;
+    }
     if (error instanceof ConsumerPublishValidationError) {
       json(res, error.statusCode, { error: error.message, errors: error.errors });
       return;
@@ -61,6 +75,111 @@ function handleError(res: ServerResponse, error: unknown, fallback: string): voi
   }
   console.error(`[reorder] ${fallback}`, error);
   errorJson(res, 500, fallback);
+}
+
+function surveyFilter(url: URL) {
+  return {
+    productId: url.searchParams.get("product_id"),
+    batchId: url.searchParams.get("batch_id"),
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+  };
+}
+
+export async function handleListReorderSurveys(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+  try {
+    const customerId = await getRequestConfigCustomerId(req, res);
+    json(res, 200, { surveys: await listReorderSurveys(customerId, {
+      productId: url.searchParams.get("product_id"),
+      status: url.searchParams.get("status"),
+    }) });
+  } catch (error) {
+    handleError(res, error, "Failed to load Surveys");
+  }
+}
+
+export async function handleCreateReorderSurvey(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const input = await readJsonBody<ReorderSurveyDraft>(req);
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    json(res, 201, await saveReorderSurvey(customerId, null, input));
+  } catch (error) {
+    handleError(res, error, "Failed to create Survey");
+  }
+}
+
+export async function handleGetReorderSurvey(req: IncomingMessage, res: ServerResponse, rawId: string): Promise<void> {
+  try {
+    const customerId = await getRequestConfigCustomerId(req, res);
+    const survey = await getReorderSurvey(customerId, decodeUuid(rawId, "Survey ID"));
+    if (!survey) return errorJson(res, 404, "Survey not found");
+    json(res, 200, survey);
+  } catch (error) {
+    handleError(res, error, "Failed to load Survey");
+  }
+}
+
+export async function handleUpdateReorderSurvey(req: IncomingMessage, res: ServerResponse, rawId: string): Promise<void> {
+  try {
+    const input = await readJsonBody<ReorderSurveyDraft>(req);
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    const survey = await saveReorderSurvey(customerId, decodeUuid(rawId, "Survey ID"), input);
+    if (!survey) return errorJson(res, 404, "Survey not found");
+    json(res, 200, survey);
+  } catch (error) {
+    handleError(res, error, "Failed to update Survey");
+  }
+}
+
+export async function handleTransitionReorderSurvey(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawId: string,
+  action: "schedule" | "open" | "close",
+): Promise<void> {
+  try {
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    const survey = await transitionReorderSurvey(customerId, decodeUuid(rawId, "Survey ID"), action);
+    if (!survey) return errorJson(res, 404, "Survey not found");
+    json(res, 200, survey);
+  } catch (error) {
+    handleError(res, error, `Failed to ${action} Survey`);
+  }
+}
+
+export async function handleGetReorderSurveyResults(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawId: string,
+  url: URL,
+  csv = false,
+): Promise<void> {
+  try {
+    const customerId = await getRequestConfigCustomerId(req, res);
+    const result = await getReorderSurveyResults(customerId, decodeUuid(rawId, "Survey ID"), surveyFilter(url));
+    if (!result) return errorJson(res, 404, "Survey not found");
+    if (csv) {
+      const body = exportAnonymousSurveyResponses({
+        version: result.survey.version,
+        contexts: result.contexts,
+        responses: result.responses,
+      });
+      res.writeHead(200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="reorder-survey-${result.survey.id}-responses.csv"`,
+        "Cache-Control": "private, no-store",
+      });
+      res.end(body);
+      return;
+    }
+    const { contexts: _contexts, responses: _responses, ...publicResult } = result;
+    json(res, 200, publicResult);
+  } catch (error) {
+    handleError(res, error, "Failed to load Survey results");
+  }
 }
 
 export async function handlePreviewReorderConsumerExperience(

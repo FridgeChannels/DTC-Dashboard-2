@@ -123,7 +123,7 @@ interface ReorderSurveyDraft {
 2. Run the two Survey test files; expect failures because files/schema do not exist.
 3. Add the narrow binding/version migration without altering the legacy status constraint.
 4. Implement pure validation with field-addressable issues such as `questions[1].options[0].label`.
-5. Run focused tests; expect PASS.
+5. Keep question text within the existing shared Survey schema's 80-character limit; run focused tests and expect PASS.
 6. Commit: `feat: add Reorder survey contracts`.
 
 ### Task 2: Build Reorder Survey service, API, results, and export

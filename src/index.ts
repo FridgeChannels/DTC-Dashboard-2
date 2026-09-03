@@ -109,6 +109,8 @@ import {
   handleListReorderSurveys,
   handleTransitionReorderSurvey,
   handleUpdateReorderSurvey,
+  handleStartPublishedReorderSurvey,
+  handleSubmitPublishedReorderSurvey,
 } from "./api/reorder.js";
 import {
   handleGetBrandCollectConfig,
@@ -210,6 +212,16 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/consumer/me") {
     await handleConsumerMe(req, res);
+    return;
+  }
+
+  const reorderConsumerSurveyMatch = /^\/api\/reorder\/consumer\/([^/]+)\/surveys\/([^/]+)\/(start|submit)$/.exec(pathname);
+  if (req.method === "POST" && reorderConsumerSurveyMatch) {
+    if (reorderConsumerSurveyMatch[3] === "start") {
+      await handleStartPublishedReorderSurvey(res, reorderConsumerSurveyMatch[1], reorderConsumerSurveyMatch[2]);
+    } else {
+      await handleSubmitPublishedReorderSurvey(req, res, reorderConsumerSurveyMatch[1], reorderConsumerSurveyMatch[2]);
+    }
     return;
   }
 

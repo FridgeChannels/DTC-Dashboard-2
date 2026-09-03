@@ -14,6 +14,7 @@ import {
 } from "../reorder/consumer-experience.js";
 import { ReorderValidationError } from "../reorder/amazon-url.js";
 import { listReorderDiscounts } from "./reorder-discount.service.js";
+import { listReorderSurveys } from "./reorder/survey-service.js";
 
 export class ConsumerPublishValidationError extends ReorderValidationError {
   constructor(readonly errors: ConsumerPublishError[]) {
@@ -40,6 +41,9 @@ async function loadBatchExperience(customerId: number, batchId: string, selected
   const account = product
     ? await amazonRepo.findSellingAccount(customerId, product.selling_account_id)
     : null;
+  const surveys = product
+    ? await listReorderSurveys(customerId, { productId: product.id, status: "open" })
+    : [];
   const availableDiscounts = discounts.filter((discount) =>
     ["draft", "scheduled", "active"].includes(discount.status)
     && discount.products.some((candidate) => candidate.id === batch.product_version_id)
@@ -93,8 +97,14 @@ async function loadBatchExperience(customerId: number, batchId: string, selected
       sellingAccountId: product.selling_account_id,
     } : null,
     discounts: mappedDiscounts,
-    survey: null,
-    surveyConflictCount: 0,
+    survey: surveys[0] ? {
+      id: surveys[0].id,
+      title: surveys[0].title,
+      description: surveys[0].description,
+      status: surveys[0].status,
+      questions: surveys[0].questions,
+    } : null,
+    surveyConflictCount: surveys.length,
   };
   return { batch, input, availableDiscounts };
 }
@@ -185,7 +195,7 @@ export async function resolvePublishedReorderExperience(fcIdValue: string) {
       featuredDiscount: null,
       availableSavings: [],
       showDiscounts: false,
-      survey: snapshot.survey,
+      survey: null,
     };
   }
   const resolvedDiscounts = [];
@@ -202,6 +212,9 @@ export async function resolvePublishedReorderExperience(fcIdValue: string) {
     }
   }
   const savings = orderConsumerDiscounts(resolvedDiscounts);
+  const survey = snapshot.survey && !await consumerRepo.hasCompletedSurvey(unit.customer_id, snapshot.survey.id, fcId)
+    ? snapshot.survey
+    : null;
   return {
     state: snapshot.product?.sellerOfferAvailable ? "ready" : "product_unavailable",
     fcId,
@@ -213,8 +226,60 @@ export async function resolvePublishedReorderExperience(fcIdValue: string) {
     featuredDiscount: savings.length > 1 ? savings.find((discount) => discount.isFeatured) ?? null : savings[0] ?? null,
     availableSavings: savings,
     showDiscounts: savings.length > 0,
-    survey: snapshot.survey,
+    survey,
   };
+}
+
+export function validatePublishedSurveyAnswers(
+  survey: NonNullable<Snapshot["survey"]>,
+  value: unknown,
+): ConsumerPublishError[] {
+  const errors: ConsumerPublishError[] = [];
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [{ code: "answers_invalid", field: "answers", message: "Survey answers must be an object." }];
+  }
+  const answers = value as Record<string, unknown>;
+  for (const question of survey.questions) {
+    const raw = answers[question.id];
+    const selected = Array.isArray(raw) ? raw.map(String) : raw == null || raw === "" ? [] : [String(raw)];
+    const allowed = new Set(question.options.map((option) => option.id));
+    if (!selected.length && question.required) {
+      errors.push({ code: "answer_required", field: `answers.${question.id}`, message: "Answer this question." });
+      continue;
+    }
+    if (!selected.length) continue;
+    if (question.type === "single_choice" && selected.length !== 1) {
+      errors.push({ code: "single_choice_required", field: `answers.${question.id}`, message: "Choose one option." });
+    }
+    if (new Set(selected).size !== selected.length || selected.some((id) => !allowed.has(id))) {
+      errors.push({ code: "option_invalid", field: `answers.${question.id}`, message: "Choose only available options." });
+    }
+  }
+  for (const questionId of Object.keys(answers)) {
+    if (!survey.questions.some((question) => question.id === questionId)) {
+      errors.push({ code: "question_invalid", field: `answers.${questionId}`, message: "This question is not part of the published Survey." });
+    }
+  }
+  return errors;
+}
+
+export async function startPublishedReorderSurvey(fcIdValue: string, surveyId: string) {
+  const experience = await resolvePublishedReorderExperience(fcIdValue);
+  if (!experience || experience.state !== "ready" || !experience.survey || experience.survey.id !== surveyId) return null;
+  return consumerRepo.startSurveyResponse(fcIdValue.trim().toUpperCase(), surveyId);
+}
+
+export async function submitPublishedReorderSurvey(
+  fcIdValue: string,
+  surveyId: string,
+  responseId: string,
+  answers: unknown,
+) {
+  const experience = await resolvePublishedReorderExperience(fcIdValue);
+  if (!experience || experience.state !== "ready" || !experience.survey || experience.survey.id !== surveyId) return null;
+  const errors = validatePublishedSurveyAnswers(experience.survey, answers);
+  if (errors.length) throw new ConsumerPublishValidationError(errors);
+  return consumerRepo.submitSurveyResponse(fcIdValue.trim().toUpperCase(), surveyId, responseId, answers as Record<string, unknown>);
 }
 
 export async function markPublishedClaimCodeCopied(fcIdValue: string, discountId: string) {

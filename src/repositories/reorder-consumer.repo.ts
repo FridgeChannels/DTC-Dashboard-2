@@ -83,3 +83,38 @@ export async function publishConsumerExperience(input: {
   throwIfError(error);
   return data as ReorderConsumerPublicationRow;
 }
+
+export async function hasCompletedSurvey(customerId: number, surveyId: string, fcId: string): Promise<boolean> {
+  const { data, error } = await getSupabase().rpc("has_completed_reorder_survey", {
+    p_customer_id: customerId,
+    p_survey_campaign_id: surveyId,
+    p_fc_id: fcId,
+  });
+  throwIfError(error);
+  return Boolean(data);
+}
+
+export async function startSurveyResponse(fcId: string, surveyId: string) {
+  const { data, error } = await getSupabase().rpc("start_reorder_survey_response", {
+    p_fc_id: fcId,
+    p_survey_campaign_id: surveyId,
+  });
+  throwIfError(error);
+  return data as { responseId: string; startedAt: string; completed: boolean };
+}
+
+export async function submitSurveyResponse(
+  fcId: string,
+  surveyId: string,
+  responseId: string,
+  answers: Record<string, unknown>,
+) {
+  const { data, error } = await getSupabase().rpc("submit_reorder_survey_response", {
+    p_fc_id: fcId,
+    p_survey_campaign_id: surveyId,
+    p_anonymous_response_id: responseId,
+    p_answers: answers,
+  });
+  throwIfError(error);
+  return data as { submitted: boolean; submittedAt: string };
+}

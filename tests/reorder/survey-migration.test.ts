@@ -34,5 +34,12 @@ describe("Reorder Survey migration", () => {
     expect(sql).toContain("enable row level security");
     expect(sql).toContain("revoke all on table public.reorder_survey_product");
   });
-});
 
+  it("starts and submits anonymous consumer responses idempotently", () => {
+    expect(sql).toContain("has_completed_reorder_survey");
+    expect(sql).toContain("start_reorder_survey_response");
+    expect(sql).toContain("submit_reorder_survey_response");
+    expect(sql).toContain("digest(");
+    expect(sql).toContain("fc_id_hash");
+  });
+});

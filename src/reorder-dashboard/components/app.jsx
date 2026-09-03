@@ -1263,7 +1263,7 @@ function ConsumerPreviewCanvas({ snapshot, availableDiscounts }) {
       {ordered.length > 1 && <button className="reorder-consumer-link" onClick={() => setShowAll((value) => !value)}>{showAll ? "Show Featured saving" : `View all ${ordered.length} savings`}</button>}
       {snapshot.product.sellerOfferAvailable ? <a className="reorder-consumer-primary" href={snapshot.product.attributionUrl} target="_blank" rel="noreferrer">Reorder on Amazon</a> : <p className="reorder-consumer-unavailable">This Seller Offer is currently unavailable.</p>}
       <a className="reorder-consumer-secondary" href={snapshot.fallback.url || "#"} target="_blank" rel="noreferrer">Visit Seller Storefront</a>
-      {snapshot.survey && <div className="reorder-consumer-survey"><strong>{snapshot.survey.title}</strong><span>{snapshot.survey.description}</span></div>}
+      {snapshot.survey && <div className="reorder-consumer-survey"><strong>{snapshot.survey.title}</strong><span>{snapshot.survey.description}</span>{snapshot.survey.questions.map((question) => <fieldset key={question.id}><legend>{question.prompt}</legend>{question.options.map((option) => <label key={option.id}><input disabled type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={`consumer-preview-${question.id}`} /> {option.label}</label>)}</fieldset>)}</div>}
     </div>
   );
 }

@@ -798,6 +798,28 @@
   display: block;
 }
 
+.reorder-consumer-survey fieldset {
+  display: grid;
+  gap: 7px;
+  margin: 15px 0 0;
+  border: 0;
+  padding: 0;
+}
+
+.reorder-consumer-survey legend {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reorder-consumer-survey label {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+
 .reorder-filter-row {
   display: flex;
   align-items: end;

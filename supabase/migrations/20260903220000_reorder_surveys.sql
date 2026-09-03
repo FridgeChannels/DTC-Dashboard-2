@@ -221,6 +221,128 @@ create trigger mark_reorder_survey_locked
 after insert or update of completion_status on public.q_survey_responses
 for each row execute function public.mark_reorder_survey_locked();
 
+create or replace function public.has_completed_reorder_survey(
+  p_customer_id bigint,
+  p_survey_campaign_id uuid,
+  p_fc_id text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.reorder_survey_response_context context
+    join public.q_survey_responses response on response.id = context.response_id
+    where context.customer_id = p_customer_id
+      and context.survey_campaign_id = p_survey_campaign_id
+      and context.fc_id_hash = encode(digest(p_customer_id::text || ':' || upper(btrim(p_fc_id)), 'sha256'), 'hex')
+      and response.completion_status = 'submitted'
+  );
+$$;
+
+create or replace function public.start_reorder_survey_response(
+  p_fc_id text,
+  p_survey_campaign_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  unit public.reorder_fc_unit%rowtype;
+  publication public.reorder_consumer_publication%rowtype;
+  existing_context public.reorder_survey_response_context%rowtype;
+  response public.q_survey_responses%rowtype;
+  response_id uuid;
+  fc_hash text;
+begin
+  select * into unit from public.reorder_fc_unit
+  where fc_id = upper(btrim(p_fc_id)) and status = 'active';
+  if not found then raise exception 'Active FC Reorder ID not found' using errcode = 'P0002'; end if;
+
+  select * into publication from public.reorder_consumer_publication
+  where customer_id = unit.customer_id and batch_id = unit.batch_id and status = 'active'
+  order by version desc limit 1;
+  if not found or publication.snapshot->'survey'->>'id' is distinct from p_survey_campaign_id::text then
+    raise exception 'Published Survey not found' using errcode = 'P0002';
+  end if;
+
+  fc_hash := encode(digest(unit.customer_id::text || ':' || unit.fc_id, 'sha256'), 'hex');
+  select * into existing_context
+  from public.reorder_survey_response_context
+  where survey_campaign_id = p_survey_campaign_id and fc_id_hash = fc_hash;
+  if found then
+    select * into response from public.q_survey_responses where id = existing_context.response_id;
+    return jsonb_build_object(
+      'responseId', existing_context.anonymous_response_id,
+      'startedAt', response.started_at,
+      'completed', response.completion_status = 'submitted'
+    );
+  end if;
+
+  insert into public.q_survey_responses (
+    survey_id, user_id, answers_json, started_at, completion_status
+  ) values (
+    p_survey_campaign_id, null, '{}'::jsonb, now(), 'in_progress'
+  ) returning id into response_id;
+
+  insert into public.reorder_survey_response_context (
+    response_id, survey_campaign_id, customer_id, product_version_id, batch_id, fc_id_hash
+  ) values (
+    response_id, p_survey_campaign_id, unit.customer_id,
+    (publication.snapshot->'product'->>'id')::uuid, unit.batch_id, fc_hash
+  ) returning * into existing_context;
+
+  return jsonb_build_object(
+    'responseId', existing_context.anonymous_response_id,
+    'startedAt', now(),
+    'completed', false
+  );
+end;
+$$;
+
+create or replace function public.submit_reorder_survey_response(
+  p_fc_id text,
+  p_survey_campaign_id uuid,
+  p_anonymous_response_id uuid,
+  p_answers jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  context public.reorder_survey_response_context%rowtype;
+  response public.q_survey_responses%rowtype;
+  submitted_time timestamptz;
+begin
+  select response_context.* into context
+  from public.reorder_survey_response_context response_context
+  where response_context.anonymous_response_id = p_anonymous_response_id
+    and response_context.survey_campaign_id = p_survey_campaign_id
+    and response_context.fc_id_hash = encode(digest(response_context.customer_id::text || ':' || upper(btrim(p_fc_id)), 'sha256'), 'hex');
+  if not found then raise exception 'Survey response not found' using errcode = 'P0002'; end if;
+
+  select * into response from public.q_survey_responses where id = context.response_id for update;
+  if response.completion_status = 'submitted' then
+    return jsonb_build_object('submitted', true, 'submittedAt', response.submitted_at);
+  end if;
+  submitted_time := now();
+  update public.q_survey_responses set
+    answers_json = p_answers,
+    submitted_at = submitted_time,
+    completion_status = 'submitted',
+    updated_at = submitted_time
+  where id = context.response_id;
+  return jsonb_build_object('submitted', true, 'submittedAt', submitted_time);
+end;
+$$;
+
 create or replace function public.assert_reorder_survey_product_open_conflict()
 returns trigger
 language plpgsql
@@ -340,6 +462,9 @@ revoke all on function public.assert_reorder_survey_product_open_conflict() from
 revoke all on function public.lock_reorder_survey_structure() from public;
 revoke all on function public.save_reorder_survey(bigint, uuid, jsonb) from public, anon, authenticated;
 revoke all on function public.mark_reorder_survey_locked() from public;
+revoke all on function public.has_completed_reorder_survey(bigint, uuid, text) from public, anon, authenticated;
+revoke all on function public.start_reorder_survey_response(text, uuid) from public, anon, authenticated;
+revoke all on function public.submit_reorder_survey_response(text, uuid, uuid, jsonb) from public, anon, authenticated;
 
 grant select, insert, update, delete on table public.reorder_survey_product to service_role;
 grant select, insert, update, delete on table public.reorder_survey_response_context to service_role;
@@ -347,3 +472,6 @@ grant execute on function public.assert_reorder_survey_product_open_conflict() t
 grant execute on function public.lock_reorder_survey_structure() to service_role;
 grant execute on function public.save_reorder_survey(bigint, uuid, jsonb) to service_role;
 grant execute on function public.mark_reorder_survey_locked() to service_role;
+grant execute on function public.has_completed_reorder_survey(bigint, uuid, text) to service_role;
+grant execute on function public.start_reorder_survey_response(text, uuid) to service_role;
+grant execute on function public.submit_reorder_survey_response(text, uuid, uuid, jsonb) to service_role;

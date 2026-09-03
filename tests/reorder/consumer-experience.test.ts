@@ -92,6 +92,31 @@ describe("Consumer Experience publish validation", () => {
     input.discounts[1].isFeatured = true;
     expect(validateConsumerExperience(input).some((error) => error.code === "featured_discount_required")).toBe(false);
   });
+
+  it.each([
+    ["Coupon", [discount({ kind: "amazon_coupon", couponType: "reorder" })]],
+    ["Promotion without Claim Code", [discount({ claimCodeMode: "none" })]],
+    ["Promotion with Group Claim Code", [discount({ claimCodeMode: "group", groupClaimCode: "SAVE15" })]],
+    ["Promotion with Single-use Claim Code", [discount({ claimCodeMode: "single_use", availableCodeCount: 12 })]],
+  ])("publishes the %s preview state", (_label, discounts) => {
+    const input = validInput();
+    input.discounts = discounts;
+    expect(buildConsumerSnapshot(input)).toMatchObject({ valid: true, discounts: [{ id: discounts[0].id }] });
+  });
+
+  it("publishes Survey-only and Discount-plus-Survey states", () => {
+    const input = validInput();
+    input.survey = {
+      id: "survey-1",
+      title: "Usage habits",
+      description: null,
+      status: "open",
+      questions: [{ id: "q1", prompt: "Frequency?", type: "single_choice", required: true, options: [{ id: "a", label: "Daily" }, { id: "b", label: "Weekly" }] }],
+    };
+    expect(buildConsumerSnapshot(input)).toMatchObject({ valid: true, discounts: [], survey: { id: "survey-1" } });
+    input.discounts = [discount()];
+    expect(buildConsumerSnapshot(input)).toMatchObject({ valid: true, discounts: [{ id: input.discounts[0].id }], survey: { id: "survey-1" } });
+  });
 });
 
 describe("Consumer Discount display", () => {

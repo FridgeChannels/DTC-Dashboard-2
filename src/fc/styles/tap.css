@@ -186,6 +186,76 @@ button { font-family: inherit; }
   background: var(--bg);
 }
 
+.reorder-tap-survey {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+  border-radius: 18px;
+  padding: 18px;
+  background: var(--bg-elev);
+}
+
+.reorder-tap-survey > span,
+.reorder-tap-survey > small {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.reorder-tap-survey > small {
+  color: var(--neg);
+}
+
+.reorder-tap-survey fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  border: 0;
+  padding: 0;
+}
+
+.reorder-tap-survey legend {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.reorder-tap-survey label {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 12px;
+  padding: 9px 11px;
+  background: var(--bg-sunken);
+}
+
+.reorder-tap-survey input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.reorder-tap-survey-start {
+  min-height: 44px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 16px;
+  background: var(--ink);
+  color: var(--bg-elev);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reorder-tap-survey-start:disabled {
+  opacity: 0.55;
+}
+
+.reorder-tap-survey.is-complete {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
 .reorder-tap-shell {
   width: min(460px, 100%);
   padding: 18px 4px 42px;

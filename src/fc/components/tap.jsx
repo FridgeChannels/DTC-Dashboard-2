@@ -92,6 +92,44 @@ function redirectConsumerLoginSuccess(redirectedFrom) {
   return Boolean(target);
 }
 
+function ReorderSurvey({ sn, survey, onComplete }) {
+  const [phase, setPhase] = useState("ready");
+  const [responseId, setResponseId] = useState("");
+  const [answers, setAnswers] = useState({});
+  const [error, setError] = useState("");
+  const start = async () => {
+    setPhase("starting"); setError("");
+    try {
+      const response = await fetch(`/api/reorder/consumer/${encodeURIComponent(sn)}/surveys/${survey.id}/start`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not start Survey");
+      if (data.completed) { onComplete(); return; }
+      setResponseId(data.responseId); setPhase("answering");
+    } catch (err) { setError(err.message); setPhase("ready"); }
+  };
+  const choose = (question, optionId, checked) => setAnswers((current) => {
+    if (question.type === "single_choice") return { ...current, [question.id]: optionId };
+    const selected = Array.isArray(current[question.id]) ? current[question.id] : [];
+    return { ...current, [question.id]: checked ? [...new Set([...selected, optionId])] : selected.filter((id) => id !== optionId) };
+  });
+  const submit = async () => {
+    setPhase("submitting"); setError("");
+    try {
+      const response = await fetch(`/api/reorder/consumer/${encodeURIComponent(sn)}/surveys/${survey.id}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ responseId, answers }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.errors?.[0]?.message || data.error || "Could not submit Survey");
+      setPhase("complete");
+    } catch (err) { setError(err.message); setPhase("answering"); }
+  };
+  if (phase === "complete") return <div className="reorder-tap-survey is-complete"><strong>Thanks for sharing.</strong><button className="reorder-tap-link" onClick={onComplete}>Close</button></div>;
+  if (phase !== "answering" && phase !== "submitting") return <div className="reorder-tap-survey"><strong>{survey.title}</strong>{survey.description && <span>{survey.description}</span>}<button className="reorder-tap-survey-start" disabled={phase === "starting"} onClick={start}>{phase === "starting" ? "Starting…" : "Share your preferences"}</button>{error && <small>{error}</small>}</div>;
+  return <div className="reorder-tap-survey is-open"><strong>{survey.title}</strong>{survey.description && <span>{survey.description}</span>}{survey.questions.map((question, questionIndex) => <fieldset key={question.id}><legend>{questionIndex + 1}. {question.prompt}{question.required ? " *" : ""}</legend>{question.options.map((option) => <label key={option.id}><input type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={question.id} value={option.id} checked={question.type === "multiple_choice" ? (answers[question.id] || []).includes(option.id) : answers[question.id] === option.id} onChange={(event) => choose(question, option.id, event.target.checked)} /> <span>{option.label}</span></label>)}</fieldset>)}{error && <small>{error}</small>}<button className="reorder-tap-survey-start" disabled={phase === "submitting"} onClick={submit}>{phase === "submitting" ? "Submitting…" : "Submit"}</button></div>;
+}
+
 function TapPage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const sn = useMemo(() => parseTapSn(), []);
@@ -110,6 +148,7 @@ function TapPage() {
   const [reorderExperience, setReorderExperience] = useState(null);
   const [showAllSavings, setShowAllSavings] = useState(false);
   const [copiedDiscountId, setCopiedDiscountId] = useState(null);
+  const [surveyDismissed, setSurveyDismissed] = useState(false);
   const [shopDomain, setShopDomain] = useState(shop);
   const [shopifyAppHost, setShopifyAppHost] = useState(window.location.origin);
 
@@ -339,7 +378,7 @@ function TapPage() {
           </div>}
           {reorderExperience.primaryCta ? <a className="reorder-tap-primary" href={reorderExperience.primaryCta} rel="noreferrer">Reorder on Amazon</a> : <p className="reorder-tap-unavailable">This Seller Offer is currently unavailable.</p>}
           {reorderExperience.fallback?.url && <a className="reorder-tap-secondary" href={reorderExperience.fallback.url} rel="noreferrer">Visit Seller Storefront</a>}
-          {reorderExperience.survey && <div className="reorder-tap-survey"><strong>{reorderExperience.survey.title}</strong><span>{reorderExperience.survey.description}</span></div>}
+          {reorderExperience.survey && !surveyDismissed && <ReorderSurvey sn={sn} survey={reorderExperience.survey} onComplete={() => setSurveyDismissed(true)} />}
         </section>
       </main>
     );

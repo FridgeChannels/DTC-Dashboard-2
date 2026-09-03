@@ -54,6 +54,7 @@ export interface ConsumerSurveyInput {
     id: string;
     prompt: string;
     type: "single_choice" | "multiple_choice";
+    required: boolean;
     options: Array<{ id: string; label: string }>;
   }>;
 }
@@ -153,6 +154,14 @@ export function validateConsumerExperience(input: ConsumerExperienceInput): Cons
   if (input.surveyConflictCount > 1) {
     push(errors, "survey_conflict", "survey", "Only one Survey can be active for this Product.");
   }
+  if (input.survey) {
+    if (input.survey.status !== "open") push(errors, "survey_not_open", "survey.status", "Survey must be Active before publishing.");
+    if (input.survey.questions.length < 1 || input.survey.questions.length > 3) push(errors, "survey_question_count", "survey.questions", "Survey must contain one to three questions.");
+    input.survey.questions.forEach((question, questionIndex) => {
+      if (!["single_choice", "multiple_choice"].includes(question.type)) push(errors, "survey_type_invalid", `survey.questions[${questionIndex}].type`, "Survey supports Single choice or Multiple choice only.");
+      if (question.options.length < 2 || question.options.length > 5) push(errors, "survey_option_count", `survey.questions[${questionIndex}].options`, "Each Survey question needs two to five options.");
+    });
+  }
   return errors;
 }
 
@@ -161,7 +170,7 @@ export function buildConsumerSnapshot(input: ConsumerExperienceInput) {
   const product = input.product;
   const account = input.account;
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     brand: input.brand,
     product: product ? {
       id: product.id,

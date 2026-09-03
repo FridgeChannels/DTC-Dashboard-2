@@ -38,6 +38,8 @@ import {
   markPublishedClaimCodeCopied,
   previewReorderConsumerExperience,
   resolvePublishedReorderExperience,
+  startPublishedReorderSurvey,
+  submitPublishedReorderSurvey,
 } from "../services/reorder-consumer.service.js";
 import {
   ReorderSurveyValidationError,
@@ -231,6 +233,47 @@ export async function handleMarkPublishedClaimCodeCopied(
     json(res, 200, result);
   } catch (error) {
     handleError(res, error, "Failed to record Claim Code copy");
+  }
+}
+
+export async function handleStartPublishedReorderSurvey(
+  res: ServerResponse,
+  rawFcId: string,
+  rawSurveyId: string,
+): Promise<void> {
+  try {
+    res.setHeader("Cache-Control", "private, no-store");
+    const result = await startPublishedReorderSurvey(
+      decodeURIComponent(rawFcId),
+      decodeUuid(rawSurveyId, "Survey ID"),
+    );
+    if (!result) return errorJson(res, 404, "Published Survey not found");
+    json(res, 200, result);
+  } catch (error) {
+    handleError(res, error, "Failed to start Survey");
+  }
+}
+
+export async function handleSubmitPublishedReorderSurvey(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawFcId: string,
+  rawSurveyId: string,
+): Promise<void> {
+  try {
+    res.setHeader("Cache-Control", "private, no-store");
+    const input = await readJsonBody<{ responseId?: unknown; answers?: unknown }>(req);
+    const responseId = decodeUuid(String(input.responseId ?? ""), "Survey response ID");
+    const result = await submitPublishedReorderSurvey(
+      decodeURIComponent(rawFcId),
+      decodeUuid(rawSurveyId, "Survey ID"),
+      responseId,
+      input.answers,
+    );
+    if (!result) return errorJson(res, 404, "Published Survey not found");
+    json(res, 200, result);
+  } catch (error) {
+    handleError(res, error, "Failed to submit Survey");
   }
 }
 

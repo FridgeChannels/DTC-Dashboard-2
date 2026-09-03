@@ -42,5 +42,13 @@ describe("Reorder Survey Console", () => {
     expect(css).toMatch(/\.reorder-result-option \{[\s\S]*min-height: 44px/);
     expect(css).not.toContain("text-transform: uppercase");
   });
-});
 
+  it("previews choice controls and the tap page submits without a reward", () => {
+    const tap = readFileSync(new URL("../../src/fc/components/tap.jsx", import.meta.url), "utf8");
+    expect(app).toContain('question.type === "multiple_choice" ? "checkbox" : "radio"');
+    expect(tap).toContain("function ReorderSurvey(");
+    expect(tap).toContain("/surveys/${survey.id}/start");
+    expect(tap).toContain("/surveys/${survey.id}/submit");
+    expect(tap).not.toMatch(/unlock|reward|answer.*coupon/i);
+  });
+});

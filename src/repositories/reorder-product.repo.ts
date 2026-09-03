@@ -46,6 +46,20 @@ export async function findProductVersion(
   return data as ReorderProductVersionRow | null;
 }
 
+export async function listProductVersionsByIds(
+  customerId: number,
+  productVersionIds: string[],
+): Promise<ReorderProductVersionRow[]> {
+  if (!productVersionIds.length) return [];
+  const { data, error } = await getSupabase()
+    .from("reorder_product_version")
+    .select("*")
+    .eq("customer_id", customerId)
+    .in("id", productVersionIds);
+  if (error) throw error;
+  return (data ?? []) as ReorderProductVersionRow[];
+}
+
 export async function createProductVersion(input: {
   customerId: number;
   sellingAccountId: string;

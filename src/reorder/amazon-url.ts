@@ -5,11 +5,12 @@ export interface AmazonUrlContext {
 }
 
 export class ReorderValidationError extends Error {
-  readonly statusCode = 400;
+  readonly statusCode: number;
 
-  constructor(message: string) {
+  constructor(message: string, statusCode = 400) {
     super(message);
     this.name = "ReorderValidationError";
+    this.statusCode = statusCode;
   }
 }
 
@@ -97,4 +98,3 @@ export function normalizeSellerId(raw: string): string {
   }
   return sellerId;
 }
-

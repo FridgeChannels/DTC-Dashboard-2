@@ -83,6 +83,13 @@ import {
   handleGetReorderAmazonSetup,
   handleGetReorderProduct,
   handleImportReorderProducts,
+  handleGetReorderBatch,
+  handleGetReorderOrder,
+  handleListReorderOrdersAndBatches,
+  handleListReorderProductBatches,
+  handlePutReorderBatchActivation,
+  handleSaveReorderAllocations,
+  handleSubmitReorderAllocations,
   handleListReorderProducts,
   handlePutReorderAmazonSetup,
 } from "./api/reorder.js";
@@ -221,6 +228,47 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && pathname === "/api/reorder/products/import") {
     await handleImportReorderProducts(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/reorder/orders-batches") {
+    await handleListReorderOrdersAndBatches(req, res);
+    return;
+  }
+
+  const reorderProductBatchesMatch = /^\/api\/reorder\/products\/([^/]+)\/batches$/.exec(pathname);
+  if (req.method === "GET" && reorderProductBatchesMatch) {
+    await handleListReorderProductBatches(req, res, reorderProductBatchesMatch[1]);
+    return;
+  }
+
+  const reorderOrderAllocationMatch = /^\/api\/reorder\/orders\/([^/]+)\/allocations$/.exec(pathname);
+  if (req.method === "PUT" && reorderOrderAllocationMatch) {
+    await handleSaveReorderAllocations(req, res, reorderOrderAllocationMatch[1]);
+    return;
+  }
+
+  const reorderOrderSubmitMatch = /^\/api\/reorder\/orders\/([^/]+)\/allocations\/submit$/.exec(pathname);
+  if (req.method === "POST" && reorderOrderSubmitMatch) {
+    await handleSubmitReorderAllocations(req, res, reorderOrderSubmitMatch[1]);
+    return;
+  }
+
+  const reorderOrderMatch = /^\/api\/reorder\/orders\/([^/]+)$/.exec(pathname);
+  if (req.method === "GET" && reorderOrderMatch) {
+    await handleGetReorderOrder(req, res, reorderOrderMatch[1]);
+    return;
+  }
+
+  const reorderBatchActivationMatch = /^\/api\/reorder\/batches\/([^/]+)\/activation$/.exec(pathname);
+  if (req.method === "PUT" && reorderBatchActivationMatch) {
+    await handlePutReorderBatchActivation(req, res, reorderBatchActivationMatch[1]);
+    return;
+  }
+
+  const reorderBatchMatch = /^\/api\/reorder\/batches\/([^/]+)$/.exec(pathname);
+  if (req.method === "GET" && reorderBatchMatch) {
+    await handleGetReorderBatch(req, res, reorderBatchMatch[1]);
     return;
   }
 

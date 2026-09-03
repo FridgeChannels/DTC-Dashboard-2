@@ -69,7 +69,8 @@ create table if not exists public.reorder_product_version (
     check (version_number > 0),
   constraint reorder_product_version_status_check
     check (status in ('draft', 'ready', 'active', 'retired')),
-  unique (customer_id, product_key, version_number)
+  unique (customer_id, product_key, version_number),
+  unique (id, customer_id)
 );
 
 create unique index if not exists reorder_product_one_current_version_idx

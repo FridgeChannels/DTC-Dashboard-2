@@ -113,6 +113,13 @@ import {
   handleSubmitPublishedReorderSurvey,
 } from "./api/reorder.js";
 import {
+  handleCreateReorderBatchFromOps,
+  handleGenerateReorderFcUnits,
+  handleImportReorderFcUnits,
+  handleUpdateReorderProductionFromOps,
+  handleUpdateReorderShipmentFromOps,
+} from "./api/reorder-fc-ops.js";
+import {
   handleGetBrandCollectConfig,
   handlePostBrand,
   handlePostBrandColors,
@@ -212,6 +219,24 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/consumer/me") {
     await handleConsumerMe(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/internal/reorder/batches") {
+    await handleCreateReorderBatchFromOps(req, res);
+    return;
+  }
+
+  const reorderOpsMatch = /^\/api\/internal\/reorder\/batches\/([^/]+)\/(fc-units\/generate|fc-units\/import|production|shipment)$/.exec(pathname);
+  if (reorderOpsMatch && (
+    (req.method === "POST" && reorderOpsMatch[2].startsWith("fc-units/"))
+    || (req.method === "PUT" && ["production", "shipment"].includes(reorderOpsMatch[2]))
+  )) {
+    const [, batchId, action] = reorderOpsMatch;
+    if (action === "fc-units/generate") await handleGenerateReorderFcUnits(req, res, batchId);
+    else if (action === "fc-units/import") await handleImportReorderFcUnits(req, res, batchId);
+    else if (action === "production") await handleUpdateReorderProductionFromOps(req, res, batchId);
+    else await handleUpdateReorderShipmentFromOps(req, res, batchId);
     return;
   }
 

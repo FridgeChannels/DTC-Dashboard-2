@@ -23,6 +23,17 @@ import {
   transitionReorderBatchActivation,
 } from "../services/reorder-fulfillment.service.js";
 import {
+  createAmazonPromotion,
+  featureReorderDiscount,
+  getReorderDiscount,
+  importAmazonCoupons,
+  importSingleUseClaimCodes,
+  listReorderDiscounts,
+  previewAmazonCouponImport,
+  updateReorderDiscount,
+  type CreatePromotionInput,
+} from "../services/reorder-discount.service.js";
+import {
   assertRequestCanWriteConfig,
   getRequestConfigCustomerId,
   getRequestCustomerId,
@@ -146,6 +157,24 @@ function decodeOrderNumber(raw: string): string {
   return orderNumber;
 }
 
+async function readDiscountFileBody<T>(req: IncomingMessage): Promise<T> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const rawChunk of req) {
+    const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
+    bytes += chunk.length;
+    if (bytes > 7 * 1024 * 1024) {
+      throw new ReorderValidationError("Import request is limited to 7 MB", 413);
+    }
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as T;
+  } catch {
+    throw new ReorderValidationError("Import request is not valid JSON");
+  }
+}
+
 export async function handleListReorderOrdersAndBatches(
   req: IncomingMessage,
   res: ServerResponse,
@@ -260,5 +289,121 @@ export async function handleListReorderProductBatches(
     json(res, 200, { batches: await listReorderProductBatches(customerId, productId) });
   } catch (error) {
     handleError(res, error, "Failed to load Product Batches");
+  }
+}
+
+export async function handleListReorderDiscounts(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const customerId = await getRequestConfigCustomerId(req, res);
+    json(res, 200, { discounts: await listReorderDiscounts(customerId) });
+  } catch (error) {
+    handleError(res, error, "Failed to load Discounts");
+  }
+}
+
+export async function handleGetReorderDiscount(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawDiscountId: string,
+): Promise<void> {
+  try {
+    const customerId = await getRequestConfigCustomerId(req, res);
+    const discount = await getReorderDiscount(customerId, decodeUuid(rawDiscountId, "Discount ID"));
+    if (!discount) return errorJson(res, 404, "Discount not found");
+    json(res, 200, discount);
+  } catch (error) {
+    handleError(res, error, "Failed to load Discount");
+  }
+}
+
+export async function handlePreviewReorderCoupons(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const input = await readDiscountFileBody<{ sellingAccountId?: unknown; fileName?: unknown; fileBase64?: unknown }>(req);
+    const customerId = await getRequestConfigCustomerId(req, res);
+    json(res, 200, await previewAmazonCouponImport(customerId, input));
+  } catch (error) {
+    handleError(res, error, "Failed to preview Amazon Coupons");
+  }
+}
+
+export async function handleImportReorderCoupons(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const input = await readDiscountFileBody<{
+      sellingAccountId?: unknown;
+      fileName?: unknown;
+      fileBase64?: unknown;
+      acknowledgeUnmappedColumns?: unknown;
+    }>(req);
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    json(res, 201, await importAmazonCoupons(customerId, input));
+  } catch (error) {
+    handleError(res, error, "Failed to import Amazon Coupons");
+  }
+}
+
+export async function handleCreateReorderPromotion(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const input = await readJsonBody<CreatePromotionInput>(req);
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    json(res, 201, await createAmazonPromotion(customerId, input));
+  } catch (error) {
+    handleError(res, error, "Failed to register Amazon Promotion");
+  }
+}
+
+export async function handleUpdateReorderDiscount(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawDiscountId: string,
+): Promise<void> {
+  try {
+    const input = await readJsonBody<{ couponType?: unknown; amazonConfirmed?: unknown; codeLowThreshold?: unknown }>(req);
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    const discount = await updateReorderDiscount(customerId, decodeUuid(rawDiscountId, "Discount ID"), input);
+    if (!discount) return errorJson(res, 404, "Discount not found");
+    json(res, 200, discount);
+  } catch (error) {
+    handleError(res, error, "Failed to update Discount");
+  }
+}
+
+export async function handleImportReorderClaimCodes(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawDiscountId: string,
+): Promise<void> {
+  try {
+    const input = await readDiscountFileBody<{ fileName?: unknown; fileBase64?: unknown }>(req);
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    json(res, 201, await importSingleUseClaimCodes(
+      customerId,
+      decodeUuid(rawDiscountId, "Discount ID"),
+      input,
+    ));
+  } catch (error) {
+    handleError(res, error, "Failed to import Single-use Claim Codes");
+  }
+}
+
+export async function handleFeatureReorderDiscount(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawDiscountId: string,
+): Promise<void> {
+  try {
+    const input = await readJsonBody<{ productVersionId?: unknown }>(req);
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    json(res, 200, await featureReorderDiscount(
+      customerId,
+      decodeUuid(rawDiscountId, "Discount ID"),
+      String(input.productVersionId ?? ""),
+    ));
+  } catch (error) {
+    handleError(res, error, "Failed to set Featured Discount");
   }
 }

@@ -90,6 +90,14 @@ import {
   handlePutReorderBatchActivation,
   handleSaveReorderAllocations,
   handleSubmitReorderAllocations,
+  handleCreateReorderPromotion,
+  handleFeatureReorderDiscount,
+  handleGetReorderDiscount,
+  handleImportReorderClaimCodes,
+  handleImportReorderCoupons,
+  handleListReorderDiscounts,
+  handlePreviewReorderCoupons,
+  handleUpdateReorderDiscount,
   handleListReorderProducts,
   handlePutReorderAmazonSetup,
 } from "./api/reorder.js";
@@ -233,6 +241,48 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && pathname === "/api/reorder/orders-batches") {
     await handleListReorderOrdersAndBatches(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/reorder/discounts") {
+    await handleListReorderDiscounts(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/reorder/discounts/coupons/preview") {
+    await handlePreviewReorderCoupons(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/reorder/discounts/coupons/import") {
+    await handleImportReorderCoupons(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/reorder/discounts/promotions") {
+    await handleCreateReorderPromotion(req, res);
+    return;
+  }
+
+  const reorderClaimCodeImportMatch = /^\/api\/reorder\/discounts\/([^/]+)\/claim-codes\/import$/.exec(pathname);
+  if (req.method === "POST" && reorderClaimCodeImportMatch) {
+    await handleImportReorderClaimCodes(req, res, reorderClaimCodeImportMatch[1]);
+    return;
+  }
+
+  const reorderFeaturedDiscountMatch = /^\/api\/reorder\/discounts\/([^/]+)\/featured$/.exec(pathname);
+  if (req.method === "PUT" && reorderFeaturedDiscountMatch) {
+    await handleFeatureReorderDiscount(req, res, reorderFeaturedDiscountMatch[1]);
+    return;
+  }
+
+  const reorderDiscountMatch = /^\/api\/reorder\/discounts\/([^/]+)$/.exec(pathname);
+  if (req.method === "GET" && reorderDiscountMatch) {
+    await handleGetReorderDiscount(req, res, reorderDiscountMatch[1]);
+    return;
+  }
+  if (req.method === "PUT" && reorderDiscountMatch) {
+    await handleUpdateReorderDiscount(req, res, reorderDiscountMatch[1]);
     return;
   }
 

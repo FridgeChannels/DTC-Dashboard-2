@@ -3,7 +3,7 @@ const { useCallback, useEffect, useMemo, useState } = React;
 const navigation = [
   { label: "Overview", path: "/reorder/overview" },
   { label: "Products & FC", path: "/reorder/products", match: "/reorder/products" },
-  { label: "Discounts", path: "/reorder/discounts", pending: true },
+  { label: "Discounts", path: "/reorder/discounts", match: "/reorder/discounts" },
   { label: "Surveys", path: "/reorder/surveys", pending: true },
   { label: "Analytics", path: "/reorder/analytics", pending: true },
 ];
@@ -33,6 +33,21 @@ function readFileAsDataUrl(file) {
     reader.onerror = () => reject(new Error("Failed to read the selected image"));
     reader.readAsDataURL(file);
   });
+}
+
+function downloadClaimCodeIssues(report) {
+  const rows = [
+    ["Result", "Row", "Value", "Reason"],
+    ...(report.duplicateRows || []).map((item) => ["Duplicate", item.rowNumber || "Previously imported", item.value, "Duplicate Code"]),
+    ...(report.rejectedRows || []).map((item) => ["Rejected", item.rowNumber, item.value, item.reason]),
+  ];
+  const csv = rows.map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "fc-reorder-claim-code-import-issues.csv";
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 async function uploadAsset(file, folder) {
@@ -901,6 +916,324 @@ function BatchDetailPage({ batchId, readOnly }) {
   );
 }
 
+function DiscountListPage() {
+  const [discounts, setDiscounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    api("/api/reorder/discounts")
+      .then((data) => setDiscounts(data.discounts || []))
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+  return (
+    <div className="reorder-page">
+      <PageHeader title="Discounts" action={<button className="btn primary" onClick={() => navigate("/reorder/discounts/new")}>Add discount</button>} />
+      {loading && <PageState>Loading…</PageState>}
+      {error && <PageState tone="error">{error}</PageState>}
+      {!loading && !error && !discounts.length && <PageState>No Amazon Coupons or Promotions registered.</PageState>}
+      {discounts.length > 0 && (
+        <div className="reorder-table-wrap">
+          <table className="reorder-table">
+            <thead><tr><th>Discount</th><th>Type</th><th>Products</th><th>Benefit</th><th>Schedule</th><th>Status</th><th>Code Pool</th></tr></thead>
+            <tbody>{discounts.map((discount) => (
+              <tr key={discount.id} tabIndex="0" onClick={() => navigate(`/reorder/discounts/${discount.id}`)}>
+                <td><strong>{discount.title}</strong><small className="reorder-cell-note">{discount.sellingAccount?.label || "—"}</small></td>
+                <td>{discount.discount_kind === "amazon_coupon" ? "Amazon Coupon" : "Amazon Promotion"}</td>
+                <td>{discount.products.length}</td>
+                <td>{discount.benefit_summary}</td>
+                <td>{formatDate(discount.start_at)}–{formatDate(discount.end_at)}</td>
+                <td><span className={`reorder-status is-${discount.status}`}>{humanize(discount.status)}</span></td>
+                <td>{discount.codePool ? `${discount.codePool.available} available · ${humanize(discount.codePool.status)}` : "—"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CouponImportForm({ accounts, readOnly }) {
+  const [sellingAccountId, setSellingAccountId] = useState(accounts[0]?.id || "");
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
+
+  const previewFile = async (selected) => {
+    if (!selected || !sellingAccountId) return;
+    setWorking(true); setError(""); setPreview(null); setAcknowledged(false);
+    try {
+      const fileBase64 = await readFileAsDataUrl(selected);
+      const next = { fileName: selected.name, fileBase64 };
+      setFile(next);
+      setPreview(await api("/api/reorder/discounts/coupons/preview", {
+        method: "POST",
+        body: JSON.stringify({ sellingAccountId, ...next }),
+      }));
+    } catch (err) { setError(err.message); } finally { setWorking(false); }
+  };
+
+  const importFile = async () => {
+    setWorking(true); setError("");
+    try {
+      await api("/api/reorder/discounts/coupons/import", {
+        method: "POST",
+        body: JSON.stringify({ sellingAccountId, ...file, acknowledgeUnmappedColumns: acknowledged }),
+      });
+      navigate("/reorder/discounts");
+    } catch (err) { setError(err.message); } finally { setWorking(false); }
+  };
+
+  return (
+    <>
+      {error && <PageState tone="error">{error}</PageState>}
+      <section className="cfg-section">
+        <div className="reorder-section-label">Import context</div>
+        <div className="cfg-form grid grid-2">
+          <label className="cfg-field"><span className="cfg-label">Selling Account / Marketplace</span><select className="cfg-input" value={sellingAccountId} disabled={readOnly || working} onChange={(event) => { setSellingAccountId(event.target.value); setPreview(null); setFile(null); }}><option value="">Select account</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}</select></label>
+          <label className="cfg-field"><span className="cfg-label">Amazon Coupon Bulk Template</span><input className="cfg-input reorder-visible-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || working || !sellingAccountId} onChange={(event) => previewFile(event.target.files?.[0])} /></label>
+        </div>
+      </section>
+      {working && <PageState>Reading Amazon workbook…</PageState>}
+      {preview && (
+        <section className="reorder-flat-section">
+          <div className="reorder-section-label">Import review</div>
+          <div className="reorder-import-summary">
+            <div><span>Coupons detected</span><strong>{preview.review.couponsDetected}</strong></div>
+            <div><span>Products matched</span><strong>{preview.review.productsMatched}</strong></div>
+            <div><span>Mapping required</span><strong>{preview.review.productMappingRequired}</strong></div>
+            <div><span>Parsing issues</span><strong>{preview.review.rowsWithParsingIssues}</strong></div>
+          </div>
+          {preview.review.unmappedColumns.length > 0 && (
+            <PageState tone="error">
+              Unmapped Amazon columns: {preview.review.unmappedColumns.join(", ")}
+              <label className="reorder-inline-check"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /> I reviewed these columns and accept importing recognized fields only.</label>
+            </PageState>
+          )}
+          {preview.rows.filter((row) => row.errors.length).map((row) => <p className="reorder-import-row-error" key={row.rowNumber}>Row {row.rowNumber} · {row.errors.join(" · ")}</p>)}
+          <button className="btn primary" disabled={readOnly || working || !preview.review.canImport || (preview.review.unmappedColumns.length > 0 && !acknowledged)} onClick={importFile}>Import recognized Coupons</button>
+        </section>
+      )}
+    </>
+  );
+}
+
+function PromotionForm({ accounts, products, readOnly }) {
+  const [form, setForm] = useState({
+    sellingAccountId: accounts[0]?.id || "",
+    productVersionIds: [],
+    title: "",
+    amazonReference: "",
+    promotionType: "",
+    qualifyingCondition: "",
+    benefitKind: "other",
+    benefitValue: "",
+    benefitCurrency: "USD",
+    benefitSummary: "",
+    appliesTo: "",
+    startAt: "",
+    endAt: "",
+    claimCodeMode: "none",
+    groupClaimCode: "",
+    codeLowThreshold: 20,
+    amazonConfirmed: false,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const eligibleProducts = products.filter((product) => product.selling_account_id === form.sellingAccountId);
+  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const toggleProduct = (id) => set("productVersionIds", form.productVersionIds.includes(id) ? form.productVersionIds.filter((value) => value !== id) : [...form.productVersionIds, id]);
+  const save = async () => {
+    setSaving(true); setError("");
+    try {
+      const discount = await api("/api/reorder/discounts/promotions", { method: "POST", body: JSON.stringify(form) });
+      navigate(`/reorder/discounts/${discount.id}`);
+    } catch (err) { setError(err.message); } finally { setSaving(false); }
+  };
+  const input = (key, label, options = {}) => <label className={`cfg-field${options.full ? " cfg-field-full" : ""}`}><span className="cfg-label">{label}</span><input className="cfg-input" type={options.type || "text"} value={form[key]} disabled={readOnly} onChange={(event) => set(key, event.target.value)} /></label>;
+  return (
+    <>
+      {error && <PageState tone="error">{error}</PageState>}
+      <section className="cfg-section">
+        <div className="reorder-section-label">Amazon context</div>
+        <div className="cfg-form grid grid-2">
+          <label className="cfg-field"><span className="cfg-label">Selling Account / Marketplace</span><select className="cfg-input" value={form.sellingAccountId} disabled={readOnly} onChange={(event) => setForm({ ...form, sellingAccountId: event.target.value, productVersionIds: [] })}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}</select></label>
+          {input("amazonReference", "Amazon Promotion reference")}
+          <div className="cfg-field cfg-field-full"><span className="cfg-label">Eligible Products</span><div className="reorder-product-options">{eligibleProducts.length ? eligibleProducts.map((product) => <label key={product.id}><input type="checkbox" checked={form.productVersionIds.includes(product.id)} disabled={readOnly} onChange={() => toggleProduct(product.id)} /><span>{product.product_name}</span><small>{product.asin}</small></label>) : <p>No Products are available for this Selling Account.</p>}</div></div>
+        </div>
+      </section>
+      <section className="cfg-section">
+        <div className="reorder-section-label">Promotion facts</div>
+        <div className="cfg-form grid grid-2">
+          {input("title", "Promotion title")}{input("promotionType", "Promotion type")}
+          {input("qualifyingCondition", "Buyer purchases / Qualifying condition", { full: true })}
+          <label className="cfg-field"><span className="cfg-label">Benefit type</span><select className="cfg-input" value={form.benefitKind} disabled={readOnly} onChange={(event) => set("benefitKind", event.target.value)}><option value="percentage_off">Percentage off</option><option value="money_off">Money off</option><option value="free_shipping">Free shipping</option><option value="other">Other</option></select></label>
+          {input("benefitValue", "Benefit value", { type: "number" })}
+          {input("benefitSummary", "Buyer gets / Benefit", { full: true })}
+          {input("appliesTo", "Applies to", { full: true })}
+          {input("startAt", "Start", { type: "datetime-local" })}{input("endAt", "End", { type: "datetime-local" })}
+        </div>
+      </section>
+      <section className="cfg-section">
+        <div className="reorder-section-label">Claim Code</div>
+        <div className="cfg-form grid grid-2">
+          <label className="cfg-field"><span className="cfg-label">Claim Code Mode</span><select className="cfg-input" value={form.claimCodeMode} disabled={readOnly} onChange={(event) => set("claimCodeMode", event.target.value)}><option value="none">None</option><option value="group">Group</option><option value="single_use">Single-use</option></select></label>
+          {form.claimCodeMode === "group" && input("groupClaimCode", "Amazon Group Claim Code")}
+          {form.claimCodeMode === "single_use" && input("codeLowThreshold", "Codes low threshold", { type: "number" })}
+          <label className="reorder-inline-check cfg-field-full"><input type="checkbox" checked={form.amazonConfirmed} disabled={readOnly} onChange={(event) => set("amazonConfirmed", event.target.checked)} /> This Promotion already exists in Amazon and the details above match Seller Central.</label>
+        </div>
+      </section>
+      <button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Saving…" : "Register Amazon Promotion"}</button>
+    </>
+  );
+}
+
+function AddDiscountPage({ readOnly }) {
+  const [kind, setKind] = useState("amazon_coupon");
+  const [accounts, setAccounts] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    Promise.all([api("/api/reorder/amazon-setup"), api("/api/reorder/products")])
+      .then(([setup, productData]) => { setAccounts((setup.sellingAccounts || []).filter((account) => account.status === "active")); setProducts(productData.products || []); })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+  if (loading) return <div className="reorder-page"><PageHeader title="Add discount" /><PageState>Loading…</PageState></div>;
+  return (
+    <div className="reorder-page">
+      <PageHeader title="Add discount" />
+      {error && <PageState tone="error">{error}</PageState>}
+      {!error && !accounts.length && <PageState tone="error">Complete Amazon setup before adding a Discount.</PageState>}
+      {!error && accounts.length > 0 && <>
+        <div className="reorder-type-switch"><button className={kind === "amazon_coupon" ? "is-active" : ""} onClick={() => setKind("amazon_coupon")}>Amazon Coupon</button><button className={kind === "amazon_promotion" ? "is-active" : ""} onClick={() => setKind("amazon_promotion")}>Amazon Promotion</button></div>
+        {kind === "amazon_coupon" ? <CouponImportForm accounts={accounts} readOnly={readOnly} /> : <PromotionForm accounts={accounts} products={products} readOnly={readOnly} />}
+      </>}
+    </div>
+  );
+}
+
+function DiscountDetailPage({ discountId, readOnly }) {
+  const [discount, setDiscount] = useState(null);
+  const [couponType, setCouponType] = useState("");
+  const [amazonConfirmed, setAmazonConfirmed] = useState(false);
+  const [threshold, setThreshold] = useState(20);
+  const [working, setWorking] = useState(false);
+  const [importReport, setImportReport] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const load = () => api(`/api/reorder/discounts/${discountId}`).then((data) => {
+    setDiscount(data);
+    setCouponType(data.coupon_type || "");
+    setAmazonConfirmed(Boolean(data.amazon_confirmed));
+    setThreshold(data.code_low_threshold ?? 20);
+  });
+  useEffect(() => { load().catch((err) => setError(err.message)); }, [discountId]);
+
+  const save = async () => {
+    setWorking(true); setError(""); setMessage("");
+    try {
+      await api(`/api/reorder/discounts/${discountId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          ...(discount.discount_kind === "amazon_coupon" ? { couponType, amazonConfirmed } : {}),
+          ...(discount.claim_code_mode === "single_use" ? { codeLowThreshold: Number(threshold) } : {}),
+        }),
+      });
+      await load(); setMessage("Discount settings saved.");
+    } catch (err) { setError(err.message); } finally { setWorking(false); }
+  };
+
+  const importCodes = async (file) => {
+    if (!file) return;
+    setWorking(true); setError(""); setMessage(""); setImportReport(null);
+    try {
+      const result = await api(`/api/reorder/discounts/${discountId}/claim-codes/import`, {
+        method: "POST",
+        body: JSON.stringify({ fileName: file.name, fileBase64: await readFileAsDataUrl(file) }),
+      });
+      await load();
+      setImportReport(result);
+      setMessage(`Total ${result.total}; accepted ${result.accepted}; duplicates ${result.duplicates}; rejected ${result.rejected}. Amazon validity is not verified by FC.`);
+    } catch (err) { setError(err.message); } finally { setWorking(false); }
+  };
+
+  const feature = async (productVersionId) => {
+    setWorking(true); setError(""); setMessage("");
+    try {
+      await api(`/api/reorder/discounts/${discountId}/featured`, { method: "PUT", body: JSON.stringify({ productVersionId }) });
+      await load(); setMessage("Featured Discount updated for this Product.");
+    } catch (err) { setError(err.message); } finally { setWorking(false); }
+  };
+
+  if (error && !discount) return <div className="reorder-page"><PageHeader title="Discount" /><PageState tone="error">{error}</PageState></div>;
+  if (!discount) return <div className="reorder-page"><PageHeader title="Discount" /><PageState>Loading…</PageState></div>;
+  const isCoupon = discount.discount_kind === "amazon_coupon";
+  const canSaveSettings = isCoupon || discount.claim_code_mode === "single_use";
+  const saveDisabled = readOnly || working || (isCoupon && (!couponType || !amazonConfirmed));
+  return (
+    <div className="reorder-page">
+      <PageHeader title={discount.title} action={canSaveSettings ? <button className="btn primary" disabled={saveDisabled} onClick={save}>{working ? "Working…" : "Save settings"}</button> : null} />
+      {message && <PageState tone="success">{message}</PageState>}
+      {error && <PageState tone="error">{error}</PageState>}
+      <section className="reorder-flat-section">
+        <div className="reorder-section-label">Amazon facts</div>
+        <dl className="reorder-detail-grid">
+          <div><dt>Type</dt><dd>{isCoupon ? "Amazon Coupon" : "Amazon Promotion"}</dd></div>
+          <div><dt>Selling Account</dt><dd>{discount.sellingAccount?.label || "—"}</dd></div>
+          <div><dt>Marketplace</dt><dd>{discount.marketplace_code}</dd></div>
+          <div><dt>Benefit</dt><dd>{discount.benefit_summary}</dd></div>
+          <div><dt>Start</dt><dd>{formatDate(discount.start_at)}</dd></div>
+          <div><dt>End</dt><dd>{formatDate(discount.end_at)}</dd></div>
+          {!isCoupon && <div><dt>Promotion type</dt><dd>{discount.promotion_type}</dd></div>}
+          {!isCoupon && <div><dt>Claim Code Mode</dt><dd>{humanize(discount.claim_code_mode)}</dd></div>}
+          {!isCoupon && discount.claim_code_mode === "group" && <div className="is-wide"><dt>Group Claim Code</dt><dd className="reorder-mono">{discount.group_claim_code}</dd></div>}
+        </dl>
+      </section>
+      <section className="reorder-flat-section">
+        <div className="reorder-section-label">Eligible Products</div>
+        {discount.products.map((product) => (
+          <div className="reorder-linked-row reorder-static-row" key={product.id}>
+            <span><strong>{product.product_name}</strong><small>{product.asin}</small></span>
+            <button className={`btn${product.isFeatured ? " is-disabled" : ""}`} disabled={readOnly || working || product.isFeatured} onClick={() => feature(product.id)}>{product.isFeatured ? "Featured" : "Set as Featured"}</button>
+          </div>
+        ))}
+      </section>
+      {isCoupon && (
+        <section className="cfg-section">
+          <div className="reorder-section-label">Coupon confirmation</div>
+          <div className="cfg-form grid grid-2">
+            <label className="cfg-field"><span className="cfg-label">Coupon type</span><select className="cfg-input" value={couponType} disabled={readOnly} onChange={(event) => setCouponType(event.target.value)}><option value="">Select when not supplied by Amazon template</option><option value="standard">Standard</option><option value="reorder">Reorder</option><option value="subscribe_and_save">Subscribe & Save</option></select></label>
+            <label className="reorder-inline-check"><input type="checkbox" checked={amazonConfirmed} disabled={readOnly} onChange={(event) => setAmazonConfirmed(event.target.checked)} /> Coupon details match the current Seller Central configuration.</label>
+          </div>
+        </section>
+      )}
+      {!isCoupon && discount.claim_code_mode === "single_use" && (
+        <section className="cfg-section">
+          <div className="reorder-section-label">Single-use Claim Code Pool</div>
+          <div className="reorder-import-summary">
+            <div><span>Total</span><strong>{discount.codePool.total}</strong></div>
+            <div><span>Available</span><strong>{discount.codePool.available}</strong></div>
+            <div><span>Assigned</span><strong>{discount.codePool.assigned}</strong></div>
+            <div><span>Copied</span><strong>{discount.codePool.copied}</strong></div>
+          </div>
+          <div className="cfg-form grid grid-2">
+            <label className="cfg-field"><span className="cfg-label">Codes low threshold</span><input className="cfg-input" type="number" min="0" value={threshold} disabled={readOnly} onChange={(event) => setThreshold(event.target.value)} /></label>
+            <label className="cfg-field"><span className="cfg-label">Import Amazon Single-use Claim Codes</span><input className="cfg-input reorder-visible-file" type="file" accept=".xlsx,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || working} onChange={(event) => importCodes(event.target.files?.[0])} /></label>
+          </div>
+          <p className="reorder-guidance">Accepted means FC can import the Code. Amazon determines whether it is valid and redeemable at checkout.</p>
+          {importReport && (importReport.duplicates > 0 || importReport.rejected > 0) && <button className="btn" onClick={() => downloadClaimCodeIssues(importReport)}>Download Duplicate / Rejected rows</button>}
+        </section>
+      )}
+    </div>
+  );
+}
+
 function PendingPage({ title }) {
   return <div className="reorder-page"><PageHeader title={title} /><PageState>This module is queued after Products and FC Order allocation.</PageState></div>;
 }
@@ -917,7 +1250,10 @@ function resolvePage(path, readOnly) {
   if (batchMatch) return <BatchDetailPage batchId={batchMatch[1]} readOnly={readOnly} />;
   const productMatch = /^\/reorder\/products\/([0-9a-f-]{36})$/i.exec(path);
   if (productMatch) return <ProductDetailPage productId={productMatch[1]} />;
-  if (path === "/reorder/discounts") return <PendingPage title="Discounts" />;
+  if (path === "/reorder/discounts") return <DiscountListPage />;
+  if (path === "/reorder/discounts/new") return <AddDiscountPage readOnly={readOnly} />;
+  const discountMatch = /^\/reorder\/discounts\/([0-9a-f-]{36})$/i.exec(path);
+  if (discountMatch) return <DiscountDetailPage discountId={discountMatch[1]} readOnly={readOnly} />;
   if (path === "/reorder/surveys") return <PendingPage title="Surveys" />;
   if (path === "/reorder/analytics") return <PendingPage title="Analytics" />;
   if (path === "/reorder/settings/data-sources") return <PendingPage title="Data sources" />;

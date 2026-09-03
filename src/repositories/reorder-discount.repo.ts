@@ -242,3 +242,28 @@ export async function setFeaturedDiscount(customerId: number, productVersionId: 
   });
   throwIfError(error);
 }
+
+export async function allocateSingleUseClaimCode(customerId: number, discountId: string, fcId: string) {
+  const { data, error } = await getSupabase().rpc("allocate_reorder_single_use_claim_code", {
+    p_customer_id: customerId,
+    p_discount_id: discountId,
+    p_fc_id: fcId,
+  });
+  throwIfError(error);
+  return data as ReorderClaimCodeRow | null;
+}
+
+export async function markClaimCodeEvent(
+  customerId: number,
+  discountId: string,
+  fcId: string,
+  event: "displayed" | "copied",
+) {
+  const { error } = await getSupabase().rpc("mark_reorder_claim_code_event", {
+    p_customer_id: customerId,
+    p_discount_id: discountId,
+    p_fc_id: fcId,
+    p_event: event,
+  });
+  throwIfError(error);
+}

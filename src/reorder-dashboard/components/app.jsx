@@ -22,7 +22,11 @@ async function api(path, options = {}) {
     },
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Request failed");
+  if (!response.ok) {
+    const error = new Error(data.error || "Request failed");
+    error.details = data.errors || [];
+    throw error;
+  }
   return data;
 }
 
@@ -802,14 +806,12 @@ function ProductDetailPage({ productId }) {
 
 function BatchDetailPage({ batchId, readOnly }) {
   const [batch, setBatch] = useState(null);
-  const [scheduleAt, setScheduleAt] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const load = () => api(`/api/reorder/batches/${batchId}`).then((data) => {
     setBatch(data);
-    if (data.scheduled_activation_at) setScheduleAt(data.scheduled_activation_at.slice(0, 16));
   });
 
   useEffect(() => { load().catch((err) => setError(err.message)); }, [batchId]);
@@ -888,11 +890,8 @@ function BatchDetailPage({ batchId, readOnly }) {
         <p className="reorder-guidance">Discount: {batch.consumerExperience.discount || "Not configured"} · Survey: {batch.consumerExperience.survey || "Not configured"}</p>
         {!readOnly && batch.activation_status !== "retired" && (
           <div className="reorder-activation-controls">
-            <button className="btn" onClick={() => navigate(`/reorder/preview?batch=${batch.id}`)}>Preview</button>
-            {["draft", "paused"].includes(batch.activation_status) && (
-              <><input className="cfg-input" type="datetime-local" value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} /><button className="btn" disabled={!scheduleAt || saving} onClick={() => transition("scheduled")}>Schedule</button></>
-            )}
-            {actions.map((status) => <button key={status} className={`btn${status === "active" ? " primary" : ""}`} disabled={saving} onClick={() => transition(status)}>{humanize(status)}</button>)}
+            {["draft", "scheduled", "paused"].includes(batch.activation_status) && <button className="btn primary" onClick={() => navigate(`/reorder/preview?batch=${batch.id}`)}>Preview & Publish</button>}
+            {actions.filter((status) => !["active", "scheduled"].includes(status)).map((status) => <button key={status} className="btn" disabled={saving} onClick={() => transition(status)}>{humanize(status)}</button>)}
           </div>
         )}
       </section>
@@ -1234,6 +1233,116 @@ function DiscountDetailPage({ discountId, readOnly }) {
   );
 }
 
+function ConsumerPreviewCanvas({ snapshot, availableDiscounts }) {
+  const [showAll, setShowAll] = useState(false);
+  if (!snapshot?.product || !snapshot.amazon) return <PageState tone="error">Product and Amazon context are incomplete.</PageState>;
+  const availableMap = new Map((availableDiscounts || []).map((discount) => [discount.id, discount]));
+  const visibleDiscounts = (snapshot.product.sellerOfferAvailable ? snapshot.discounts || [] : []).filter((discount) => {
+    const source = availableMap.get(discount.id);
+    return !(discount.claimCodeMode === "single_use" && !source?.availableCodes);
+  });
+  const ordered = [...visibleDiscounts].sort((left, right) => Number(right.isFeatured) - Number(left.isFeatured));
+  const displayed = ordered.length > 1 && !showAll ? ordered.slice(0, 1) : ordered;
+  return (
+    <div className="reorder-consumer-preview">
+      <div className="reorder-consumer-brand">
+        {snapshot.brand?.logoUrl && <img src={snapshot.brand.logoUrl} alt="" />}
+        <span>{snapshot.brand?.name || "Brand"}</span>
+      </div>
+      {snapshot.product.imageUrl && <img className="reorder-consumer-product-image" src={snapshot.product.imageUrl} alt="" />}
+      <p className="reorder-consumer-kicker">Reorder from {snapshot.amazon.sellerLabel}</p>
+      <h2>{snapshot.product.name}</h2>
+      {displayed.map((discount) => (
+        <div className="reorder-consumer-saving" key={discount.id}>
+          <strong>{discount.benefitSummary}</strong>
+          <span>{discount.kind === "amazon_coupon" ? "Coupon available on Amazon" : discount.title}</span>
+          {discount.claimCodeMode === "group" && <code>{discount.groupClaimCode}</code>}
+          {discount.claimCodeMode === "single_use" && <code>Unique Code assigned on the live page</code>}
+        </div>
+      ))}
+      {ordered.length > 1 && <button className="reorder-consumer-link" onClick={() => setShowAll((value) => !value)}>{showAll ? "Show Featured saving" : `View all ${ordered.length} savings`}</button>}
+      {snapshot.product.sellerOfferAvailable ? <a className="reorder-consumer-primary" href={snapshot.product.attributionUrl} target="_blank" rel="noreferrer">Reorder on Amazon</a> : <p className="reorder-consumer-unavailable">This Seller Offer is currently unavailable.</p>}
+      <a className="reorder-consumer-secondary" href={snapshot.fallback.url || "#"} target="_blank" rel="noreferrer">Visit Seller Storefront</a>
+      {snapshot.survey && <div className="reorder-consumer-survey"><strong>{snapshot.survey.title}</strong><span>{snapshot.survey.description}</span></div>}
+    </div>
+  );
+}
+
+function ConsumerPreviewPage({ readOnly }) {
+  const batchId = new URLSearchParams(window.location.search).get("batch") || "";
+  const [preview, setPreview] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
+  const [publishErrors, setPublishErrors] = useState([]);
+
+  const load = async (ids = selected) => {
+    setWorking(true); setError("");
+    try {
+      const result = await api(`/api/reorder/batches/${batchId}/consumer-preview`, {
+        method: "POST",
+        body: JSON.stringify(ids == null ? {} : { selectedDiscountIds: ids }),
+      });
+      setPreview(result);
+      if (ids == null) setSelected(result.availableDiscounts.map((discount) => discount.id));
+      setPublishErrors(result.errors || []);
+    } catch (err) { setError(err.message); } finally { setWorking(false); }
+  };
+  useEffect(() => { if (batchId) load(null); else setError("Batch is required for Consumer Preview."); }, [batchId]);
+
+  const toggleDiscount = (id) => {
+    const next = selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id];
+    setSelected(next);
+    load(next);
+  };
+  const publish = async (status) => {
+    setWorking(true); setError(""); setPublishErrors([]);
+    try {
+      await api(`/api/reorder/batches/${batchId}/activation`, {
+        method: "PUT",
+        body: JSON.stringify({
+          status,
+          scheduledActivationAt: status === "scheduled" ? new Date(scheduleAt).toISOString() : null,
+          selectedDiscountIds: selected,
+        }),
+      });
+      navigate(`/reorder/batches/${batchId}`);
+    } catch (err) {
+      setError(err.message);
+      setPublishErrors(err.details || []);
+    } finally { setWorking(false); }
+  };
+  const goToError = (item) => {
+    const discountMatch = /^discounts\.([0-9a-f-]{36})/i.exec(item.field);
+    if (discountMatch) return navigate(`/reorder/discounts/${discountMatch[1]}`);
+    if (item.field.startsWith("amazon.")) return navigate("/reorder/settings/amazon");
+    if (item.field.startsWith("product.")) return navigate(`/reorder/products/${preview?.batch.product_version_id}`);
+    if (item.field.startsWith("survey")) return navigate("/reorder/surveys");
+    return navigate(`/reorder/batches/${batchId}`);
+  };
+
+  return (
+    <div className="reorder-page">
+      <PageHeader title="Consumer Preview" action={<button className="btn" onClick={() => navigate(`/reorder/batches/${batchId}`)}>Back to Batch</button>} />
+      {error && <PageState tone="error">{error}</PageState>}
+      {!preview && !error && <PageState>Loading Preview…</PageState>}
+      {preview && <div className="reorder-preview-layout">
+        <div>
+          <section className="reorder-flat-section">
+            <div className="reorder-section-label">Published savings</div>
+            {!preview.availableDiscounts.length && <p className="reorder-guidance">No Discount is required. The Product can publish without one.</p>}
+            <div className="reorder-product-options">{preview.availableDiscounts.map((discount) => <label key={discount.id}><input type="checkbox" checked={selected?.includes(discount.id)} disabled={readOnly || working} onChange={() => toggleDiscount(discount.id)} /><span>{discount.title}<small>{discount.benefitSummary} · {humanize(discount.claimCodeMode)}</small></span><small>{discount.isFeatured ? "Featured" : discount.availableCodes != null ? `${discount.availableCodes} Codes` : ""}</small></label>)}</div>
+          </section>
+          {publishErrors.length > 0 && <section className="reorder-flat-section"><div className="reorder-section-label">Fix before Publish</div><div className="reorder-publish-errors">{publishErrors.map((item) => <button key={`${item.code}-${item.field}`} onClick={() => goToError(item)}><strong>{item.message}</strong><span>{item.field} →</span></button>)}</div></section>}
+          {!readOnly && <section className="reorder-flat-section"><div className="reorder-section-label">Publish</div><div className="reorder-publish-actions"><input className="cfg-input" type="datetime-local" value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} /><button className="btn" disabled={working || !scheduleAt || publishErrors.length > 0} onClick={() => publish("scheduled")}>Schedule</button><button className="btn primary" disabled={working || publishErrors.length > 0} onClick={() => publish("active")}>{working ? "Checking…" : "Publish"}</button></div></section>}
+        </div>
+        <ConsumerPreviewCanvas snapshot={preview.snapshot} availableDiscounts={preview.availableDiscounts.filter((discount) => selected?.includes(discount.id))} />
+      </div>}
+    </div>
+  );
+}
+
 function PendingPage({ title }) {
   return <div className="reorder-page"><PageHeader title={title} /><PageState>This module is queued after Products and FC Order allocation.</PageState></div>;
 }
@@ -1257,7 +1366,7 @@ function resolvePage(path, readOnly) {
   if (path === "/reorder/surveys") return <PendingPage title="Surveys" />;
   if (path === "/reorder/analytics") return <PendingPage title="Analytics" />;
   if (path === "/reorder/settings/data-sources") return <PendingPage title="Data sources" />;
-  if (path === "/reorder/preview") return <PendingPage title="Consumer Preview" />;
+  if (path === "/reorder/preview") return <ConsumerPreviewPage readOnly={readOnly} />;
   return <div className="reorder-page"><PageHeader title="Page not found" /><button className="btn primary" onClick={() => navigate("/reorder/overview")}>Return to overview</button></div>;
 }
 

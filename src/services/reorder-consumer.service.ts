@@ -1,0 +1,231 @@
+import * as amazonRepo from "../repositories/reorder-amazon.repo.js";
+import * as consumerRepo from "../repositories/reorder-consumer.repo.js";
+import * as discountRepo from "../repositories/reorder-discount.repo.js";
+import * as fulfillmentRepo from "../repositories/reorder-fulfillment.repo.js";
+import * as productRepo from "../repositories/reorder-product.repo.js";
+import {
+  buildConsumerSnapshot,
+  isDiscountCurrentlyAvailable,
+  orderConsumerDiscounts,
+  validateConsumerExperience,
+  type ConsumerDiscountInput,
+  type ConsumerExperienceInput,
+  type ConsumerPublishError,
+} from "../reorder/consumer-experience.js";
+import { ReorderValidationError } from "../reorder/amazon-url.js";
+import { listReorderDiscounts } from "./reorder-discount.service.js";
+
+export class ConsumerPublishValidationError extends ReorderValidationError {
+  constructor(readonly errors: ConsumerPublishError[]) {
+    super("Fix the highlighted Consumer Experience fields before publishing", 422);
+  }
+}
+
+function normalizeSelectedIds(value: unknown): string[] | null {
+  if (value == null) return null;
+  if (!Array.isArray(value)) throw new ReorderValidationError("Selected Discounts must be an array");
+  const ids = [...new Set(value.map(String))];
+  if (ids.some((id) => !/^[0-9a-f-]{36}$/i.test(id))) throw new ReorderValidationError("Selected Discount ID is invalid");
+  return ids;
+}
+
+async function loadBatchExperience(customerId: number, batchId: string, selectedValue?: unknown) {
+  const batch = await fulfillmentRepo.findBatch(customerId, batchId);
+  if (!batch) return null;
+  const [product, brand, discounts] = await Promise.all([
+    productRepo.findProductVersion(customerId, batch.product_version_id),
+    amazonRepo.getBrandSettings(customerId),
+    listReorderDiscounts(customerId),
+  ]);
+  const account = product
+    ? await amazonRepo.findSellingAccount(customerId, product.selling_account_id)
+    : null;
+  const availableDiscounts = discounts.filter((discount) =>
+    ["draft", "scheduled", "active"].includes(discount.status)
+    && discount.products.some((candidate) => candidate.id === batch.product_version_id)
+  );
+  const selectedIds = normalizeSelectedIds(selectedValue);
+  if (selectedIds?.some((id) => !availableDiscounts.some((discount) => discount.id === id))) {
+    throw new ReorderValidationError("Selected Discount is not eligible for this Product Version");
+  }
+  const selected = selectedIds == null
+    ? availableDiscounts
+    : availableDiscounts.filter((discount) => selectedIds.includes(discount.id));
+  const mappedDiscounts: ConsumerDiscountInput[] = selected.map((discount) => ({
+    id: discount.id,
+    kind: discount.discount_kind,
+    title: discount.title,
+    sellingAccountId: discount.selling_account_id,
+    marketplaceCode: discount.marketplace_code,
+    eligibleAsins: discount.eligible_asins,
+    benefitSummary: discount.benefit_summary,
+    qualifyingCondition: discount.qualifying_condition,
+    appliesTo: discount.applies_to,
+    startAt: discount.start_at,
+    endAt: discount.end_at,
+    amazonConfirmed: discount.amazon_confirmed,
+    couponType: discount.coupon_type,
+    claimCodeMode: discount.claim_code_mode,
+    groupClaimCode: discount.group_claim_code,
+    availableCodeCount: discount.codePool?.available ?? null,
+    isFeatured: Boolean(discount.products.find((candidate) => candidate.id === batch.product_version_id)?.isFeatured),
+  }));
+  const input: ConsumerExperienceInput = {
+    brand: brand ? { name: brand.brand_display_name, logoUrl: brand.brand_logo_url } : null,
+    account: account ? {
+      id: account.id,
+      label: account.label,
+      marketplaceCode: account.marketplace_code,
+      marketplaceDomain: account.marketplace_domain,
+      sellerId: account.seller_id,
+      storefrontUrl: account.storefront_url,
+      status: account.status,
+    } : null,
+    product: product ? {
+      id: product.id,
+      name: product.product_name,
+      imageUrl: product.image_url,
+      asin: product.asin,
+      status: product.status,
+      sellerOfferAvailable: product.seller_offer_available,
+      sellerPdpUrl: product.amazon_seller_pdp_url,
+      attributionUrl: product.attribution_url,
+      sellingAccountId: product.selling_account_id,
+    } : null,
+    discounts: mappedDiscounts,
+    survey: null,
+    surveyConflictCount: 0,
+  };
+  return { batch, input, availableDiscounts };
+}
+
+export async function previewReorderConsumerExperience(customerId: number, batchId: string, selectedDiscountIds?: unknown) {
+  const loaded = await loadBatchExperience(customerId, batchId, selectedDiscountIds);
+  if (!loaded) return null;
+  return {
+    batch: loaded.batch,
+    snapshot: buildConsumerSnapshot(loaded.input),
+    errors: validateConsumerExperience(loaded.input),
+    availableDiscounts: loaded.availableDiscounts.map((discount) => ({
+      id: discount.id,
+      title: discount.title,
+      kind: discount.discount_kind,
+      benefitSummary: discount.benefit_summary,
+      claimCodeMode: discount.claim_code_mode,
+      availableCodes: discount.codePool?.available ?? null,
+      isFeatured: Boolean(discount.products.find((product) => product.id === loaded.batch.product_version_id)?.isFeatured),
+    })),
+  };
+}
+
+export async function publishReorderConsumerExperience(
+  customerId: number,
+  batchId: string,
+  input: { status?: unknown; scheduledActivationAt?: unknown; selectedDiscountIds?: unknown },
+) {
+  const status = String(input.status ?? "") as "scheduled" | "active";
+  if (!(["scheduled", "active"] as string[]).includes(status)) throw new ReorderValidationError("Publish status must be Scheduled or Active");
+  const loaded = await loadBatchExperience(customerId, batchId, input.selectedDiscountIds);
+  if (!loaded) return null;
+  const errors = validateConsumerExperience(loaded.input);
+  if (status === "active" && !["ready", "shipped"].includes(loaded.batch.production_status)) {
+    errors.push({ code: "production_not_ready", field: "batch.productionStatus", message: "Batch Production must be Ready before activation." });
+  }
+  let scheduledAt: string | null = null;
+  if (status === "scheduled") {
+    const parsed = Date.parse(String(input.scheduledActivationAt ?? ""));
+    if (!Number.isFinite(parsed) || parsed <= Date.now()) {
+      errors.push({ code: "schedule_invalid", field: "batch.scheduledActivationAt", message: "Scheduled activation must be a future date and time." });
+    } else {
+      scheduledAt = new Date(parsed).toISOString();
+    }
+  }
+  if (errors.length) throw new ConsumerPublishValidationError(errors);
+  const snapshot = buildConsumerSnapshot(loaded.input);
+  return consumerRepo.publishConsumerExperience({
+    customerId,
+    batchId,
+    status,
+    scheduledAt,
+    snapshot,
+    discountIds: loaded.input.discounts.map((discount) => discount.id),
+  });
+}
+
+type Snapshot = ReturnType<typeof buildConsumerSnapshot>;
+
+function isSnapshot(value: unknown): value is Snapshot {
+  return Boolean(value && typeof value === "object" && "schemaVersion" in value && "product" in value && "discounts" in value);
+}
+
+export async function resolvePublishedReorderExperience(fcIdValue: string) {
+  const fcId = fcIdValue.trim().toUpperCase();
+  if (!/^[A-Z0-9-]{4,80}$/.test(fcId)) throw new ReorderValidationError("FC ID is invalid");
+  const unit = await consumerRepo.findFcUnit(fcId);
+  if (!unit) return null;
+  const publication = unit.status === "active"
+    ? await consumerRepo.findCurrentPublication(unit.customer_id, unit.batch_id)
+    : await consumerRepo.findLatestPublication(unit.customer_id, unit.batch_id);
+  if (!publication || !isSnapshot(publication.snapshot)) {
+    return { state: "invalid_fc", fcId, fallback: { type: "safe_message", url: null } };
+  }
+  const snapshot = publication.snapshot;
+  if (unit.status !== "active" || publication.status !== "active") {
+    return { state: "invalid_fc", fcId, fallback: snapshot.fallback };
+  }
+  if (!snapshot.product?.sellerOfferAvailable) {
+    return {
+      state: "product_unavailable",
+      fcId,
+      brand: snapshot.brand,
+      product: snapshot.product,
+      amazon: snapshot.amazon,
+      primaryCta: null,
+      fallback: snapshot.fallback,
+      featuredDiscount: null,
+      availableSavings: [],
+      showDiscounts: false,
+      survey: snapshot.survey,
+    };
+  }
+  const resolvedDiscounts = [];
+  for (const discount of snapshot.discounts.filter((candidate) => isDiscountCurrentlyAvailable(candidate))) {
+    if (discount.kind === "amazon_promotion" && discount.claimCodeMode === "single_use") {
+      const assigned = await discountRepo.allocateSingleUseClaimCode(unit.customer_id, discount.id, fcId);
+      if (!assigned) continue;
+      await discountRepo.markClaimCodeEvent(unit.customer_id, discount.id, fcId, "displayed");
+      resolvedDiscounts.push({ ...discount, claimCode: assigned.code });
+    } else if (discount.kind === "amazon_promotion" && discount.claimCodeMode === "group") {
+      resolvedDiscounts.push({ ...discount, claimCode: discount.groupClaimCode });
+    } else {
+      resolvedDiscounts.push({ ...discount, claimCode: null });
+    }
+  }
+  const savings = orderConsumerDiscounts(resolvedDiscounts);
+  return {
+    state: snapshot.product?.sellerOfferAvailable ? "ready" : "product_unavailable",
+    fcId,
+    brand: snapshot.brand,
+    product: snapshot.product,
+    amazon: snapshot.amazon,
+    primaryCta: snapshot.product?.sellerOfferAvailable ? snapshot.product.attributionUrl : null,
+    fallback: snapshot.fallback,
+    featuredDiscount: savings.length > 1 ? savings.find((discount) => discount.isFeatured) ?? null : savings[0] ?? null,
+    availableSavings: savings,
+    showDiscounts: savings.length > 0,
+    survey: snapshot.survey,
+  };
+}
+
+export async function markPublishedClaimCodeCopied(fcIdValue: string, discountId: string) {
+  const experience = await resolvePublishedReorderExperience(fcIdValue);
+  if (!experience || experience.state === "invalid_fc" || !Array.isArray(experience.availableSavings)) return null;
+  const discount = experience.availableSavings.find((candidate) => candidate.id === discountId && candidate.claimCodeMode !== "none");
+  if (!discount?.claimCode) return null;
+  const unit = await consumerRepo.findFcUnit(fcIdValue.trim().toUpperCase());
+  if (!unit) return null;
+  if (discount.claimCodeMode === "single_use") {
+    await discountRepo.markClaimCodeEvent(unit.customer_id, discount.id, unit.fc_id, "copied");
+  }
+  return { copied: true };
+}

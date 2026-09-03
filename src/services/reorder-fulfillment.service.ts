@@ -7,6 +7,10 @@ import type {
   ReorderAllocationRow,
   ReorderBatchRow,
 } from "../repositories/reorder-fulfillment.repo.js";
+import {
+  previewReorderConsumerExperience,
+  publishReorderConsumerExperience,
+} from "./reorder-consumer.service.js";
 
 function sum<T>(rows: T[], value: (row: T) => number): number {
   return rows.reduce((total, row) => total + value(row), 0);
@@ -218,13 +222,18 @@ export async function getReorderBatchDetail(customerId: number, batchId: string)
     reorderRepo.listBatchEvents(customerId, batchId),
     reorderRepo.listAuditHistory(customerId, "fc_batch", batchId),
   ]);
+  const preview = await previewReorderConsumerExperience(customerId, batchId);
   return {
     ...batch,
     product,
     order,
     timeline,
     auditHistory,
-    consumerExperience: { discount: null, survey: null },
+    consumerExperience: {
+      discount: preview?.availableDiscounts.map((discount) => discount.title).join(", ") || null,
+      survey: preview?.snapshot.survey?.title || null,
+      publishErrorCount: preview?.errors.length ?? 0,
+    },
     performance: { ms: null, md: null, msi: null, mgo: null, no: null, coverage: "unavailable" },
   };
 }
@@ -232,7 +241,7 @@ export async function getReorderBatchDetail(customerId: number, batchId: string)
 export async function transitionReorderBatchActivation(
   customerId: number,
   batchId: string,
-  input: { status?: unknown; scheduledActivationAt?: unknown },
+  input: { status?: unknown; scheduledActivationAt?: unknown; selectedDiscountIds?: unknown },
 ) {
   const batch = await reorderRepo.findBatch(customerId, batchId);
   if (!batch) return null;
@@ -241,28 +250,15 @@ export async function transitionReorderBatchActivation(
     throw new ReorderValidationError(`Cannot change activation from ${batch.activation_status} to ${status}`);
   }
   if (status === "active" || status === "scheduled") {
-    const product = await productRepo.findProductVersion(customerId, batch.product_version_id);
-    if (!product || !["ready", "active"].includes(product.status) || !product.image_url) {
-      throw new ReorderValidationError("Complete the Product Version before activation");
-    }
-    if (status === "active" && !["ready", "shipped"].includes(batch.production_status)) {
-      throw new ReorderValidationError("Batch Production must be Ready before activation");
-    }
-  }
-  let scheduledActivationAt: string | null = null;
-  if (status === "scheduled") {
-    const parsed = Date.parse(String(input.scheduledActivationAt ?? ""));
-    if (!Number.isFinite(parsed) || parsed <= Date.now()) {
-      throw new ReorderValidationError("Scheduled activation must be a future date and time");
-    }
-    scheduledActivationAt = new Date(parsed).toISOString();
+    await publishReorderConsumerExperience(customerId, batchId, input);
+    return reorderRepo.findBatch(customerId, batchId);
   }
   const updated = await reorderRepo.updateBatchActivation({
     customerId,
     batchId,
     fromStatus: batch.activation_status,
     toStatus: status,
-    scheduledActivationAt,
+    scheduledActivationAt: null,
   });
   if (!updated) throw new ReorderValidationError("Batch activation changed; refresh and try again", 409);
   return updated;

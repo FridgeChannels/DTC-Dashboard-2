@@ -25,7 +25,7 @@ export async function serveFcStatic(
   pathname: string,
   res: ServerResponse,
 ): Promise<boolean> {
-  const tapSnMatch = /^\/tap\/([A-Za-z0-9]+)$/.exec(pathname);
+  const tapSnMatch = /^\/tap\/([A-Za-z0-9-]+)$/.exec(pathname);
   if (pathname !== "/tap" && !tapSnMatch && !pathname.startsWith("/fc/")) {
     return false;
   }

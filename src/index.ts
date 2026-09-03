@@ -92,11 +92,14 @@ import {
   handleSubmitReorderAllocations,
   handleCreateReorderPromotion,
   handleFeatureReorderDiscount,
+  handleGetPublishedReorderExperience,
   handleGetReorderDiscount,
   handleImportReorderClaimCodes,
   handleImportReorderCoupons,
   handleListReorderDiscounts,
   handlePreviewReorderCoupons,
+  handlePreviewReorderConsumerExperience,
+  handleMarkPublishedClaimCodeCopied,
   handleUpdateReorderDiscount,
   handleListReorderProducts,
   handlePutReorderAmazonSetup,
@@ -201,6 +204,18 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/consumer/me") {
     await handleConsumerMe(req, res);
+    return;
+  }
+
+  const reorderConsumerCopyMatch = /^\/api\/reorder\/consumer\/([^/]+)\/discounts\/([^/]+)\/copied$/.exec(pathname);
+  if (req.method === "POST" && reorderConsumerCopyMatch) {
+    await handleMarkPublishedClaimCodeCopied(res, reorderConsumerCopyMatch[1], reorderConsumerCopyMatch[2]);
+    return;
+  }
+
+  const reorderConsumerMatch = /^\/api\/reorder\/consumer\/([^/]+)$/.exec(pathname);
+  if (req.method === "GET" && reorderConsumerMatch) {
+    await handleGetPublishedReorderExperience(res, reorderConsumerMatch[1]);
     return;
   }
 
@@ -313,6 +328,12 @@ const server = createServer(async (req, res) => {
   const reorderBatchActivationMatch = /^\/api\/reorder\/batches\/([^/]+)\/activation$/.exec(pathname);
   if (req.method === "PUT" && reorderBatchActivationMatch) {
     await handlePutReorderBatchActivation(req, res, reorderBatchActivationMatch[1]);
+    return;
+  }
+
+  const reorderBatchPreviewMatch = /^\/api\/reorder\/batches\/([^/]+)\/consumer-preview$/.exec(pathname);
+  if (req.method === "POST" && reorderBatchPreviewMatch) {
+    await handlePreviewReorderConsumerExperience(req, res, reorderBatchPreviewMatch[1]);
     return;
   }
 

@@ -180,3 +180,153 @@ button { font-family: inherit; }
   color: var(--ink-3);
   padding: 24px 0;
 }
+
+.reorder-tap-page {
+  align-items: start;
+  background: var(--bg);
+}
+
+.reorder-tap-shell {
+  width: min(460px, 100%);
+  padding: 18px 4px 42px;
+}
+
+.reorder-tap-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 24px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reorder-tap-brand img {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.reorder-tap-product {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 20px;
+  object-fit: cover;
+  background: var(--bg-elev);
+}
+
+.reorder-tap-eyebrow {
+  margin: 22px 0 5px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.reorder-tap-shell h1 {
+  margin: 0 0 22px;
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+
+.reorder-tap-shell > p:not(.reorder-tap-eyebrow, .reorder-tap-unavailable) {
+  color: var(--ink-2);
+}
+
+.reorder-tap-savings {
+  margin-bottom: 18px;
+}
+
+.reorder-tap-saving {
+  margin-bottom: 9px;
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--accent-soft);
+  color: oklch(0.30 0.10 38);
+}
+
+.reorder-tap-saving > strong,
+.reorder-tap-saving > span {
+  display: block;
+}
+
+.reorder-tap-saving > span {
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.reorder-tap-code {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reorder-tap-code code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+
+.reorder-tap-code button,
+.reorder-tap-link {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.reorder-tap-code button {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.reorder-tap-link {
+  padding: 2px 0 8px;
+}
+
+.reorder-tap-primary,
+.reorder-tap-secondary {
+  display: block;
+  border-radius: 999px;
+  padding: 14px 18px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.reorder-tap-primary {
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+.reorder-tap-secondary {
+  margin-top: 8px;
+  color: var(--ink-2);
+}
+
+.reorder-tap-unavailable {
+  margin: 16px 0 8px;
+  color: var(--neg);
+  text-align: center;
+}
+
+.reorder-tap-survey {
+  margin-top: 22px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--bg-sunken);
+}
+
+.reorder-tap-survey strong,
+.reorder-tap-survey span {
+  display: block;
+}
+
+.reorder-tap-survey span {
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-size: 13px;
+}

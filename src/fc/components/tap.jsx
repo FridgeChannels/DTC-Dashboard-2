@@ -4,7 +4,7 @@
 const { useState, useEffect, useMemo, useCallback } = React;
 
 function parseTapSn() {
-  const pathMatch = window.location.pathname.match(/^\/tap\/([A-Za-z0-9]+)$/);
+  const pathMatch = window.location.pathname.match(/^\/tap\/([A-Za-z0-9-]+)$/);
   if (pathMatch) return pathMatch[1].toUpperCase();
 
   const params = new URLSearchParams(window.location.search);
@@ -107,6 +107,9 @@ function TapPage() {
 
   const [phase, setPhase] = useState("loading");
   const [error, setError] = useState(null);
+  const [reorderExperience, setReorderExperience] = useState(null);
+  const [showAllSavings, setShowAllSavings] = useState(false);
+  const [copiedDiscountId, setCopiedDiscountId] = useState(null);
   const [shopDomain, setShopDomain] = useState(shop);
   const [shopifyAppHost, setShopifyAppHost] = useState(window.location.origin);
 
@@ -197,6 +200,15 @@ function TapPage() {
         let contextData = null;
 
         if (sn) {
+          const reorderRes = await fetch(`/api/reorder/consumer/${encodeURIComponent(sn)}`);
+          if (reorderRes.ok) {
+            const experience = await reorderRes.json();
+            if (!cancelled) {
+              setReorderExperience(experience);
+              setPhase("reorder");
+            }
+            return;
+          }
           const contextRes = await fetch(`/api/tap/context?sn=${encodeURIComponent(sn)}`);
           contextData = await contextRes.json();
           if (!contextRes.ok) {
@@ -280,6 +292,56 @@ function TapPage() {
       <div className="tap-page tap-page-minimal">
         <div className="tap-loading">Loading…</div>
       </div>
+    );
+  }
+
+
+  if (phase === "reorder" && reorderExperience) {
+    if (reorderExperience.state === "invalid_fc") {
+      return (
+        <main className="tap-page reorder-tap-page">
+          <section className="reorder-tap-shell">
+            <p className="reorder-tap-eyebrow">FC Reorder</p>
+            <h1>This FC link is not active.</h1>
+            <p>The product experience may have been paused or retired.</p>
+            {reorderExperience.fallback?.url && <a className="reorder-tap-secondary" href={reorderExperience.fallback.url} rel="noreferrer">Visit Seller Storefront</a>}
+          </section>
+        </main>
+      );
+    }
+    const savings = reorderExperience.availableSavings || [];
+    const displayedSavings = savings.length > 1 && !showAllSavings
+      ? [reorderExperience.featuredDiscount].filter(Boolean)
+      : savings;
+    const copyCode = async (discount) => {
+      if (!discount.claimCode) return;
+      await navigator.clipboard.writeText(discount.claimCode);
+      setCopiedDiscountId(discount.id);
+      fetch(`/api/reorder/consumer/${encodeURIComponent(sn)}/discounts/${discount.id}/copied`, { method: "POST" }).catch(() => {});
+    };
+    return (
+      <main className="tap-page reorder-tap-page">
+        <section className="reorder-tap-shell">
+          <div className="reorder-tap-brand">
+            {reorderExperience.brand?.logoUrl && <img src={reorderExperience.brand.logoUrl} alt="" referrerPolicy="no-referrer" />}
+            <span>{reorderExperience.brand?.name || "FC Reorder"}</span>
+          </div>
+          {reorderExperience.product?.imageUrl && <img className="reorder-tap-product" src={reorderExperience.product.imageUrl} alt="" referrerPolicy="no-referrer" />}
+          <p className="reorder-tap-eyebrow">Reorder from {reorderExperience.amazon?.sellerLabel}</p>
+          <h1>{reorderExperience.product?.name}</h1>
+          {reorderExperience.showDiscounts && <div className="reorder-tap-savings">
+            {displayedSavings.map((discount) => <div className="reorder-tap-saving" key={discount.id}>
+              <strong>{discount.benefitSummary}</strong>
+              <span>{discount.kind === "amazon_coupon" ? "Coupon available on Amazon" : discount.title}</span>
+              {discount.claimCode && <div className="reorder-tap-code"><code>{discount.claimCode}</code><button onClick={() => copyCode(discount)}>{copiedDiscountId === discount.id ? "Copied" : "Copy Code"}</button></div>}
+            </div>)}
+            {savings.length > 1 && <button className="reorder-tap-link" onClick={() => setShowAllSavings((value) => !value)}>{showAllSavings ? "Show Featured saving" : `View all ${savings.length} savings`}</button>}
+          </div>}
+          {reorderExperience.primaryCta ? <a className="reorder-tap-primary" href={reorderExperience.primaryCta} rel="noreferrer">Reorder on Amazon</a> : <p className="reorder-tap-unavailable">This Seller Offer is currently unavailable.</p>}
+          {reorderExperience.fallback?.url && <a className="reorder-tap-secondary" href={reorderExperience.fallback.url} rel="noreferrer">Visit Seller Storefront</a>}
+          {reorderExperience.survey && <div className="reorder-tap-survey"><strong>{reorderExperience.survey.title}</strong><span>{reorderExperience.survey.description}</span></div>}
+        </section>
+      </main>
     );
   }
 

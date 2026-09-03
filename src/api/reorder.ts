@@ -34,6 +34,12 @@ import {
   type CreatePromotionInput,
 } from "../services/reorder-discount.service.js";
 import {
+  ConsumerPublishValidationError,
+  markPublishedClaimCodeCopied,
+  previewReorderConsumerExperience,
+  resolvePublishedReorderExperience,
+} from "../services/reorder-consumer.service.js";
+import {
   assertRequestCanWriteConfig,
   getRequestConfigCustomerId,
   getRequestCustomerId,
@@ -46,11 +52,67 @@ function handleError(res: ServerResponse, error: unknown, fallback: string): voi
     return;
   }
   if (error instanceof ReorderValidationError) {
+    if (error instanceof ConsumerPublishValidationError) {
+      json(res, error.statusCode, { error: error.message, errors: error.errors });
+      return;
+    }
     errorJson(res, error.statusCode, error.message);
     return;
   }
   console.error(`[reorder] ${fallback}`, error);
   errorJson(res, 500, fallback);
+}
+
+export async function handlePreviewReorderConsumerExperience(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawBatchId: string,
+): Promise<void> {
+  try {
+    const input = await readJsonBody<{ selectedDiscountIds?: unknown }>(req);
+    const customerId = await getRequestConfigCustomerId(req, res);
+    const preview = await previewReorderConsumerExperience(
+      customerId,
+      decodeUuid(rawBatchId, "Batch ID"),
+      input.selectedDiscountIds,
+    );
+    if (!preview) return errorJson(res, 404, "Batch not found");
+    json(res, 200, preview);
+  } catch (error) {
+    handleError(res, error, "Failed to preview Consumer Experience");
+  }
+}
+
+export async function handleGetPublishedReorderExperience(
+  res: ServerResponse,
+  rawFcId: string,
+): Promise<void> {
+  try {
+    res.setHeader("Cache-Control", "private, no-store");
+    const experience = await resolvePublishedReorderExperience(decodeURIComponent(rawFcId));
+    if (!experience) return errorJson(res, 404, "Not an FC Reorder ID");
+    json(res, 200, experience);
+  } catch (error) {
+    handleError(res, error, "Failed to resolve FC Reorder experience");
+  }
+}
+
+export async function handleMarkPublishedClaimCodeCopied(
+  res: ServerResponse,
+  rawFcId: string,
+  rawDiscountId: string,
+): Promise<void> {
+  try {
+    res.setHeader("Cache-Control", "private, no-store");
+    const result = await markPublishedClaimCodeCopied(
+      decodeURIComponent(rawFcId),
+      decodeUuid(rawDiscountId, "Discount ID"),
+    );
+    if (!result) return errorJson(res, 404, "Published Claim Code not found");
+    json(res, 200, result);
+  } catch (error) {
+    handleError(res, error, "Failed to record Claim Code copy");
+  }
 }
 
 export async function handleGetReorderAmazonSetup(
@@ -260,7 +322,7 @@ export async function handlePutReorderBatchActivation(
   rawBatchId: string,
 ): Promise<void> {
   try {
-    const input = await readJsonBody<{ status?: unknown; scheduledActivationAt?: unknown }>(req);
+    const input = await readJsonBody<{ status?: unknown; scheduledActivationAt?: unknown; selectedDiscountIds?: unknown }>(req);
     await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const batch = await transitionReorderBatchActivation(
@@ -269,6 +331,7 @@ export async function handlePutReorderBatchActivation(
       {
         status: input.status,
         scheduledActivationAt: input.scheduledActivationAt,
+        selectedDiscountIds: input.selectedDiscountIds,
       },
     );
     if (!batch) return errorJson(res, 404, "Batch not found");

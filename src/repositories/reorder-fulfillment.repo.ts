@@ -26,6 +26,7 @@ export type ReorderShipmentStatus =
   | "ready_to_ship" | "in_transit" | "delivered_to_fulfillment";
 export type ReorderActivationStatus =
   | "draft" | "scheduled" | "active" | "paused" | "retired";
+export type ReorderDefinitionStatus = "draft" | "submitted";
 
 export interface ReorderBatchRow {
   id: string;
@@ -44,6 +45,8 @@ export interface ReorderBatchRow {
   nfc_write_status: string | null;
   shipment_status: ReorderShipmentStatus;
   ship_to: string | null;
+  requested_ship_date: string | null;
+  notes: string | null;
   quantity_shipped: number;
   shipped_at: string | null;
   carrier: string | null;
@@ -51,6 +54,8 @@ export interface ReorderBatchRow {
   delivered_to_fulfillment_at: string | null;
   activation_status: ReorderActivationStatus;
   scheduled_activation_at: string | null;
+  definition_status: ReorderDefinitionStatus;
+  submitted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,9 +87,11 @@ const BATCH_SELECT = [
   "id", "batch_code", "order_id", "customer_id", "product_allocation_id",
   "product_version_id", "label", "quantity", "fc_id_count", "fc_id_start",
   "fc_id_end", "production_status", "qa_status", "nfc_write_status",
-  "shipment_status", "ship_to", "quantity_shipped", "shipped_at", "carrier",
+  "shipment_status", "ship_to", "requested_ship_date", "notes",
+  "quantity_shipped", "shipped_at", "carrier",
   "tracking_reference", "delivered_to_fulfillment_at", "activation_status",
-  "scheduled_activation_at", "created_at", "updated_at",
+  "scheduled_activation_at", "definition_status", "submitted_at",
+  "created_at", "updated_at",
 ].join(", ");
 
 function throwIfError(error: unknown): void {
@@ -109,6 +116,17 @@ export async function listAllocations(customerId: number, orderIds: number[]) {
     .select("*")
     .eq("customer_id", customerId)
     .in("order_id", orderIds)
+    .order("created_at", { ascending: true });
+  throwIfError(error);
+  return (data ?? []) as ReorderAllocationRow[];
+}
+
+export async function listAllocationsForProduct(customerId: number, productVersionId: string) {
+  const { data, error } = await getSupabase()
+    .from("reorder_product_allocation")
+    .select("*")
+    .eq("customer_id", customerId)
+    .eq("product_version_id", productVersionId)
     .order("created_at", { ascending: true });
   throwIfError(error);
   return (data ?? []) as ReorderAllocationRow[];
@@ -169,6 +187,18 @@ export async function listBatchEvents(customerId: number, batchId: string) {
   return (data ?? []) as ReorderBatchEventRow[];
 }
 
+export async function listBatchEventsForBatches(customerId: number, batchIds: string[]) {
+  if (!batchIds.length) return [];
+  const { data, error } = await getSupabase()
+    .from("reorder_fc_batch_event")
+    .select("id, batch_id, customer_id, event_type, title, description, actor_type, occurred_at, created_at")
+    .eq("customer_id", customerId)
+    .in("batch_id", batchIds)
+    .order("occurred_at", { ascending: true });
+  throwIfError(error);
+  return (data ?? []) as ReorderBatchEventRow[];
+}
+
 export async function listAuditHistory(
   customerId: number,
   entityType: "fc_order" | "fc_batch",
@@ -212,6 +242,49 @@ export async function saveAllocations(
 
 export async function submitAllocations(customerId: number, orderId: number) {
   const { data, error } = await getSupabase().rpc("submit_reorder_product_allocations", {
+    p_customer_id: customerId,
+    p_order_id: orderId,
+  });
+  throwIfError(error);
+  return data as ReorderOrderStateRow;
+}
+
+export async function saveBrandBatch(input: {
+  customerId: number;
+  orderId: number;
+  batchId: string | null;
+  productVersionId: string;
+  quantity: number;
+  label: string | null;
+  shipTo: string | null;
+  requestedShipDate: string | null;
+  notes: string | null;
+}) {
+  const { data, error } = await getSupabase().rpc("save_reorder_brand_batch", {
+    p_customer_id: input.customerId,
+    p_order_id: input.orderId,
+    p_batch_id: input.batchId,
+    p_product_version_id: input.productVersionId,
+    p_quantity: input.quantity,
+    p_label: input.label,
+    p_ship_to: input.shipTo,
+    p_requested_ship_date: input.requestedShipDate,
+    p_notes: input.notes,
+  });
+  throwIfError(error);
+  return data as ReorderBatchRow;
+}
+
+export async function deleteBrandBatch(customerId: number, batchId: string) {
+  const { error } = await getSupabase().rpc("delete_reorder_brand_batch", {
+    p_customer_id: customerId,
+    p_batch_id: batchId,
+  });
+  throwIfError(error);
+}
+
+export async function submitBrandBatches(customerId: number, orderId: number) {
+  const { data, error } = await getSupabase().rpc("submit_reorder_brand_batches", {
     p_customer_id: customerId,
     p_order_id: orderId,
   });

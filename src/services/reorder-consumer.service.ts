@@ -5,13 +5,13 @@ import * as fulfillmentRepo from "../repositories/reorder-fulfillment.repo.js";
 import * as productRepo from "../repositories/reorder-product.repo.js";
 import {
   buildConsumerSnapshot,
-  isDiscountCurrentlyAvailable,
   orderConsumerDiscounts,
   validateConsumerExperience,
   type ConsumerDiscountInput,
   type ConsumerExperienceInput,
   type ConsumerPublishError,
 } from "../reorder/consumer-experience.js";
+import { canDisplayDiscountOnConsumer } from "../reorder/discount-display.js";
 import { ReorderValidationError } from "../reorder/amazon-url.js";
 import { revealClaimCode } from "./reorder/claim-code-crypto.js";
 import { listReorderDiscounts } from "./reorder-discount.service.js";
@@ -46,13 +46,24 @@ async function loadBatchExperience(customerId: number, batchId: string, selected
     ? await listReorderSurveys(customerId, { productId: product.id, status: "open" })
     : [];
   const availableDiscounts = discounts.filter((discount) =>
-    ["draft", "scheduled", "active"].includes(discount.status)
+    discount.is_visible_on_fc === true
     && discount.products.some((candidate) => candidate.id === batch.product_version_id)
+    && canDisplayDiscountOnConsumer({
+      title: discount.title,
+      benefitSummary: discount.benefit_summary,
+      startAt: discount.start_at,
+      endAt: discount.end_at,
+      eligibleAsins: discount.eligible_asins,
+      matchedAsins: discount.products.map((product) => product.asin).filter(Boolean) as string[],
+      isVisibleOnFc: true,
+      claimCodeMode: discount.claim_code_mode,
+      discountKind: discount.discount_kind,
+      groupClaimCode: discount.group_claim_code,
+      codePool: discount.codePool,
+      productAsin: product?.asin,
+    })
   );
   const selectedIds = normalizeSelectedIds(selectedValue);
-  if (selectedIds?.some((id) => !availableDiscounts.some((discount) => discount.id === id))) {
-    throw new ReorderValidationError("Selected Discount is not eligible for this Product Version");
-  }
   const selected = selectedIds == null
     ? availableDiscounts
     : availableDiscounts.filter((discount) => selectedIds.includes(discount.id));
@@ -199,18 +210,53 @@ export async function resolvePublishedReorderExperience(fcIdValue: string) {
       survey: null,
     };
   }
+  const liveDiscounts = await listReorderDiscounts(unit.customer_id, { revealGroupCodes: true });
   const resolvedDiscounts = [];
-  for (const discount of snapshot.discounts.filter((candidate) => isDiscountCurrentlyAvailable(candidate))) {
-    if (discount.kind === "amazon_promotion" && discount.claimCodeMode === "single_use") {
-      const assigned = await discountRepo.allocateSingleUseClaimCode(unit.customer_id, discount.id, fcId);
+  for (const live of liveDiscounts) {
+    const matchedAsins = live.products.map((product) => product.asin).filter(Boolean) as string[];
+    if (!canDisplayDiscountOnConsumer({
+      title: live.title,
+      benefitSummary: live.benefit_summary,
+      startAt: live.start_at,
+      endAt: live.end_at,
+      eligibleAsins: live.eligible_asins,
+      matchedAsins,
+      isVisibleOnFc: live.is_visible_on_fc === true,
+      claimCodeMode: live.claim_code_mode,
+      discountKind: live.discount_kind,
+      groupClaimCode: live.group_claim_code,
+      codePool: live.codePool,
+      productAsin: snapshot.product?.asin,
+    })) continue;
+    const discount: ConsumerDiscountInput & { claimCode: string | null } = {
+      id: live.id,
+      kind: live.discount_kind,
+      title: live.title,
+      sellingAccountId: live.selling_account_id,
+      marketplaceCode: live.marketplace_code,
+      eligibleAsins: live.eligible_asins,
+      benefitSummary: live.benefit_summary,
+      qualifyingCondition: live.qualifying_condition,
+      appliesTo: live.applies_to ?? null,
+      startAt: live.start_at,
+      endAt: live.end_at,
+      amazonConfirmed: live.amazon_confirmed !== false,
+      couponType: live.coupon_type ?? null,
+      claimCodeMode: live.claim_code_mode,
+      groupClaimCode: live.group_claim_code,
+      availableCodeCount: live.codePool?.available ?? null,
+      isFeatured: Boolean(live.products.find((product) => product.id === snapshot.product?.id || product.asin === snapshot.product?.asin)?.isFeatured),
+      claimCode: null,
+    };
+    if (live.discount_kind === "amazon_promotion" && live.claim_code_mode === "single_use") {
+      const assigned = await discountRepo.allocateSingleUseClaimCode(unit.customer_id, live.id, fcId);
       if (!assigned) continue;
-      await discountRepo.markClaimCodeEvent(unit.customer_id, discount.id, fcId, "displayed");
-      resolvedDiscounts.push({ ...discount, claimCode: revealClaimCode(assigned.code) });
-    } else if (discount.kind === "amazon_promotion" && discount.claimCodeMode === "group") {
-      resolvedDiscounts.push({ ...discount, claimCode: discount.groupClaimCode });
-    } else {
-      resolvedDiscounts.push({ ...discount, claimCode: null });
+      await discountRepo.markClaimCodeEvent(unit.customer_id, live.id, fcId, "displayed");
+      discount.claimCode = revealClaimCode(assigned.code);
+    } else if (live.discount_kind === "amazon_promotion" && live.claim_code_mode === "group") {
+      discount.claimCode = live.group_claim_code;
     }
+    resolvedDiscounts.push(discount);
   }
   const savings = orderConsumerDiscounts(resolvedDiscounts);
   const survey = snapshot.survey && !await consumerRepo.hasCompletedSurvey(unit.customer_id, snapshot.survey.id, fcId)

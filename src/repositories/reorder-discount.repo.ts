@@ -33,6 +33,7 @@ export interface ReorderDiscountRow {
   claim_code_mode: ReorderClaimCodeMode;
   group_claim_code: string | null;
   code_low_threshold: number;
+  is_visible_on_fc: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -164,6 +165,7 @@ export async function importAmazonCoupons(input: {
   totalRows: number;
   rejectedRows: number;
   rows: unknown[];
+  visible?: boolean;
 }) {
   const { data, error } = await getSupabase().rpc("import_reorder_amazon_coupons", {
     p_customer_id: input.customerId,
@@ -176,6 +178,7 @@ export async function importAmazonCoupons(input: {
     p_total_rows: input.totalRows,
     p_rejected_rows: input.rejectedRows,
     p_rows: input.rows,
+    p_visible: input.visible === true,
   });
   throwIfError(error);
   return (data ?? []) as ReorderDiscountRow[];
@@ -198,7 +201,7 @@ export async function createAmazonPromotion(
 export async function updateDiscount(
   customerId: number,
   discountId: string,
-  values: Partial<Pick<ReorderDiscountRow, "coupon_type" | "amazon_confirmed" | "code_low_threshold">>,
+  values: Partial<Pick<ReorderDiscountRow, "coupon_type" | "amazon_confirmed" | "code_low_threshold" | "is_visible_on_fc">>,
 ) {
   const { data, error } = await getSupabase()
     .from("reorder_discount")
@@ -248,6 +251,23 @@ export async function insertClaimCodes(customerId: number, discountId: string, c
     .select("id");
   throwIfError(error);
   return (data ?? []) as Array<{ id: string }>;
+}
+
+export async function bindDiscountProducts(
+  customerId: number,
+  discountId: string,
+  rows: Array<Omit<ReorderDiscountProductRow, "created_at" | "discount_id" | "customer_id">>,
+) {
+  if (!rows.length) return [];
+  const { data, error } = await getSupabase()
+    .from("reorder_discount_product")
+    .upsert(
+      rows.map((row) => ({ ...row, discount_id: discountId, customer_id: customerId })),
+      { onConflict: "discount_id,product_version_id" },
+    )
+    .select("*");
+  throwIfError(error);
+  return (data ?? []) as ReorderDiscountProductRow[];
 }
 
 export async function setFeaturedDiscount(customerId: number, productVersionId: string, discountId: string) {

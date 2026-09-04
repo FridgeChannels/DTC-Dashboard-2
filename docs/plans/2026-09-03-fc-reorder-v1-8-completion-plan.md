@@ -21,8 +21,8 @@ The implementation must preserve these decisions:
 - All Reorder CSS must remain scoped under `.reorder-app` or `.reorder-consumer`; do not modify global selectors or use `!important` to override the legacy Dashboard.
 - Use existing CSS variables and visual language where available. New tokens must be Reorder-local aliases, not new global design rules.
 - Mobile-first behavior is required from 365–430 px upward, with at least 44 px interactive targets, visible keyboard focus, no horizontal scrolling, and no card-heavy or all-uppercase interface.
-- Brand users reuse existing established FC Orders. They cannot create FC Orders, Batches, FC IDs, production records, or shipment records.
-- FC Ops creates Batches and assigns FC IDs through protected internal endpoints; Brand Console only reads those facts and configures Product/discount/survey/activation data.
+- Brand users reuse existing established FC Orders. They cannot create FC Orders, FC IDs, production records, or shipment records. They define Brand Batches on an established FC Order and submit them for production.
+- FC executes Brand-defined Batches and assigns FC IDs through protected internal endpoints. FC must not change Brand Product/Quantity or split/merge Brand Batches. Internal Production Lots stay off the Brand Batch dimension.
 - Survey reuses the current `draft / scheduled / open / closed` state machine. Brand-facing labels may be Draft, Scheduled, Active, Ended. Do not introduce a Reorder-only Paused state.
 - An empty Single-use code pool removes the entire discount region from the consumer experience.
 - Consumer Product-unavailable fallback exposes only the configured Amazon Storefront action and never allocates a code.

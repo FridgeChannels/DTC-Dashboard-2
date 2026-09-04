@@ -23,4 +23,11 @@ describe("Reorder Analytics UI", () => {
     expect(app).toContain("exportAnalyticsCsv");
     expect(app).toContain("No FC IDs, device IDs, anonymous order keys or Claim Codes are included");
   });
+
+  it("opens Analytics from Batch Detail with Product and Batch filters", () => {
+    expect(app).toContain('params.set("product_id", productId)');
+    expect(app).toContain('params.set("batch_id", batchId)');
+    expect(app).toContain("View analytics →");
+    expect(app).not.toContain("/reorder/analytics?product=");
+  });
 });

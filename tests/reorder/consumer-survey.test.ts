@@ -17,6 +17,7 @@ vi.mock("../../src/services/reorder-discount.service.js", () => ({ listReorderDi
 vi.mock("../../src/services/reorder/survey-service.js", () => ({ listReorderSurveys: vi.fn() }));
 
 import * as consumerRepo from "../../src/repositories/reorder-consumer.repo.js";
+import * as discountService from "../../src/services/reorder-discount.service.js";
 import {
   ConsumerPublishValidationError,
   resolvePublishedReorderExperience,
@@ -52,6 +53,7 @@ describe("published Reorder Survey", () => {
     vi.mocked(consumerRepo.findFcUnit).mockResolvedValue({ fc_id: "FC-1001", batch_id: "b1", customer_id: 7, magnet_id: null, status: "active", activated_at: null, retired_at: null, created_at: "2026-09-01" });
     vi.mocked(consumerRepo.findCurrentPublication).mockResolvedValue({ id: "p1", batch_id: "b1", customer_id: 7, version: 1, status: "active", scheduled_at: null, published_at: "2026-09-01", snapshot, created_at: "2026-09-01" });
     vi.mocked(consumerRepo.hasCompletedSurvey).mockResolvedValue(false);
+    vi.mocked(discountService.listReorderDiscounts).mockResolvedValue([]);
   });
 
   it("renders the snapshotted Survey until that FC ID completes the Version", async () => {

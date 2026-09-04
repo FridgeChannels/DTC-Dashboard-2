@@ -76,13 +76,10 @@ describe("Consumer Experience publish validation", () => {
     ]));
   });
 
-  it("blocks a selected Single-use Promotion when the Code Pool is exhausted", () => {
+  it("does not treat an exhausted Single-use pool as a publish blocker", () => {
     const input = validInput();
     input.discounts = [discount({ claimCodeMode: "single_use", availableCodeCount: 0 })];
-    expect(validateConsumerExperience(input)).toContainEqual(expect.objectContaining({
-      code: "claim_codes_exhausted",
-      field: "discounts.00000000-0000-4000-8000-000000000001.codePool",
-    }));
+    expect(validateConsumerExperience(input).some((error) => error.code === "claim_codes_exhausted")).toBe(false);
   });
 
   it("requires exactly one brand-selected Featured Discount for multiple savings", () => {

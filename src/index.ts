@@ -90,6 +90,10 @@ import {
   handlePutReorderBatchActivation,
   handleSaveReorderAllocations,
   handleSubmitReorderAllocations,
+  handleCreateReorderBrandBatch,
+  handleUpdateReorderBrandBatch,
+  handleDeleteReorderBrandBatch,
+  handleSubmitReorderBrandBatches,
   handleCreateReorderPromotion,
   handleFeatureReorderDiscount,
   handleGetPublishedReorderExperience,
@@ -97,6 +101,7 @@ import {
   handleImportReorderClaimCodes,
   handleImportReorderCoupons,
   handleListReorderDiscounts,
+  handleMapReorderDiscountProducts,
   handlePreviewReorderCoupons,
   handlePreviewReorderConsumerExperience,
   handleMarkPublishedClaimCodeCopied,
@@ -429,6 +434,12 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  const reorderDiscountProductsMatch = /^\/api\/reorder\/discounts\/([^/]+)\/products$/.exec(pathname);
+  if (req.method === "PUT" && reorderDiscountProductsMatch) {
+    await handleMapReorderDiscountProducts(req, res, reorderDiscountProductsMatch[1]);
+    return;
+  }
+
   const reorderFeaturedDiscountMatch = /^\/api\/reorder\/discounts\/([^/]+)\/featured$/.exec(pathname);
   if (req.method === "PUT" && reorderFeaturedDiscountMatch) {
     await handleFeatureReorderDiscount(req, res, reorderFeaturedDiscountMatch[1]);
@@ -460,6 +471,28 @@ const server = createServer(async (req, res) => {
   const reorderOrderSubmitMatch = /^\/api\/reorder\/orders\/([^/]+)\/allocations\/submit$/.exec(pathname);
   if (req.method === "POST" && reorderOrderSubmitMatch) {
     await handleSubmitReorderAllocations(req, res, reorderOrderSubmitMatch[1]);
+    return;
+  }
+
+  const reorderOrderBatchSubmitMatch = /^\/api\/reorder\/orders\/([^/]+)\/batches\/submit$/.exec(pathname);
+  if (req.method === "POST" && reorderOrderBatchSubmitMatch) {
+    await handleSubmitReorderBrandBatches(req, res, reorderOrderBatchSubmitMatch[1]);
+    return;
+  }
+
+  const reorderOrderBatchesMatch = /^\/api\/reorder\/orders\/([^/]+)\/batches$/.exec(pathname);
+  if (req.method === "POST" && reorderOrderBatchesMatch) {
+    await handleCreateReorderBrandBatch(req, res, reorderOrderBatchesMatch[1]);
+    return;
+  }
+
+  const reorderOrderBatchMatch = /^\/api\/reorder\/orders\/([^/]+)\/batches\/([^/]+)$/.exec(pathname);
+  if (req.method === "PUT" && reorderOrderBatchMatch) {
+    await handleUpdateReorderBrandBatch(req, res, reorderOrderBatchMatch[1], reorderOrderBatchMatch[2]);
+    return;
+  }
+  if (req.method === "DELETE" && reorderOrderBatchMatch) {
+    await handleDeleteReorderBrandBatch(req, res, reorderOrderBatchMatch[1], reorderOrderBatchMatch[2]);
     return;
   }
 

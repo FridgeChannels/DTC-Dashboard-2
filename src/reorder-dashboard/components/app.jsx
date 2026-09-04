@@ -15,7 +15,8 @@ const KEEP_ALIVE_PATHS = new Set([
 
 const navigation = [
   { label: "Overview", path: "/reorder/overview" },
-  { label: "Products & FC", path: "/reorder/products", match: "/reorder/products" },
+  { label: "Products", path: "/reorder/products", match: "/reorder/products", exclude: "/reorder/products/orders-batches" },
+  { label: "Orders & batches", path: "/reorder/products/orders-batches", match: ["/reorder/products/orders-batches", "/reorder/orders/", "/reorder/batches/"] },
   { label: "Discounts", path: "/reorder/discounts", match: "/reorder/discounts" },
   { label: "Surveys", path: "/reorder/surveys", match: "/reorder/surveys" },
   { label: "Analytics", path: "/reorder/analytics" },
@@ -117,6 +118,53 @@ function formatDate(value, fallback = "—") {
   return Number.isNaN(date.getTime()) ? fallback : date.toLocaleDateString();
 }
 
+function discountProductNames(discount) {
+  const names = (discount.products || []).map((product) => product.product_name).filter(Boolean);
+  return names.length ? names.join(", ") : "—";
+}
+
+function discountIssueText(discount) {
+  return discount.issue?.label || (discount.issues || []).map((issue) => issue.label).join(", ") || "—";
+}
+
+function fcDisplayLabel(discount) {
+  return discount.is_visible_on_fc || discount.fc_display === "show" ? "Show" : "Hide";
+}
+
+function parseEligibleAsins(value) {
+  return [...new Set(String(value || "").toUpperCase().match(/[A-Z0-9]{10}/g) || [])];
+}
+
+function matchProductsByAsins(products, asins) {
+  const wanted = new Set((asins || []).map((asin) => String(asin).toUpperCase()));
+  const matched = (products || []).filter((product) => wanted.has(String(product.asin || "").toUpperCase()));
+  const matchedAsins = new Set(matched.map((product) => String(product.asin || "").toUpperCase()));
+  return {
+    matched,
+    unmatchedAsins: [...wanted].filter((asin) => !matchedAsins.has(asin)),
+  };
+}
+
+function FcDisplaySwitch({ checked, disabled, onChange }) {
+  return (
+    <label className={`reorder-fc-switch${checked ? " is-on" : ""}${disabled ? " is-disabled" : ""}`}>
+      <input
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        disabled={disabled}
+        aria-label="Show on FC"
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="reorder-fc-switch-track" aria-hidden="true" />
+      <span className="reorder-fc-switch-copy">
+        <strong>{checked ? "Show on FC" : "Hide on FC"}</strong>
+        <small>{checked ? "This Discount appears on the FC page." : "This Discount stays hidden on the FC page."}</small>
+      </span>
+    </label>
+  );
+}
+
 function humanize(value) {
   return String(value || "—").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -163,6 +211,118 @@ function activationBusy(status) {
   return "Saving…";
 }
 
+function toDatetimeLocal(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function analyticsHref(productId, batchId) {
+  const params = new URLSearchParams();
+  if (productId) params.set("product_id", productId);
+  if (batchId) params.set("batch_id", batchId);
+  return `/reorder/analytics?${params.toString()}`;
+}
+
+function orderBatchAction(order) {
+  if (order?.batchAction) return order.batchAction;
+  if (order?.allocationAction) return order.allocationAction;
+  if (order?.allocationStatus === "submitted") {
+    if (order?.status === "in_production") return "In Production";
+    if (order?.status === "partially_shipped") return "Partially shipped";
+    if (order?.status === "shipped") return "Shipped";
+    if (order?.status === "completed") return "Completed";
+    return "Submitted";
+  }
+  if (order?.status === "ready_for_allocation" || !order?.batchCount) return "Add batch";
+  return "Edit batches";
+}
+
+function canEditOrderBatches(order) {
+  return order?.allocationStatus !== "submitted" && order?.status !== "cancelled";
+}
+
+function batchStatusLabel(batch) {
+  return batch?.brandStatusLabel || {
+    draft: "Draft",
+    submitted: "Submitted",
+    in_production: "In Production",
+    produced: "Produced",
+    qa_passed: "QA Passed",
+    shipped: "Shipped",
+    production_issue: "Production Issue",
+  }[batch?.brandStatus] || humanize(batch?.production_status);
+}
+
+function allocationReadinessCopy(order) {
+  if (order?.allocationReadiness) return order.allocationReadiness;
+  if (order?.allocationStatus === "submitted") return "Submitted";
+  if (order?.allocationStatus === "ready") return "Ready for production";
+  return "Allocation incomplete";
+}
+
+function emptyBatchForm() {
+  return { productVersionId: "", quantity: "" };
+}
+
+function formFromBatch(batch) {
+  return {
+    productVersionId: batch.product_version_id || "",
+    quantity: String(batch.quantity ?? ""),
+  };
+}
+
+function magnetsCopy(value) {
+  return Number(value || 0).toLocaleString("en-US");
+}
+
+function validateBrandBatchQuantity(input) {
+  const minQuantity = input.minQuantity ?? 1000;
+  const maxCount = input.maxCount ?? 6;
+  if (input.isCreate && input.batchCount >= maxCount) return `Maximum ${maxCount} batches per FC Order.`;
+  if (!Number.isSafeInteger(input.quantity) || input.quantity <= 0) return "Every Batch must have a Product and a positive Quantity";
+  if (input.quantity < minQuantity) return `Minimum batch size is ${magnetsCopy(minQuantity)} magnets.`;
+  const remainingBefore = input.totalOrdered - input.otherAllocated;
+  if (input.quantity > remainingBefore) return `Quantity cannot exceed the remaining ${magnetsCopy(Math.max(0, remainingBefore))} magnets.`;
+  const remainingAfter = remainingBefore - input.quantity;
+  if (remainingAfter > 0 && remainingAfter < minQuantity) {
+    return `This allocation would leave ${magnetsCopy(remainingAfter)} magnets unallocated. Each batch must contain at least ${magnetsCopy(minQuantity)} magnets.`;
+  }
+  return null;
+}
+
+function leftoverFieldMessage(remainingAfter) {
+  return `This allocation would leave ${magnetsCopy(remainingAfter)} magnets unallocated. Adjust this batch quantity.`;
+}
+
+function quantityFieldError(input) {
+  if (!String(input.rawQuantity || "").trim()) return null;
+  const quantity = Number(input.rawQuantity);
+  const remainingAfter = input.totalOrdered - input.otherAllocated - quantity;
+  const error = validateBrandBatchQuantity({ ...input, quantity });
+  if (error && error.startsWith("This allocation would leave") && Number.isSafeInteger(remainingAfter)) {
+    return leftoverFieldMessage(remainingAfter);
+  }
+  return error;
+}
+
+function strandedRemainingMessage(remaining, minQuantity = 1000) {
+  if (remaining > 0 && remaining < minQuantity) {
+    return `The remaining ${magnetsCopy(remaining)} magnets cannot form a valid batch. Each batch must contain at least ${magnetsCopy(minQuantity)} magnets. Adjust existing batches.`;
+  }
+  return null;
+}
+
+function canAddBrandBatch(input) {
+  const minQuantity = input.minQuantity ?? 1000;
+  const maxCount = input.maxCount ?? 6;
+  if (input.remaining <= 0) return { disabled: true, reason: null };
+  if (input.batchCount >= maxCount) return { disabled: true, reason: `Maximum ${maxCount} batches per FC Order.` };
+  return { disabled: input.remaining < minQuantity, reason: strandedRemainingMessage(input.remaining, minQuantity) };
+}
+
 function Icon({ name }) {
   const paths = {
     overview: <><path d="M4 13h6V4H4v9Z"/><path d="M14 20h6v-9h-6v9Z"/><path d="M4 20h6v-3H4v3Z"/><path d="M14 7h6V4h-6v3Z"/></>,
@@ -170,6 +330,7 @@ function Icon({ name }) {
     discount: <><path d="M20 13 13 20l-9-9V4h7l9 9Z"/><path d="M8.5 8.5h.01"/></>,
     survey: <><path d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></>,
     analytics: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
+    orders: <><path d="M4 5h16v4H4z"/><path d="M4 11h16v4H4z"/><path d="M4 17h16v4H4z"/></>,
     settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></>,
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name] || paths.settings}</svg>;
@@ -177,17 +338,28 @@ function Icon({ name }) {
 
 function navIcon(label) {
   if (label === "Overview") return "overview";
-  if (label === "Products & FC") return "product";
+  if (label === "Products") return "product";
+  if (label === "Orders & batches") return "orders";
   if (label === "Discounts") return "discount";
   if (label === "Surveys") return "survey";
   if (label === "Analytics") return "analytics";
   return "settings";
 }
 
+function pathMatches(currentPath, prefix) {
+  return currentPath === prefix || currentPath.startsWith(`${prefix}/`) || (prefix.endsWith("/") && currentPath.startsWith(prefix));
+}
+
+function isNavActive(item, currentPath) {
+  const excluded = item.exclude == null ? [] : Array.isArray(item.exclude) ? item.exclude : [item.exclude];
+  if (excluded.some((prefix) => pathMatches(currentPath, prefix))) return false;
+  if (item.match == null) return currentPath === item.path;
+  const prefixes = Array.isArray(item.match) ? item.match : [item.match];
+  return prefixes.some((prefix) => pathMatches(currentPath, prefix));
+}
+
 function NavItem({ item, currentPath }) {
-  const active = item.match
-    ? currentPath.startsWith(item.match)
-    : currentPath === item.path;
+  const active = isNavActive(item, currentPath);
   return (
     <button
       type="button"
@@ -227,10 +399,17 @@ function PageState({ children, tone = "neutral" }) {
   return <div className={`reorder-state is-${tone}`}>{children}</div>;
 }
 
-function PageHeader({ title, action }) {
+function PageHeader({ title, action, backTo, backLabel = "Back" }) {
   return (
     <header className="reorder-page-header">
-      <h1>{title}</h1>
+      <div className="reorder-page-heading">
+        {backTo && (
+          <button type="button" className="reorder-back-link" onClick={() => navigate(backTo)}>
+            ← {backLabel}
+          </button>
+        )}
+        <h1>{title}</h1>
+      </div>
       {action && <div>{action}</div>}
     </header>
   );
@@ -635,17 +814,13 @@ function ProductListPage({ readOnly }) {
 
   return (
     <div className="reorder-page">
-      <PageHeader title="Products & FC" action={(
+      <PageHeader title="Products" action={(
         <div className="reorder-header-actions">
           <input id="reorder-product-csv" className="reorder-file-input" type="file" accept=".csv,text/csv" disabled={readOnly || importing} onChange={(event) => importCsv(event.target.files?.[0])} />
           <label className={`btn${readOnly || importing ? " is-disabled" : ""}`} htmlFor="reorder-product-csv">{importing ? "Importing…" : "Import CSV"}</label>
           <button className="btn primary" disabled={readOnly} onClick={() => navigate("/reorder/products/new")}>Add product</button>
         </div>
       )} />
-      <div className="reorder-tabs" role="tablist">
-        <button className="is-active" role="tab">Products</button>
-        <button role="tab" onClick={() => navigate("/reorder/products/orders-batches")}>Orders & batches</button>
-      </div>
       {loading && products.length === 0 && <PageState>Loading…</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
       {importResult && (
@@ -670,14 +845,28 @@ function ProductListPage({ readOnly }) {
       {products.length > 0 && (
         <div className="reorder-table-wrap">
           <table className="reorder-table">
-            <thead><tr><th>Product</th><th>ASIN</th><th>Seller</th><th>Status</th><th>Updated</th></tr></thead>
+            <thead><tr><th>Product</th><th>ASIN</th><th>Seller</th><th>Status</th><th>Updated</th><th>Discount</th></tr></thead>
             <tbody>{products.map((product) => (
-              <tr key={product.id} tabIndex="0" onClick={() => navigate(`/reorder/products/${product.id}`)}>
+              <tr key={product.id} tabIndex="0" onClick={() => navigate(`/reorder/products/${product.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/reorder/products/${product.id}`); } }}>
                 <td><div className="reorder-product-cell">{product.image_url ? <img src={product.image_url} alt="" /> : <span className="reorder-image-placeholder" aria-hidden="true" />}<span><strong>{product.product_name}</strong><small>{[product.sku, product.variant_size].filter(Boolean).join(" · ") || "—"}</small></span></div></td>
                 <td className="reorder-mono">{product.asin}</td>
                 <td>{product.sellingAccount?.label || "—"}</td>
                 <td><span className={`reorder-status is-${product.status}`}>{product.status}</span></td>
                 <td>{new Date(product.updated_at).toLocaleDateString()}</td>
+                <td className="reorder-actions-cell">
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        navigate(`/reorder/discounts/new?product=${encodeURIComponent(product.id)}`);
+                      }}
+                    >
+                      Add existing Amazon discount
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}</tbody>
           </table>
@@ -702,70 +891,62 @@ function OrdersBatchesPage() {
 
   return (
     <div className="reorder-page">
-      <PageHeader title="Products & FC" />
-      <div className="reorder-tabs" role="tablist">
-        <button role="tab" onClick={() => navigate("/reorder/products")}>Products</button>
-        <button className="is-active" role="tab">Orders & batches</button>
-      </div>
+      <PageHeader title="Orders & batches" />
       {loading && !cached && <PageState>Loading…</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
       {(!loading || cached) && !error && (
-        <>
-          <section className="reorder-flat-section">
-            <div className="reorder-section-label">FC Orders</div>
-            {!data.orders.length ? <PageState>No established FC Orders are available.</PageState> : (
+        <section className="reorder-flat-section">
+          <div className="reorder-section-label">FC Orders</div>
+          {!data.orders.length ? <PageState>No established FC Orders are available.</PageState> : (
+            <>
+              <p className="reorder-guidance">Open an FC Order to view and define its Batches.</p>
               <div className="reorder-table-wrap">
                 <table className="reorder-table">
-                  <thead><tr><th>FC Order</th><th>Total ordered</th><th>Allocated</th><th>Unallocated</th><th>Products</th><th>Status</th><th>Batch progress</th><th>Shipment progress</th></tr></thead>
+                  <thead><tr><th>FC Order</th><th>Total ordered</th><th>Allocated</th><th>Remaining</th><th>Products</th><th>Ship-to</th><th>Status</th><th>Batch progress</th><th>Shipment progress</th><th>Action</th></tr></thead>
                   <tbody>{data.orders.map((order) => (
-                    <tr key={order.id} tabIndex="0" onClick={() => navigate(`/reorder/orders/${encodeURIComponent(order.orderNumber)}`)}>
+                    <tr key={order.id} tabIndex="0" onClick={() => navigate(`/reorder/orders/${encodeURIComponent(order.orderNumber)}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/reorder/orders/${encodeURIComponent(order.orderNumber)}`); } }}>
                       <td><strong>{order.orderNumber}</strong><small className="reorder-cell-note">{formatDate(order.orderedAt)}</small></td>
                       <td>{formatNumber(order.totalOrdered)}</td>
                       <td>{formatNumber(order.allocated)}</td>
-                      <td>{formatNumber(order.unallocated)}</td>
+                      <td>{formatNumber(order.remaining ?? order.unallocated)}</td>
                       <td>{order.productCount}</td>
+                      <td>{order.shipTo || "—"}</td>
                       <td><span className={`reorder-status is-${order.status}`}>{humanize(order.status)}</span></td>
                       <td>{order.batchCount} · {formatNumber(order.batchQuantity)} units</td>
                       <td>{formatNumber(order.shippedQuantity)} / {formatNumber(order.totalOrdered)}</td>
+                      <td className="reorder-actions-cell">
+                        {orderBatchAction(order) && canEditOrderBatches(order) && (
+                          <button type="button" className="btn" onClick={(event) => { event.stopPropagation(); navigate(`/reorder/orders/${encodeURIComponent(order.orderNumber)}`); }}>{orderBatchAction(order)}</button>
+                        )}
+                        {orderBatchAction(order) && !canEditOrderBatches(order) && (
+                          <span className="reorder-header-status">{orderBatchAction(order)}</span>
+                        )}
+                      </td>
                     </tr>
                   ))}</tbody>
                 </table>
               </div>
-            )}
-          </section>
-          <section className="reorder-flat-section">
-            <div className="reorder-section-label">Batches</div>
-            {!data.batches.length ? <PageState>No Batches have been created by FC Ops.</PageState> : (
-              <div className="reorder-table-wrap">
-                <table className="reorder-table">
-                  <thead><tr><th>Batch</th><th>FC Order</th><th>Product</th><th>Qty</th><th>Production</th><th>Shipment</th><th>Activation</th></tr></thead>
-                  <tbody>{data.batches.map((batch) => (
-                    <tr key={batch.id} tabIndex="0" onClick={() => navigate(`/reorder/batches/${batch.id}`)}>
-                      <td><strong>{batch.batch_code}</strong><small className="reorder-cell-note">{batch.label}</small></td>
-                      <td>{batch.orderNumber || "—"}</td>
-                      <td>{batch.product?.product_name || "—"}</td>
-                      <td>{formatNumber(batch.quantity)}</td>
-                      <td>{humanize(batch.production_status)}</td>
-                      <td>{humanize(batch.shipment_status)}</td>
-                      <td><span className={`reorder-status is-${batch.activation_status}`}>{humanize(batch.activation_status)}</span></td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </>
+            </>
+          )}
+        </section>
       )}
     </div>
   );
 }
 
 function AllocationSummary({ order }) {
+  const remaining = order.remaining ?? order.unallocated ?? 0;
   return (
-    <div className="reorder-quantity-summary">
-      <div><span>Total ordered</span><strong>{formatNumber(order.totalOrdered)}</strong></div>
+    <div className="reorder-quantity-summary reorder-order-summary">
+      <div><span>Total Ordered</span><strong>{formatNumber(order.totalOrdered)}</strong></div>
       <div><span>Allocated</span><strong>{formatNumber(order.allocated)}</strong></div>
-      <div><span>Unallocated</span><strong>{formatNumber(order.unallocated)}</strong></div>
+      <div className={`is-remaining${remaining === 0 ? " is-complete" : ""}`}>
+        <span>Remaining</span>
+        <strong>{formatNumber(remaining)}</strong>
+      </div>
+      <div><span>Batches</span><strong>{formatNumber(order.batchCount)} / {formatNumber(order.maxBatchCount)}</strong></div>
+      <div><span>Minimum batch size</span><strong>{formatNumber(order.minBatchQuantity)}</strong></div>
+      <div><span>Maximum batches</span><strong>{formatNumber(order.maxBatchCount)}</strong></div>
     </div>
   );
 }
@@ -773,7 +954,8 @@ function AllocationSummary({ order }) {
 function OrderDetailPage({ orderNumber, readOnly }) {
   const [detail, setDetail] = useState(null);
   const [products, setProducts] = useState([]);
-  const [rows, setRows] = useState([]);
+  const [editor, setEditor] = useState(null);
+  const [form, setForm] = useState(emptyBatchForm);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState("");
   const [message, setMessage] = useFlashMessage();
@@ -786,12 +968,8 @@ function OrderDetailPage({ orderNumber, readOnly }) {
     ]);
     setDetail(nextDetail);
     const currentProducts = (productData.products || []).filter((product) => ["ready", "active"].includes(product.status) && product.image_url);
-    const allocatedProducts = nextDetail.allocations.map((allocation) => allocation.product).filter(Boolean);
+    const allocatedProducts = (nextDetail.batches || []).map((batch) => batch.product).filter(Boolean);
     setProducts([...new Map([...currentProducts, ...allocatedProducts].map((product) => [product.id, product])).values()]);
-    setRows(nextDetail.allocations.map((allocation) => ({
-      productVersionId: allocation.product_version_id,
-      quantity: allocation.quantity,
-    })));
   };
 
   useEffect(() => {
@@ -799,36 +977,144 @@ function OrderDetailPage({ orderNumber, readOnly }) {
   }, [orderNumber]);
 
   const totals = useMemo(() => {
-    const allocated = rows.reduce((total, row) => total + Math.max(0, Number(row.quantity) || 0), 0);
+    const batches = detail?.batches || [];
+    const allocated = batches.reduce((total, batch) => total + Math.max(0, Number(batch.quantity) || 0), 0);
     const totalOrdered = detail?.order.totalOrdered || 0;
-    return { totalOrdered, allocated, unallocated: totalOrdered - allocated };
-  }, [rows, detail]);
+    const remaining = totalOrdered - allocated;
+    const minBatchQuantity = detail?.order.minBatchQuantity || 1000;
+    const maxBatchCount = detail?.order.maxBatchCount || 6;
+    return {
+      orderNumber: detail?.order.orderNumber,
+      totalOrdered,
+      allocated,
+      remaining,
+      unallocated: remaining,
+      batchCount: batches.length,
+      minBatchQuantity,
+      maxBatchCount,
+      allocationStatus: detail?.order.allocationStatus || "draft",
+    };
+  }, [detail]);
 
-  const locked = readOnly || detail?.order.allocationStatus === "submitted";
-  const updateRow = (index, key, value) => setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row));
+  const submitted = detail?.order.allocationStatus === "submitted";
+  const canEdit = !readOnly && !submitted && detail?.order.status !== "cancelled";
+  const batches = detail?.batches || [];
+  const minQuantity = totals.minBatchQuantity;
+  const addBatchState = canAddBrandBatch({
+    remaining: totals.remaining,
+    batchCount: totals.batchCount,
+    minQuantity,
+    maxCount: totals.maxBatchCount,
+  });
+  const canAddBatch = canEdit && products.length > 0 && !addBatchState.disabled;
+  const allBatchesValid = batches.length > 0
+    && batches.every((batch) => batch.product_version_id && Number(batch.quantity) >= minQuantity)
+    && totals.batchCount <= totals.maxBatchCount;
+  const canSubmit = canEdit && totals.remaining === 0 && allBatchesValid;
+  const leftoverStuck = canEdit && Boolean(strandedRemainingMessage(totals.remaining, minQuantity));
+  const otherAllocated = batches
+    .filter((batch) => editor?.mode !== "edit" || batch.id !== editor.batch.id)
+    .reduce((total, batch) => total + Number(batch.quantity || 0), 0);
+  const availableToAllocate = Math.max(0, totals.totalOrdered - otherAllocated);
+  const quantityError = editor ? quantityFieldError({
+    rawQuantity: form.quantity,
+    totalOrdered: totals.totalOrdered,
+    otherAllocated,
+    batchCount: batches.filter((batch) => editor.mode !== "edit" || batch.id !== editor.batch.id).length,
+    isCreate: editor.mode === "create",
+    minQuantity,
+    maxCount: totals.maxBatchCount,
+  }) : null;
+  const updateForm = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const canSaveBatch = Boolean(form.productVersionId)
+    && !quantityError
+    && Number.isSafeInteger(Number(form.quantity))
+    && Number(form.quantity) > 0
+    && String(form.quantity).trim() !== "";
 
-  const saveDraft = async () => {
-    setBusyAction("draft"); setError(""); setMessage("");
+  const openCreate = () => {
+    setError("");
+    setEditor({ mode: "create" });
+    setForm(emptyBatchForm());
+  };
+
+  const openEdit = (batch) => {
+    setError("");
+    setEditor({ mode: "edit", batch });
+    setForm(formFromBatch(batch));
+  };
+
+  const closeEditor = () => {
+    setEditor(null);
+    setForm(emptyBatchForm());
+  };
+
+  const saveBatch = async () => {
+    if (!form.productVersionId) {
+      setError("Every Batch must have a Product and a positive Quantity");
+      return;
+    }
+    if (quantityError) {
+      setError(quantityError);
+      return;
+    }
+    const nextQuantity = Number(form.quantity);
+    const invalid = validateBrandBatchQuantity({
+      quantity: nextQuantity,
+      totalOrdered: totals.totalOrdered,
+      otherAllocated,
+      batchCount: batches.filter((batch) => editor?.mode !== "edit" || batch.id !== editor.batch.id).length,
+      isCreate: editor?.mode === "create",
+      minQuantity,
+      maxCount: totals.maxBatchCount,
+    });
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
+    setBusyAction("save"); setError(""); setMessage("");
     try {
-      await api(`/api/reorder/orders/${encodeURIComponent(orderNumber)}/allocations`, {
-        method: "PUT",
-        body: JSON.stringify({ allocations: rows.map((row) => ({ ...row, quantity: Number(row.quantity) })) }),
-      });
+      const payload = {
+        productVersionId: form.productVersionId,
+        quantity: nextQuantity,
+        label: editor?.mode === "edit" ? editor.batch.label : null,
+        notes: editor?.mode === "edit" ? editor.batch.notes : null,
+      };
+      if (editor?.mode === "edit") {
+        await api(`/api/reorder/orders/${encodeURIComponent(orderNumber)}/batches/${editor.batch.id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+        setMessage("Batch saved.");
+      } else {
+        await api(`/api/reorder/orders/${encodeURIComponent(orderNumber)}/batches`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        setMessage("Batch created.");
+      }
+      closeEditor();
       await load();
-      setMessage("Allocation draft saved.");
+    } catch (err) { setError(err.message); } finally { setBusyAction(""); }
+  };
+
+  const deleteBatch = async (batch) => {
+    setBusyAction(`delete-${batch.id}`); setError(""); setMessage("");
+    try {
+      await api(`/api/reorder/orders/${encodeURIComponent(orderNumber)}/batches/${batch.id}`, { method: "DELETE" });
+      if (editor?.mode === "edit" && editor.batch.id === batch.id) closeEditor();
+      await load();
+      setMessage("Batch deleted.");
     } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
   const submit = async () => {
     setBusyAction("submit"); setError(""); setMessage("");
     try {
-      await api(`/api/reorder/orders/${encodeURIComponent(orderNumber)}/allocations`, {
-        method: "PUT",
-        body: JSON.stringify({ allocations: rows.map((row) => ({ ...row, quantity: Number(row.quantity) })) }),
-      });
-      await api(`/api/reorder/orders/${encodeURIComponent(orderNumber)}/allocations/submit`, { method: "POST" });
+      await api(`/api/reorder/orders/${encodeURIComponent(orderNumber)}/batches/submit`, { method: "POST" });
+      closeEditor();
       await load();
-      setMessage("Allocation submitted to FC.");
+      setMessage("Batches submitted for production.");
     } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
@@ -839,43 +1125,127 @@ function OrderDetailPage({ orderNumber, readOnly }) {
     <div className="reorder-page">
       <PageHeader
         title={detail.order.orderNumber}
-        action={locked
-          ? <span className="reorder-header-status">{detail.order.allocationStatus === "submitted" ? "Submitted" : "View-only"}</span>
-          : <button className="btn primary" disabled={Boolean(busyAction) || totals.unallocated !== 0 || !rows.length} onClick={submit}>{busyAction === "submit" ? "Submitting…" : "Submit allocation"}</button>}
+        backTo="/reorder/products/orders-batches"
+        backLabel="Orders & Batches"
+        action={<span className="reorder-header-status">{submitted ? "Submitted" : canEdit ? "Draft" : "View-only"}</span>}
       />
       {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
       <AllocationSummary order={totals} />
-      {totals.unallocated > 0 && !locked && <p className="reorder-guidance">Allocate {formatNumber(totals.unallocated)} more magnets before submission.</p>}
-      {totals.unallocated < 0 && <PageState tone="error">Allocation exceeds Total Ordered by {formatNumber(Math.abs(totals.unallocated))}.</PageState>}
 
       <section className="reorder-flat-section">
-        <div className="reorder-section-label">Product Allocation</div>
-        {rows.map((row, index) => (
-          <div className="reorder-allocation-row" key={`${row.productVersionId}-${index}`}>
-            <select className="cfg-input" value={row.productVersionId} disabled={locked} onChange={(event) => updateRow(index, "productVersionId", event.target.value)}>
-              <option value="">Select Product Version</option>
-              {products.map((product) => <option key={product.id} value={product.id}>{product.product_name} · {product.asin}</option>)}
-            </select>
-            <input className="cfg-input" type="number" min="1" step="1" value={row.quantity} disabled={locked} aria-label="Allocated Quantity" onChange={(event) => updateRow(index, "quantity", event.target.value)} />
-            {!locked && <button className="reorder-text-button" onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}>Remove</button>}
+        <div className="reorder-section-label">Batches</div>
+        {!detail.batches.length ? <PageState>No Batches have been created.</PageState> : (
+          <div className="reorder-table-wrap">
+            <table className="reorder-table">
+              <thead><tr><th>Batch</th><th>Product</th><th>Quantity</th><th>Status</th>{canEdit ? <th>Actions</th> : null}</tr></thead>
+              <tbody>
+                {detail.batches.map((batch) => (
+                  <tr key={batch.id}>
+                    <td>
+                      <button type="button" className="reorder-inline-link" onClick={() => navigate(`/reorder/batches/${batch.id}`)}>
+                        <strong>{batch.batch_code}</strong>
+                      </button>
+                      {batch.label && batch.label !== batch.batch_code ? <small className="reorder-cell-note">{batch.label}</small> : null}
+                    </td>
+                    <td>{batch.product?.product_name || "—"}<small className="reorder-cell-note">{batch.product?.asin || ""}</small></td>
+                    <td>{formatNumber(batch.quantity)}</td>
+                    <td>{batchStatusLabel(batch)}</td>
+                    {canEdit ? (
+                      <td className="reorder-actions-cell">
+                        {!batch.locked && <button type="button" className="reorder-text-button" onClick={() => openEdit(batch)}>Edit</button>}
+                        {!batch.locked && <button type="button" className="reorder-text-button" disabled={Boolean(busyAction)} onClick={() => deleteBatch(batch)}>{busyAction === `delete-${batch.id}` ? "Deleting…" : "Delete"}</button>}
+                        {batch.locked && <span className="reorder-cell-note">Locked</span>}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ))}
-        {!rows.length && <PageState>No Product Allocations yet.</PageState>}
-        {!locked && (
+        )}
+        {canEdit && !editor && (
           <div className="reorder-editor-actions">
-            <button className="btn" onClick={() => setRows((current) => [...current, { productVersionId: "", quantity: "" }])}>Add Product</button>
-            <button className="btn" disabled={Boolean(busyAction) || totals.unallocated < 0} onClick={saveDraft}>{busyAction === "draft" ? "Saving…" : "Save draft"}</button>
+            <button className="btn" onClick={openCreate} disabled={!canAddBatch} aria-disabled={!canAddBatch}>Add batch</button>
+            {!products.length && <span className="reorder-cell-note">Create a production-ready Product before adding a Batch.</span>}
+            {products.length > 0 && addBatchState.reason && <span className="reorder-field-error">{addBatchState.reason}</span>}
           </div>
+        )}
+        {canEdit && editor && (
+          <form className="reorder-batch-form" onSubmit={(event) => { event.preventDefault(); saveBatch(); }}>
+            <label>
+              Product
+              <select className="cfg-input" required value={form.productVersionId} onChange={(event) => updateForm("productVersionId", event.target.value)}>
+                <option value="">Select Product</option>
+                {products.map((product) => <option key={product.id} value={product.id}>{product.product_name} · {product.asin}</option>)}
+              </select>
+            </label>
+            <label>
+              Quantity
+              <input
+                className={`cfg-input${quantityError ? " is-invalid" : ""}`}
+                type="number"
+                min={minQuantity}
+                step="1"
+                required
+                value={form.quantity}
+                aria-label="Batch Quantity"
+                aria-invalid={Boolean(quantityError)}
+                aria-describedby="batch-quantity-hint"
+                onChange={(event) => updateForm("quantity", event.target.value)}
+              />
+              <span id="batch-quantity-hint" className="reorder-field-hint">
+                Available to allocate: {formatNumber(availableToAllocate)}
+                <br />
+                Minimum batch size: {formatNumber(minQuantity)}
+              </span>
+              {availableToAllocate >= minQuantity && (
+                <button
+                  type="button"
+                  className="reorder-text-button"
+                  onClick={() => updateForm("quantity", String(availableToAllocate))}
+                >
+                  Use remaining {formatNumber(availableToAllocate)}
+                </button>
+              )}
+              {quantityError && <span className="reorder-field-error">{quantityError}</span>}
+            </label>
+            <div className="reorder-editor-actions is-wide">
+              <button className="btn primary" type="submit" disabled={Boolean(busyAction) || !canSaveBatch}>{busyAction === "save" ? "Saving…" : "Save batch"}</button>
+              <button className="btn" type="button" onClick={closeEditor}>Cancel</button>
+            </div>
+          </form>
         )}
       </section>
 
+      {canEdit && (
+        <section className={`reorder-allocation-footer${canSubmit ? " is-complete" : ""}`}>
+          {canSubmit ? (
+            <>
+              <p className="reorder-allocation-status">✓ Allocation complete</p>
+              <p className="reorder-guidance">{formatNumber(totals.allocated)} of {formatNumber(totals.totalOrdered)} magnets allocated</p>
+              <p className="reorder-guidance">{formatNumber(totals.batchCount)} batches</p>
+            </>
+          ) : (
+            <>
+              <p className="reorder-allocation-status">Allocation incomplete</p>
+              <p className="reorder-guidance">{formatNumber(totals.allocated)} of {formatNumber(totals.totalOrdered)} magnets allocated</p>
+              <p className="reorder-guidance">{formatNumber(totals.remaining)} remaining</p>
+              {leftoverStuck && <p className="reorder-field-error">{strandedRemainingMessage(totals.remaining, minQuantity)}</p>}
+            </>
+          )}
+          <div className="reorder-editor-actions">
+            <button className="btn primary" disabled={Boolean(busyAction) || !canSubmit} onClick={submit}>
+              {busyAction === "submit" ? "Submitting…" : "Submit for production"}
+            </button>
+          </div>
+        </section>
+      )}
+
       <section className="reorder-flat-section">
-        <div className="reorder-section-label">Order facts</div>
+        <div className="reorder-section-label">Fulfillment information</div>
         <dl className="reorder-detail-grid">
-          <div><dt>Status</dt><dd>{humanize(detail.order.status)}</dd></div>
-          <div><dt>Ordered at</dt><dd>{formatDate(detail.order.orderedAt)}</dd></div>
-          <div><dt>Ship-to</dt><dd>{detail.order.shipTo || "—"}</dd></div>
+          <div><dt>Ship-to / Fulfillment destination</dt><dd>{detail.order.shipTo || "—"}</dd></div>
           <div><dt>Requested ship date</dt><dd>{formatDate(detail.order.requestedShipDate)}</dd></div>
         </dl>
         {detail.timeline.length > 0 && (
@@ -884,19 +1254,9 @@ function OrderDetailPage({ orderNumber, readOnly }) {
           ))}</div>
         )}
       </section>
-
-      <section className="reorder-flat-section">
-        <div className="reorder-section-label">Batches created by FC Ops</div>
-        {!detail.batches.length ? <PageState>No Batches have been created.</PageState> : detail.batches.map((batch) => (
-          <button className="reorder-linked-row" key={batch.id} onClick={() => navigate(`/reorder/batches/${batch.id}`)}>
-            <span><strong>{batch.batch_code}</strong><small>{batch.product?.product_name || "Product"}</small></span>
-            <span>{formatNumber(batch.quantity)} · {humanize(batch.production_status)}</span>
-          </button>
-        ))}
-      </section>
       <section className="reorder-flat-section">
         <div className="reorder-section-label">Audit history</div>
-        {!detail.auditHistory.length ? <PageState>No allocation changes recorded.</PageState> : (
+        {!detail.auditHistory.length ? <PageState>No Batch changes recorded.</PageState> : (
           <div className="reorder-timeline">{detail.auditHistory.map((event) => (
             <div key={event.id}><strong>{humanize(event.action)}</strong><span>{formatDate(event.created_at)}</span></div>
           ))}</div>
@@ -1103,21 +1463,38 @@ function ProductFormPage({ readOnly }) {
   );
 }
 
-function ProductDetailPage({ productId }) {
+function ProductDetailPage({ productId, readOnly }) {
   const [product, setProduct] = useState(null);
   const [batches, setBatches] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [discounts, setDiscounts] = useState([]);
+  const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
-  useEffect(() => {
-    Promise.all([
-      api(`/api/reorder/products/${encodeURIComponent(productId)}`),
-      api(`/api/reorder/products/${encodeURIComponent(productId)}/batches`),
-    ])
-      .then(([productData, batchData]) => { setProduct(productData); setBatches(batchData.batches || []); })
-      .catch((err) => setError(err.message));
-  }, [productId]);
+  const load = () => Promise.all([
+    api(`/api/reorder/products/${encodeURIComponent(productId)}`),
+    api(`/api/reorder/products/${encodeURIComponent(productId)}/batches`),
+    api("/api/reorder/discounts"),
+  ]).then(([productData, batchData, discountData]) => {
+    setProduct(productData);
+    setBatches(batchData.batches || []);
+    setOrders(batchData.orders || []);
+    setDiscounts((discountData.discounts || []).filter((discount) => (discount.products || []).some((row) => row.id === productId)));
+  });
+  useEffect(() => { load().catch((err) => setError(err.message)); }, [productId]);
+  const setVisible = async (discount, visible) => {
+    setBusyId(discount.id); setError("");
+    try {
+      await api(`/api/reorder/discounts/${discount.id}`, { method: "PUT", body: JSON.stringify({ isVisibleOnFc: visible }) });
+      await load();
+    } catch (err) { setError(err.message); } finally { setBusyId(""); }
+  };
   return (
     <div className="reorder-page">
-      <PageHeader title={product?.product_name || "Product detail"} />
+      <PageHeader
+        title={product?.product_name || "Product detail"}
+        backTo="/reorder/products"
+        backLabel="Products"
+      />
       {error && <PageState tone="error">{error}</PageState>}
       {!error && !product && <PageState>Loading…</PageState>}
       {product && <p className="reorder-guidance">Product versions are view-only after they are created.</p>}
@@ -1137,13 +1514,75 @@ function ProductDetailPage({ productId }) {
       )}
       {product && (
         <section className="reorder-flat-section">
-          <div className="reorder-section-label">FC inventory / batches</div>
-          {!batches.length ? <PageState>No Batches are linked to this Product Version.</PageState> : batches.map((batch) => (
-            <button className="reorder-linked-row" key={batch.id} onClick={() => navigate(`/reorder/batches/${batch.id}`)}>
-              <span><strong>{batch.batch_code}</strong><small>{batch.order?.order_no || "FC Order"}</small></span>
-              <span>{formatNumber(batch.quantity)} · {humanize(batch.production_status)} · {humanize(batch.activation_status)}</span>
-            </button>
-          ))}
+          <div className="reorder-section-label">FC Batches</div>
+          {orders.length > 0 && (
+            <p className="reorder-guidance">FC Orders: {orders.map((order, index) => (
+              <span key={order.id}>{index ? ", " : ""}<button type="button" className="reorder-inline-link" onClick={() => navigate(`/reorder/orders/${encodeURIComponent(order.orderNumber)}`)}>{order.orderNumber}</button></span>
+            ))}</p>
+          )}
+          {!batches.length ? <PageState>No Batches are linked to this Product Version.</PageState> : (
+            <div className="reorder-table-wrap">
+              <table className="reorder-table">
+                <thead><tr><th>Batch</th><th>Quantity</th><th>Production</th><th>Shipment</th><th>Activation</th></tr></thead>
+                <tbody>
+                  {batches.map((batch) => (
+                    <tr key={batch.id} tabIndex="0" onClick={() => navigate(`/reorder/batches/${batch.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/reorder/batches/${batch.id}`); } }}>
+                      <td><strong>{batch.batch_code}</strong></td>
+                      <td>{formatNumber(batch.quantity)}</td>
+                      <td>{batchStatusLabel(batch)}</td>
+                      <td>{batch.quantity_shipped > 0 ? humanize(batch.shipment_status) : "—"}</td>
+                      <td><span className={`reorder-status is-${batch.activation_status}`}>{humanize(batch.activation_status)}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+      {product && (
+        <section className="reorder-flat-section">
+          <div className="reorder-section-label">Discounts</div>
+          {!discounts.length ? (
+            <div className="reorder-empty-action">
+              <PageState>No Amazon Coupon or Promotion is matched to this Product.</PageState>
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => navigate(`/reorder/discounts/new?product=${encodeURIComponent(productId)}`)}
+                >
+                  Add existing Amazon discount
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="reorder-table-wrap">
+              <table className="reorder-table">
+                <thead><tr><th>Discount</th><th>Type</th><th>Amazon Period</th><th>Claim Code</th><th>FC Display</th><th>Issue</th></tr></thead>
+                <tbody>
+                  {discounts.map((discount) => (
+                    <tr key={discount.id} tabIndex="0" onClick={() => navigate(`/reorder/discounts/${discount.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/reorder/discounts/${discount.id}`); } }}>
+                      <td><strong>{discount.title}</strong></td>
+                      <td>{discount.discount_kind === "amazon_coupon" ? "Coupon" : "Promotion"}</td>
+                      <td>{discount.amazon_period || `${formatDate(discount.start_at)}–${formatDate(discount.end_at)}`}</td>
+                      <td>{discount.claim_code_label || (discount.discount_kind === "amazon_coupon" ? "—" : humanize(discount.claim_code_mode))}</td>
+                      <td>
+                        <button
+                          className={`btn reorder-display-toggle${discount.is_visible_on_fc ? " is-show" : ""}`}
+                          disabled={readOnly || busyId === discount.id}
+                          onClick={(event) => { event.stopPropagation(); setVisible(discount, !discount.is_visible_on_fc); }}
+                        >
+                          {busyId === discount.id ? "Saving…" : fcDisplayLabel(discount)}
+                        </button>
+                      </td>
+                      <td>{discountIssueText(discount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
     </div>
@@ -1154,11 +1593,13 @@ function BatchDetailPage({ batchId, readOnly }) {
   const [batch, setBatch] = useState(null);
   const [saving, setSaving] = useState(false);
   const [pendingStatus, setPendingStatus] = useState("");
+  const [scheduleAt, setScheduleAt] = useState("");
   const [message, setMessage] = useFlashMessage();
   const [error, setError] = useState("");
 
   const load = () => api(`/api/reorder/batches/${batchId}`).then((data) => {
     setBatch(data);
+    setScheduleAt((current) => current || toDatetimeLocal(data.scheduled_activation_at));
   });
 
   useEffect(() => { load().catch((err) => setError(err.message)); }, [batchId]);
@@ -1179,27 +1620,37 @@ function BatchDetailPage({ batchId, readOnly }) {
   if (!batch) return <div className="reorder-page"><PageHeader title="Batch" /><PageState>Loading…</PageState></div>;
 
   const actions = {
-    draft: ["active", "retired"],
+    draft: ["scheduled", "active", "retired"],
     scheduled: ["active", "paused", "retired"],
     active: ["paused", "retired"],
-    paused: ["active", "retired"],
+    paused: ["scheduled", "active", "retired"],
     retired: [],
   }[batch.activation_status] || [];
+  const performance = batch.performance || {};
 
   return (
     <div className="reorder-page">
-      <PageHeader title={batch.batch_code} action={<button className="btn" onClick={() => navigate(`/reorder/analytics?product=${batch.product_version_id}&batch=${batch.id}`)}>Analytics</button>} />
+      <PageHeader
+        title={batch.batch_code}
+        backTo={batch.order?.order_no ? `/reorder/orders/${encodeURIComponent(batch.order.order_no)}` : "/reorder/products/orders-batches"}
+        backLabel={batch.order?.order_no || "Orders & Batches"}
+        action={<button className="btn" onClick={() => navigate(analyticsHref(batch.product_version_id, batch.id))}>View analytics →</button>}
+      />
       {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
 
       <section className="reorder-flat-section">
-        <div className="reorder-section-label">Batch identity</div>
+        <div className="reorder-section-label">Batch</div>
         <dl className="reorder-detail-grid">
-          <div><dt>Batch label</dt><dd>{batch.label}</dd></div>
+          <div><dt>Batch ID</dt><dd>{batch.batch_code}</dd></div>
+          <div><dt>Batch label</dt><dd>{batch.label || "—"}</dd></div>
           <div><dt>Parent FC Order</dt><dd><button className="reorder-inline-link" onClick={() => navigate(`/reorder/orders/${encodeURIComponent(batch.order?.order_no || "")}`)}>{batch.order?.order_no || "—"}</button></dd></div>
-          <div><dt>Product Version</dt><dd>{batch.product?.product_name || "—"}</dd></div>
+          <div><dt>Product</dt><dd>{batch.product?.product_name || "—"}</dd></div>
+          <div><dt>Product ID</dt><dd className="reorder-mono">{batch.product_version_id}</dd></div>
+          <div><dt>ASIN</dt><dd className="reorder-mono">{batch.product?.asin || "—"}</dd></div>
+          <div><dt>Marketplace</dt><dd>{batch.product?.sellingAccount?.marketplace_code || "—"}</dd></div>
+          <div className="is-wide"><dt>Seller Listing</dt><dd>{batch.product?.amazon_seller_pdp_url ? <a href={batch.product.amazon_seller_pdp_url} target="_blank" rel="noreferrer">Open listing ↗</a> : "—"}</dd></div>
           <div><dt>Quantity</dt><dd>{formatNumber(batch.quantity)}</dd></div>
-          <div><dt>FC IDs</dt><dd>{formatNumber(batch.fc_id_count)}{batch.fc_id_start ? ` · ${batch.fc_id_start}–${batch.fc_id_end || "…"}` : ""}</dd></div>
           <div><dt>Created at</dt><dd>{formatDate(batch.created_at)}</dd></div>
         </dl>
       </section>
@@ -1207,8 +1658,10 @@ function BatchDetailPage({ batchId, readOnly }) {
       <section className="reorder-flat-section">
         <div className="reorder-section-label">Production</div>
         <dl className="reorder-detail-grid">
-          <div><dt>Production status</dt><dd>{humanize(batch.production_status)}</dd></div>
-          <div><dt>NFC write</dt><dd>{batch.nfc_write_status || "—"}</dd></div>
+          <div><dt>Submitted at</dt><dd>{formatDate(batch.submitted_at)}</dd></div>
+          <div><dt>Production status</dt><dd>{batchStatusLabel(batch)}</dd></div>
+          <div><dt>FC ID count</dt><dd>{formatNumber(batch.fc_id_count)}{batch.fc_id_start ? ` · ${batch.fc_id_start}–${batch.fc_id_end || "…"}` : ""}</dd></div>
+          <div><dt>NFC written status</dt><dd>{batch.nfc_write_status || "—"}</dd></div>
           <div><dt>QA status</dt><dd>{batch.qa_status || "—"}</dd></div>
         </dl>
         {batch.timeline.length > 0 && (
@@ -1219,26 +1672,39 @@ function BatchDetailPage({ batchId, readOnly }) {
       </section>
 
       <section className="reorder-flat-section">
-        <div className="reorder-section-label">Shipment to fulfillment</div>
+        <div className="reorder-section-label">Shipment</div>
         <dl className="reorder-detail-grid">
-          <div><dt>Status</dt><dd>{humanize(batch.shipment_status)}</dd></div>
           <div><dt>Ship-to</dt><dd>{batch.ship_to || "—"}</dd></div>
           <div><dt>Quantity shipped</dt><dd>{formatNumber(batch.quantity_shipped)}</dd></div>
-          <div><dt>Shipped at</dt><dd>{formatDate(batch.shipped_at)}</dd></div>
           <div><dt>Carrier</dt><dd>{batch.carrier || "—"}</dd></div>
-          <div><dt>Tracking reference</dt><dd>{batch.tracking_reference || "—"}</dd></div>
+          <div><dt>Tracking</dt><dd>{batch.tracking_reference || "—"}</dd></div>
+          <div><dt>Shipped at</dt><dd>{formatDate(batch.shipped_at)}</dd></div>
+          <div><dt>Fulfillment delivery status</dt><dd>{humanize(batch.shipment_status)}</dd></div>
+          <div><dt>Delivered to fulfillment location</dt><dd>{formatDate(batch.delivered_to_fulfillment_at)}</dd></div>
         </dl>
         <p className="reorder-guidance">Delivery here means delivery to the Brand, 3PL, or packaging facility. It is not Consumer MD.</p>
       </section>
 
       <section className="reorder-flat-section">
         <div className="reorder-section-label">Consumer Experience</div>
+        <p className="reorder-current-state">Product · <strong>{batch.product?.product_name || "—"}</strong></p>
         <p className="reorder-current-state">Activation · <strong>{humanize(batch.activation_status)}</strong></p>
         <p className="reorder-guidance">Discount: {batch.consumerExperience.discount || "Not configured"} · Survey: {batch.consumerExperience.survey || "Not configured"}</p>
+        {batch.scheduled_activation_at && <p className="reorder-guidance">Scheduled activation: {formatDate(batch.scheduled_activation_at)}</p>}
         {!readOnly && batch.activation_status !== "retired" && (
           <div className="reorder-activation-controls">
-            {["draft", "scheduled", "paused"].includes(batch.activation_status) && <button className="btn primary" onClick={() => navigate(`/reorder/preview?batch=${batch.id}`)}>Preview</button>}
-            {actions.filter((status) => !["active", "scheduled"].includes(status)).map((status) => <button key={status} className="btn" disabled={saving} onClick={() => transition(status)}>{saving && pendingStatus === status ? activationBusy(status) : activationVerb(status)}</button>)}
+            <button className="btn" onClick={() => navigate(`/reorder/preview?batch=${batch.id}`)}>Preview</button>
+            {actions.includes("scheduled") && <input className="cfg-input" type="datetime-local" value={scheduleAt} aria-label="Scheduled activation" onChange={(event) => setScheduleAt(event.target.value)} />}
+            {actions.map((status) => (
+              <button
+                key={status}
+                className={`btn${status === "active" ? " primary" : ""}`}
+                disabled={saving || (status === "scheduled" && !scheduleAt)}
+                onClick={() => transition(status)}
+              >
+                {saving && pendingStatus === status ? activationBusy(status) : activationVerb(status)}
+              </button>
+            ))}
           </div>
         )}
       </section>
@@ -1246,9 +1712,12 @@ function BatchDetailPage({ batchId, readOnly }) {
       <section className="reorder-flat-section">
         <div className="reorder-section-label">Performance</div>
         <div className="reorder-performance-row">
-          {["ms", "md", "msi", "mgo", "no"].map((metric) => <div key={metric}><span>{metric.toUpperCase()}</span><strong>—</strong></div>)}
+          {["ms", "md", "msi", "mgo", "no"].map((metric) => <div key={metric}><span>{metric.toUpperCase()}</span><strong>{performance[metric] == null ? "—" : formatNumber(performance[metric])}</strong></div>)}
         </div>
-        <p className="reorder-guidance">Unavailable until the corresponding Data Sources cover this Batch.</p>
+        <p className="reorder-guidance">{performance.coverageNote || (performance.coverage === "available" ? "Coverage is complete for this Batch." : "Unavailable until the corresponding Data Sources cover this Batch.")}</p>
+        <div className="reorder-editor-actions">
+          <button className="btn" onClick={() => navigate(analyticsHref(batch.product_version_id, batch.id))}>View analytics →</button>
+        </div>
       </section>
       <section className="reorder-flat-section">
         <div className="reorder-section-label">Audit history</div>
@@ -1262,35 +1731,60 @@ function BatchDetailPage({ batchId, readOnly }) {
   );
 }
 
-function DiscountListPage() {
+function DiscountListPage({ readOnly }) {
   const [discounts, setDiscounts] = useState(() => apiGetCache.get("/api/reorder/discounts")?.discounts || []);
   const [loading, setLoading] = useState(() => !apiGetCache.has("/api/reorder/discounts"));
+  const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
+  const load = () => api("/api/reorder/discounts").then((data) => setDiscounts(data.discounts || []));
   useEffect(() => {
-    api("/api/reorder/discounts")
-      .then((data) => setDiscounts(data.discounts || []))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    load().catch((err) => setError(err.message)).finally(() => setLoading(false));
   }, []);
+  const setVisible = async (discount, visible) => {
+    setBusyId(discount.id); setError("");
+    try {
+      await api(`/api/reorder/discounts/${discount.id}`, { method: "PUT", body: JSON.stringify({ isVisibleOnFc: visible }) });
+      await load();
+    } catch (err) { setError(err.message); } finally { setBusyId(""); }
+  };
   return (
     <div className="reorder-page">
-      <PageHeader title="Discounts" action={<button className="btn primary" onClick={() => navigate("/reorder/discounts/new")}>Add discount</button>} />
+      <PageHeader
+        title="Discounts"
+        action={!readOnly && (
+          <div className="reorder-header-actions">
+            <button className="btn" onClick={() => navigate("/reorder/discounts/new?kind=amazon_coupon")}>Import Amazon Coupon</button>
+            <button className="btn primary" onClick={() => navigate("/reorder/discounts/new?kind=amazon_promotion")}>Add Amazon Promotion</button>
+          </div>
+        )}
+      />
+      <p className="reorder-guidance">Import an existing Amazon Coupon or record an Amazon Promotion. FC matches Eligible ASINs to Products, then Show or Hide the saving on the FC page.</p>
       {loading && discounts.length === 0 && <PageState>Loading…</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
-      {!loading && !error && !discounts.length && <PageState>No Amazon Coupons or Promotions registered.</PageState>}
+      {!loading && !error && !discounts.length && (
+        <PageState>No Amazon Coupons or Promotions recorded.</PageState>
+      )}
       {discounts.length > 0 && (
         <div className="reorder-table-wrap">
           <table className="reorder-table">
-            <thead><tr><th>Discount</th><th>Type</th><th>Products</th><th>Benefit</th><th>Schedule</th><th>Status</th><th>Code Pool</th></tr></thead>
+            <thead><tr><th>Discount</th><th>Type</th><th>Product</th><th>Amazon Period</th><th>Claim Code</th><th>FC Display</th><th>Issue</th></tr></thead>
             <tbody>{discounts.map((discount) => (
-              <tr key={discount.id} tabIndex="0" onClick={() => navigate(`/reorder/discounts/${discount.id}`)}>
+              <tr key={discount.id} tabIndex="0" onClick={() => navigate(`/reorder/discounts/${discount.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/reorder/discounts/${discount.id}`); } }}>
                 <td><strong>{discount.title}</strong><small className="reorder-cell-note">{discount.sellingAccount?.label || "—"}</small></td>
-                <td>{discount.discount_kind === "amazon_coupon" ? "Amazon Coupon" : "Amazon Promotion"}</td>
-                <td>{discount.products.length}</td>
-                <td>{discount.benefit_summary}</td>
-                <td>{formatDate(discount.start_at)}–{formatDate(discount.end_at)}</td>
-                <td><span className={`reorder-status is-${discount.status}`}>{humanize(discount.status)}</span></td>
-                <td>{discount.codePool ? `${discount.codePool.available} available · ${humanize(discount.codePool.status)}` : "—"}</td>
+                <td>{discount.discount_kind === "amazon_coupon" ? "Coupon" : "Promotion"}</td>
+                <td>{discountProductNames(discount)}</td>
+                <td>{discount.amazon_period || `${formatDate(discount.start_at)}–${formatDate(discount.end_at)}`}</td>
+                <td>{discount.claim_code_label || (discount.discount_kind === "amazon_coupon" ? "—" : humanize(discount.claim_code_mode))}</td>
+                <td>
+                  <button
+                    className={`btn reorder-display-toggle${discount.is_visible_on_fc ? " is-show" : ""}`}
+                    disabled={readOnly || busyId === discount.id}
+                    onClick={(event) => { event.stopPropagation(); setVisible(discount, !discount.is_visible_on_fc); }}
+                  >
+                    {busyId === discount.id ? "Saving…" : fcDisplayLabel(discount)}
+                  </button>
+                </td>
+                <td>{discountIssueText(discount)}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -1300,13 +1794,16 @@ function DiscountListPage() {
   );
 }
 
-function CouponImportForm({ accounts, readOnly }) {
-  const [sellingAccountId, setSellingAccountId] = useState(accounts[0]?.id || "");
+function CouponImportForm({ accounts, product, readOnly, onDone }) {
+  const inheritedAccountId = product?.selling_account_id || accounts[0]?.id || "";
+  const [sellingAccountId, setSellingAccountId] = useState(inheritedAccountId);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [visibleOnFc, setVisibleOnFc] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  const accountLocked = Boolean(product);
 
   const previewFile = async (selected) => {
     if (!selected || !sellingAccountId) return;
@@ -1327,9 +1824,10 @@ function CouponImportForm({ accounts, readOnly }) {
     try {
       await api("/api/reorder/discounts/coupons/import", {
         method: "POST",
-        body: JSON.stringify({ sellingAccountId, ...file, acknowledgeUnmappedColumns: acknowledged }),
+        body: JSON.stringify({ sellingAccountId, ...file, acknowledgeUnmappedColumns: acknowledged, isVisibleOnFc: visibleOnFc }),
       });
-      navigate("/reorder/discounts");
+      if (onDone) onDone();
+      else navigate("/reorder/discounts");
     } catch (err) { setError(err.message); } finally { setWorking(false); }
   };
 
@@ -1337,66 +1835,104 @@ function CouponImportForm({ accounts, readOnly }) {
     <>
       {error && <PageState tone="error">{error}</PageState>}
       <section className="cfg-section">
-        <div className="reorder-section-label">Import context</div>
+        <div className="reorder-section-label">Import Amazon Coupon</div>
+        <p className="reorder-guidance">Upload the Amazon Coupon file. FC records an existing Coupon and matches Eligible ASINs to Products. It does not create the Coupon in Amazon.</p>
         <div className="cfg-form grid grid-2">
-          <label className="cfg-field"><span className="cfg-label">Selling Account / Marketplace</span><select className="cfg-input" value={sellingAccountId} disabled={readOnly || working} onChange={(event) => { setSellingAccountId(event.target.value); setPreview(null); setFile(null); }}><option value="">Select account</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}</select></label>
-          <label className="cfg-field"><span className="cfg-label">Amazon Coupon Bulk Template</span><input className="cfg-input reorder-visible-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || working || !sellingAccountId} onChange={(event) => previewFile(event.target.files?.[0])} /></label>
+          <label className="cfg-field"><span className="cfg-label">Selling Account / Marketplace</span><select className="cfg-input" value={sellingAccountId} disabled={readOnly || working || accountLocked} onChange={(event) => { setSellingAccountId(event.target.value); setPreview(null); setFile(null); }}><option value="">Select account</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}</select></label>
+          <label className="cfg-field"><span className="cfg-label">Amazon Coupon file</span><input className="cfg-input reorder-visible-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || working || !sellingAccountId} onChange={(event) => previewFile(event.target.files?.[0])} /></label>
         </div>
       </section>
       {working && !preview && <PageState>Reading Amazon workbook…</PageState>}
       {preview && (
         <section className="reorder-flat-section">
-          <div className="reorder-section-label">Import review</div>
+          <div className="reorder-section-label">Review</div>
           <div className="reorder-import-summary">
             <div><span>Coupons detected</span><strong>{preview.review.couponsDetected}</strong></div>
             <div><span>Products matched</span><strong>{preview.review.productsMatched}</strong></div>
-            <div><span>Mapping required</span><strong>{preview.review.productMappingRequired}</strong></div>
+            <div><span>Product mapping required</span><strong>{preview.review.productMappingRequired}</strong></div>
             <div><span>Parsing issues</span><strong>{preview.review.rowsWithParsingIssues}</strong></div>
           </div>
+          {preview.rows.map((row) => (
+            <p className={row.errors.length ? "reorder-import-row-error" : "reorder-guidance"} key={row.rowNumber}>
+              Row {row.rowNumber} · {row.mappingStatus || (row.missingAsins?.length ? "Product mapping required" : "Matched")}
+              {row.matchedProducts?.length ? ` · ${row.matchedProducts.map((item) => item.name).join(", ")}` : ""}
+              {row.missingAsins?.length ? ` · unmatched ${row.missingAsins.join(", ")}` : ""}
+              {row.errors.length ? ` · ${row.errors.join(" · ")}` : ""}
+            </p>
+          ))}
           {preview.review.unmappedColumns.length > 0 && (
             <PageState tone="error">
               Unmapped Amazon columns: {preview.review.unmappedColumns.join(", ")}
-              <label className="reorder-inline-check"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /> I reviewed these columns and accept importing recognized fields only.</label>
+              <label className="reorder-inline-check"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /> Keep unrecognized Amazon columns and import recognized fields only.</label>
             </PageState>
           )}
-          {preview.rows.filter((row) => row.errors.length).map((row) => <p className="reorder-import-row-error" key={row.rowNumber}>Row {row.rowNumber} · {row.errors.join(" · ")}</p>)}
-          <button className="btn primary" disabled={readOnly || working || !preview.review.canImport || (preview.review.unmappedColumns.length > 0 && !acknowledged)} onClick={importFile}>{working ? "Importing…" : "Import coupons"}</button>
+          <div className="reorder-editor-actions">
+            <FcDisplaySwitch checked={visibleOnFc} disabled={readOnly || working} onChange={setVisibleOnFc} />
+            <button className="btn primary" disabled={readOnly || working || !preview.review.canImport || (preview.review.unmappedColumns.length > 0 && !acknowledged)} onClick={importFile}>{working ? "Saving…" : "Import"}</button>
+          </div>
         </section>
       )}
     </>
   );
 }
 
-function PromotionForm({ accounts, products, readOnly }) {
+function PromotionForm({ accounts, products, product, readOnly, onDone }) {
+  const inheritedAccountId = product?.selling_account_id || accounts[0]?.id || "";
   const [form, setForm] = useState({
-    sellingAccountId: accounts[0]?.id || "",
-    productVersionIds: [],
+    sellingAccountId: inheritedAccountId,
+    productVersionIds: product?.id ? [product.id] : [],
+    eligibleAsins: product?.asin || "",
     title: "",
-    amazonReference: "",
-    promotionType: "",
     qualifyingCondition: "",
     benefitKind: "other",
-    benefitValue: "",
-    benefitCurrency: "USD",
     benefitSummary: "",
-    appliesTo: "",
     startAt: "",
     endAt: "",
     claimCodeMode: "none",
     groupClaimCode: "",
     codeLowThreshold: 20,
-    amazonConfirmed: false,
   });
+  const [codeFile, setCodeFile] = useState(null);
+  const [codeReport, setCodeReport] = useState(null);
+  const [visibleOnFc, setVisibleOnFc] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const eligibleProducts = products.filter((product) => product.selling_account_id === form.sellingAccountId);
+  const eligibleProducts = products.filter((item) => item.selling_account_id === form.sellingAccountId);
+  const asinMatch = matchProductsByAsins(eligibleProducts, parseEligibleAsins(form.eligibleAsins));
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  const toggleProduct = (id) => set("productVersionIds", form.productVersionIds.includes(id) ? form.productVersionIds.filter((value) => value !== id) : [...form.productVersionIds, id]);
   const save = async () => {
+    const productVersionIds = product?.id ? [product.id] : asinMatch.matched.map((item) => item.id);
+    if (!productVersionIds.length) {
+      setError("Enter Eligible ASINs that match an existing Product on this Selling Account.");
+      return;
+    }
+    if (visibleOnFc && form.claimCodeMode === "single_use" && !codeFile) {
+      setError("Import the Amazon Single-use Claim Code file before showing this Promotion.");
+      return;
+    }
     setSaving(true); setError("");
     try {
-      const discount = await api("/api/reorder/discounts/promotions", { method: "POST", body: JSON.stringify(form) });
-      navigate(`/reorder/discounts/${discount.id}`);
+      const discount = await api("/api/reorder/discounts/promotions", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          productVersionIds,
+          eligibleAsins: parseEligibleAsins(form.eligibleAsins),
+          isVisibleOnFc: form.claimCodeMode === "single_use" ? false : visibleOnFc,
+        }),
+      });
+      if (form.claimCodeMode === "single_use") {
+        if (codeFile) {
+          const report = await api(`/api/reorder/discounts/${discount.id}/claim-codes/import`, {
+            method: "POST",
+            body: JSON.stringify({ fileName: codeFile.name, fileBase64: await readFileAsDataUrl(codeFile) }),
+          });
+          setCodeReport(report);
+        }
+        if (visibleOnFc) await api(`/api/reorder/discounts/${discount.id}`, { method: "PUT", body: JSON.stringify({ isVisibleOnFc: true }) });
+      }
+      if (onDone) onDone();
+      else navigate(`/reorder/discounts/${discount.id}`);
     } catch (err) { setError(err.message); } finally { setSaving(false); }
   };
   const input = (key, label, options = {}) => <label className={`cfg-field${options.full ? " cfg-field-full" : ""}`}><span className="cfg-label">{label}</span><input className="cfg-input" type={options.type || "text"} value={form[key]} disabled={readOnly} onChange={(event) => set(key, event.target.value)} /></label>;
@@ -1404,60 +1940,115 @@ function PromotionForm({ accounts, products, readOnly }) {
     <>
       {error && <PageState tone="error">{error}</PageState>}
       <section className="cfg-section">
-        <div className="reorder-section-label">Amazon context</div>
+        <div className="reorder-section-label">Add Amazon Promotion</div>
+        <p className="reorder-guidance">Record an existing Amazon Promotion. FC does not create the Promotion or generate Claim Codes.</p>
         <div className="cfg-form grid grid-2">
-          <label className="cfg-field"><span className="cfg-label">Selling Account / Marketplace</span><select className="cfg-input" value={form.sellingAccountId} disabled={readOnly} onChange={(event) => setForm({ ...form, sellingAccountId: event.target.value, productVersionIds: [] })}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}</select></label>
-          {input("amazonReference", "Amazon Promotion reference")}
-          <div className="cfg-field cfg-field-full"><span className="cfg-label">Eligible Products</span><div className="reorder-product-options">{eligibleProducts.length ? eligibleProducts.map((product) => <label key={product.id}><input type="checkbox" checked={form.productVersionIds.includes(product.id)} disabled={readOnly} onChange={() => toggleProduct(product.id)} /><span>{product.product_name}</span><small>{product.asin}</small></label>) : <p>No Products are available for this Selling Account.</p>}</div></div>
+          <label className="cfg-field"><span className="cfg-label">Selling Account / Marketplace</span><select className="cfg-input" value={form.sellingAccountId} disabled={readOnly || Boolean(product)} onChange={(event) => setForm({ ...form, sellingAccountId: event.target.value, productVersionIds: product?.id ? [product.id] : [] })}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}</select></label>
+          {product ? (
+            <div className="cfg-field cfg-field-full"><span className="cfg-label">Matched Product</span><p className="reorder-current-state">{product.product_name} · <span className="reorder-mono">{product.asin}</span> · Matched</p></div>
+          ) : (
+            <>
+              <label className="cfg-field cfg-field-full"><span className="cfg-label">Eligible ASINs</span><textarea className="cfg-input reorder-textarea" rows="3" value={form.eligibleAsins} disabled={readOnly} placeholder="B0DH4T156M, B012345678" onChange={(event) => set("eligibleAsins", event.target.value)} /></label>
+              <div className="cfg-field cfg-field-full">
+                <span className="cfg-label">Matched Products</span>
+                {!parseEligibleAsins(form.eligibleAsins).length ? (
+                  <p className="reorder-guidance">FC matches Eligible ASINs to Products on this Selling Account. It does not create the Product.</p>
+                ) : asinMatch.matched.length ? (
+                  <p className="reorder-current-state">{asinMatch.matched.map((item) => `${item.product_name} · ${item.asin}`).join(" · ")} · Matched</p>
+                ) : (
+                  <p className="reorder-guidance">No Products matched these Eligible ASINs.</p>
+                )}
+                {asinMatch.unmatchedAsins.length > 0 && (
+                  <p className="reorder-import-row-error">Product mapping required · unmatched {asinMatch.unmatchedAsins.join(", ")}</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </section>
       <section className="cfg-section">
         <div className="reorder-section-label">Promotion facts</div>
         <div className="cfg-form grid grid-2">
-          {input("title", "Promotion title")}{input("promotionType", "Promotion type")}
-          {input("qualifyingCondition", "Buyer purchases / Qualifying condition", { full: true })}
+          {input("title", "Promotion title")}
+          {input("qualifyingCondition", "Qualifying condition", { full: true })}
           <label className="cfg-field"><span className="cfg-label">Benefit type</span><select className="cfg-input" value={form.benefitKind} disabled={readOnly} onChange={(event) => set("benefitKind", event.target.value)}><option value="percentage_off">Percentage off</option><option value="money_off">Money off</option><option value="free_shipping">Free shipping</option><option value="other">Other</option></select></label>
-          {input("benefitValue", "Benefit value", { type: "number" })}
-          {input("benefitSummary", "Buyer gets / Benefit", { full: true })}
-          {input("appliesTo", "Applies to", { full: true })}
+          {input("benefitSummary", "Benefit", { full: true })}
           {input("startAt", "Start", { type: "datetime-local" })}{input("endAt", "End", { type: "datetime-local" })}
         </div>
       </section>
       <section className="cfg-section">
-        <div className="reorder-section-label">Claim Code</div>
+        <div className="reorder-section-label">Claim Code Mode</div>
         <div className="cfg-form grid grid-2">
           <label className="cfg-field"><span className="cfg-label">Claim Code Mode</span><select className="cfg-input" value={form.claimCodeMode} disabled={readOnly} onChange={(event) => set("claimCodeMode", event.target.value)}><option value="none">None</option><option value="group">Group</option><option value="single_use">Single-use</option></select></label>
-          {form.claimCodeMode === "group" && input("groupClaimCode", "Amazon Group Claim Code")}
-          {form.claimCodeMode === "single_use" && input("codeLowThreshold", "Codes low threshold", { type: "number" })}
-          <label className="reorder-inline-check cfg-field-full"><input type="checkbox" checked={form.amazonConfirmed} disabled={readOnly} onChange={(event) => set("amazonConfirmed", event.target.checked)} /> This Promotion already exists in Amazon and the details above match Seller Central.</label>
+          {form.claimCodeMode === "group" && input("groupClaimCode", "Existing Amazon Group Claim Code")}
+          {form.claimCodeMode === "single_use" && (
+            <>
+              {input("codeLowThreshold", "Codes low threshold", { type: "number" })}
+              <label className="cfg-field"><span className="cfg-label">Import Amazon Single-use Claim Codes</span><input className="cfg-input reorder-visible-file" type="file" accept=".xlsx,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly} onChange={(event) => setCodeFile(event.target.files?.[0] || null)} /></label>
+            </>
+          )}
         </div>
+        {codeReport && <p className="reorder-guidance">Total {codeReport.total}; accepted {codeReport.accepted}; duplicates {codeReport.duplicates}; rejected {codeReport.rejected}. Accepted means FC can import the Code.</p>}
       </section>
-      <button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Adding…" : "Add promotion"}</button>
+      <div className="reorder-editor-actions">
+        <FcDisplaySwitch
+          checked={visibleOnFc}
+          disabled={readOnly || saving}
+          onChange={(value) => {
+            if (value && form.claimCodeMode === "single_use" && !codeFile) {
+              setError("Import the Amazon Single-use Claim Code file before showing this Promotion.");
+              return;
+            }
+            setError("");
+            setVisibleOnFc(value);
+          }}
+        />
+        <button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Saving…" : "Save"}</button>
+      </div>
     </>
   );
 }
 
 function AddDiscountPage({ readOnly }) {
-  const [kind, setKind] = useState("amazon_coupon");
+  const params = new URLSearchParams(window.location.search);
+  const productId = params.get("product") || "";
+  const [kind, setKind] = useState(params.get("kind") === "amazon_promotion" ? "amazon_promotion" : "amazon_coupon");
   const [accounts, setAccounts] = useState([]);
   const [products, setProducts] = useState([]);
+  const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
-    Promise.all([api("/api/reorder/amazon-setup"), api("/api/reorder/products")])
-      .then(([setup, productData]) => { setAccounts((setup.sellingAccounts || []).filter((account) => account.status === "active")); setProducts(productData.products || []); })
+    Promise.all([
+      api("/api/reorder/amazon-setup"),
+      api("/api/reorder/products"),
+      productId ? api(`/api/reorder/products/${encodeURIComponent(productId)}`) : Promise.resolve(null),
+    ])
+      .then(([setup, productData, current]) => {
+        setAccounts((setup.sellingAccounts || []).filter((account) => account.status === "active"));
+        setProducts(productData.products || []);
+        setProduct(current);
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
-  if (loading) return <div className="reorder-page"><PageHeader title="Add discount" /><PageState>Loading…</PageState></div>;
+  }, [productId]);
+  const backTo = productId ? "/reorder/products" : "/reorder/discounts";
+  const backLabel = productId ? "Products" : "Discounts";
+  if (loading) return <div className="reorder-page"><PageHeader title="Add existing Amazon discount" /><PageState>Loading…</PageState></div>;
   return (
     <div className="reorder-page">
-      <PageHeader title="Add discount" />
+      <PageHeader title="Add existing Amazon discount" backTo={backTo} backLabel={backLabel} />
       {error && <PageState tone="error">{error}</PageState>}
       {!error && !accounts.length && <PageState tone="error">Complete Amazon setup before adding a Discount.</PageState>}
       {!error && accounts.length > 0 && <>
-        <div className="reorder-type-switch"><button className={kind === "amazon_coupon" ? "is-active" : ""} onClick={() => setKind("amazon_coupon")}>Amazon Coupon</button><button className={kind === "amazon_promotion" ? "is-active" : ""} onClick={() => setKind("amazon_promotion")}>Amazon Promotion</button></div>
-        {kind === "amazon_coupon" ? <CouponImportForm accounts={accounts} readOnly={readOnly} /> : <PromotionForm accounts={accounts} products={products} readOnly={readOnly} />}
+        {product && <p className="reorder-current-state">Product · <strong>{product.product_name}</strong> · {product.asin}</p>}
+        <div className="reorder-type-switch">
+          <button className={kind === "amazon_coupon" ? "is-active" : ""} onClick={() => setKind("amazon_coupon")}>Import Amazon Coupon</button>
+          <button className={kind === "amazon_promotion" ? "is-active" : ""} onClick={() => setKind("amazon_promotion")}>Add Amazon Promotion</button>
+        </div>
+        {kind === "amazon_coupon"
+          ? <CouponImportForm accounts={accounts} product={product} readOnly={readOnly} onDone={() => navigate(backTo)} />
+          : <PromotionForm accounts={accounts} products={products} product={product} readOnly={readOnly} onDone={() => navigate(backTo)} />}
       </>}
     </div>
   );
@@ -1465,53 +2056,39 @@ function AddDiscountPage({ readOnly }) {
 
 function DiscountDetailPage({ discountId, readOnly }) {
   const [discount, setDiscount] = useState(null);
-  const [couponType, setCouponType] = useState("");
-  const [amazonConfirmed, setAmazonConfirmed] = useState(false);
+  const [catalog, setCatalog] = useState([]);
   const [threshold, setThreshold] = useState(20);
-  const [snapshot, setSnapshot] = useState({ couponType: "", amazonConfirmed: false, threshold: 20 });
-  const [editing, setEditing] = useState(false);
+  const [mapIds, setMapIds] = useState([]);
   const [busyAction, setBusyAction] = useState("");
   const [importReport, setImportReport] = useState(null);
   const [message, setMessage] = useFlashMessage();
   const [error, setError] = useState("");
 
-  const settingsValue = (type, confirmed, low) => ({ couponType: type, amazonConfirmed: Boolean(confirmed), threshold: Number(low) });
-
-  const load = (options = {}) => api(`/api/reorder/discounts/${discountId}`).then((data) => {
+  const load = () => Promise.all([
+    api(`/api/reorder/discounts/${discountId}`),
+    api("/api/reorder/products"),
+  ]).then(([data, productData]) => {
     setDiscount(data);
-    const type = data.coupon_type || "";
-    const confirmed = Boolean(data.amazon_confirmed);
-    const low = data.code_low_threshold ?? 20;
-    setCouponType(type);
-    setAmazonConfirmed(confirmed);
-    setThreshold(low);
-    setSnapshot(settingsValue(type, confirmed, low));
-    if (options.resetEditing) {
-      setEditing(data.discount_kind === "amazon_coupon" && !(type && confirmed));
-    }
+    setThreshold(data.code_low_threshold ?? 20);
+    setCatalog(productData.products || []);
   });
-  useEffect(() => { load({ resetEditing: true }).catch((err) => setError(err.message)); }, [discountId]);
+  useEffect(() => { load().catch((err) => setError(err.message)); }, [discountId]);
 
-  const save = async () => {
-    setBusyAction("save"); setError(""); setMessage("");
+  const setVisible = async (visible) => {
+    setBusyAction("display"); setError(""); setMessage("");
     try {
-      await api(`/api/reorder/discounts/${discountId}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          ...(discount.discount_kind === "amazon_coupon" ? { couponType, amazonConfirmed } : {}),
-          ...(discount.claim_code_mode === "single_use" ? { codeLowThreshold: Number(threshold) } : {}),
-        }),
-      });
-      await load(); setEditing(false); setMessage("Discount settings saved.");
+      await api(`/api/reorder/discounts/${discountId}`, { method: "PUT", body: JSON.stringify({ isVisibleOnFc: visible }) });
+      await load();
+      setMessage(visible ? "Shown on FC." : "Hidden on FC. Buy on Amazon is unchanged.");
     } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
-  const cancel = () => {
-    setCouponType(snapshot.couponType);
-    setAmazonConfirmed(snapshot.amazonConfirmed);
-    setThreshold(snapshot.threshold);
-    setEditing(false);
-    setError("");
+  const saveThreshold = async () => {
+    setBusyAction("save"); setError(""); setMessage("");
+    try {
+      await api(`/api/reorder/discounts/${discountId}`, { method: "PUT", body: JSON.stringify({ codeLowThreshold: Number(threshold) }) });
+      await load(); setMessage("Codes low threshold saved.");
+    } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
   const importCodes = async (file) => {
@@ -1524,7 +2101,7 @@ function DiscountDetailPage({ discountId, readOnly }) {
       });
       await load();
       setImportReport(result);
-      setMessage(`Total ${result.total}; accepted ${result.accepted}; duplicates ${result.duplicates}; rejected ${result.rejected}. Amazon validity is not verified by FC.`);
+      setMessage(`Total ${result.total}; accepted ${result.accepted}; duplicates ${result.duplicates}; rejected ${result.rejected}. Accepted means FC can import the Code.`);
     } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
@@ -1536,26 +2113,39 @@ function DiscountDetailPage({ discountId, readOnly }) {
     } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
+  const mapProducts = async () => {
+    setBusyAction("map"); setError(""); setMessage("");
+    try {
+      await api(`/api/reorder/discounts/${discountId}/products`, { method: "PUT", body: JSON.stringify({ productVersionIds: mapIds }) });
+      setMapIds([]);
+      await load();
+      setMessage("Product mapping updated.");
+    } catch (err) { setError(err.message); } finally { setBusyAction(""); }
+  };
+
   if (error && !discount) return <div className="reorder-page"><PageHeader title="Discount" /><PageState tone="error">{error}</PageState></div>;
   if (!discount) return <div className="reorder-page"><PageHeader title="Discount" /><PageState>Loading…</PageState></div>;
   const isCoupon = discount.discount_kind === "amazon_coupon";
-  const canSaveSettings = isCoupon || discount.claim_code_mode === "single_use";
-  const locked = readOnly || !editing;
-  const dirty = !sameData(settingsValue(couponType, amazonConfirmed, threshold), snapshot);
-  const saveDisabled = readOnly || Boolean(busyAction) || (isCoupon && (!couponType || !amazonConfirmed)) || !dirty;
-  const settingsAction = !canSaveSettings || readOnly ? null : editing ? (
-    <div className="reorder-header-actions">
-      <button className="btn" type="button" disabled={Boolean(busyAction)} onClick={cancel}>Cancel</button>
-      <button className="btn primary" disabled={saveDisabled} onClick={save}>{busyAction === "save" ? "Saving…" : "Save"}</button>
-    </div>
-  ) : (
-    <button className="btn primary" type="button" onClick={() => setEditing(true)}>Edit</button>
+  const mappable = catalog.filter((product) =>
+    product.selling_account_id === discount.selling_account_id
+    && (discount.unmatched_asins || []).includes(product.asin)
+    && !(discount.products || []).some((row) => row.id === product.id)
+  );
+  const displayAction = (
+    <button
+      className="btn primary"
+      disabled={readOnly || Boolean(busyAction)}
+      onClick={() => setVisible(!discount.is_visible_on_fc)}
+    >
+      {busyAction === "display" ? "Saving…" : discount.is_visible_on_fc ? "Hide on FC" : "Show on FC"}
+    </button>
   );
   return (
     <div className="reorder-page">
-      <PageHeader title={discount.title} action={settingsAction} />
+      <PageHeader title={discount.title} backTo="/reorder/discounts" backLabel="Discounts" action={readOnly ? null : displayAction} />
       {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
+      <p className="reorder-current-state">FC Display · <strong>{fcDisplayLabel(discount)}</strong>{discount.issue ? ` · Issue · ${discount.issue.label}` : ""}</p>
       <section className="reorder-flat-section">
         <div className="reorder-section-label">Amazon facts</div>
         <dl className="reorder-detail-grid">
@@ -1563,45 +2153,59 @@ function DiscountDetailPage({ discountId, readOnly }) {
           <div><dt>Selling Account</dt><dd>{discount.sellingAccount?.label || "—"}</dd></div>
           <div><dt>Marketplace</dt><dd>{discount.marketplace_code}</dd></div>
           <div><dt>Benefit</dt><dd>{discount.benefit_summary}</dd></div>
-          <div><dt>Start</dt><dd>{formatDate(discount.start_at)}</dd></div>
-          <div><dt>End</dt><dd>{formatDate(discount.end_at)}</dd></div>
-          {!isCoupon && <div><dt>Promotion type</dt><dd>{discount.promotion_type}</dd></div>}
-          {!isCoupon && <div><dt>Claim Code Mode</dt><dd>{humanize(discount.claim_code_mode)}</dd></div>}
+          <div><dt>Amazon Period</dt><dd>{discount.amazon_period || `${formatDate(discount.start_at)}–${formatDate(discount.end_at)}`}</dd></div>
+          {isCoupon && discount.coupon_type && <div><dt>Coupon type</dt><dd>{humanize(discount.coupon_type)}</dd></div>}
+          {isCoupon && discount.coupon_budget != null && <div><dt>Coupon budget</dt><dd>{discount.coupon_budget}</dd></div>}
+          {isCoupon && discount.targeted_segment && <div><dt>Targeted Segment</dt><dd>{discount.targeted_segment}</dd></div>}
+          {isCoupon && discount.stacking_configuration && <div><dt>Stacked promotions</dt><dd>{discount.stacking_configuration}</dd></div>}
+          {isCoupon && discount.coupon_one_per_customer != null && <div><dt>One per customer</dt><dd>{discount.coupon_one_per_customer ? "Yes" : "No"}</dd></div>}
+          {!isCoupon && discount.qualifying_condition && <div className="is-wide"><dt>Qualifying condition</dt><dd>{typeof discount.qualifying_condition === "object" ? discount.qualifying_condition.buyerPurchases || JSON.stringify(discount.qualifying_condition) : discount.qualifying_condition}</dd></div>}
+          {!isCoupon && <div><dt>Claim Code</dt><dd>{discount.claim_code_label || humanize(discount.claim_code_mode)}</dd></div>}
           {!isCoupon && discount.claim_code_mode === "group" && <div className="is-wide"><dt>Group Claim Code</dt><dd className="reorder-mono">{discount.group_claim_code}</dd></div>}
         </dl>
       </section>
       <section className="reorder-flat-section">
-        <div className="reorder-section-label">Eligible Products</div>
-        {discount.products.map((product) => (
+        <div className="reorder-section-label">Matched Products</div>
+        {(discount.products || []).map((product) => (
           <div className="reorder-linked-row reorder-static-row" key={product.id}>
-            <span><strong>{product.product_name}</strong><small>{product.asin}</small></span>
-            <button className={`btn${product.isFeatured ? " is-disabled" : ""}`} disabled={readOnly || Boolean(busyAction) || product.isFeatured || editing} onClick={() => feature(product.id)}>{product.isFeatured ? "Featured" : busyAction === `feature:${product.id}` ? "Featuring…" : "Feature"}</button>
+            <span><strong>{product.product_name}</strong><small>{product.asin} · Matched</small></span>
+            <button className={`btn${product.isFeatured ? " is-disabled" : ""}`} disabled={readOnly || Boolean(busyAction) || product.isFeatured} onClick={() => feature(product.id)}>{product.isFeatured ? "Featured" : busyAction === `feature:${product.id}` ? "Featuring…" : "Feature"}</button>
           </div>
         ))}
-      </section>
-      {isCoupon && (
-        <section className="cfg-section">
-          <div className="reorder-section-label">Coupon confirmation</div>
-          <div className="cfg-form grid grid-2">
-            <label className="cfg-field"><span className="cfg-label">Coupon type</span><select className="cfg-input" value={couponType} disabled={locked} onChange={(event) => setCouponType(event.target.value)}><option value="">Select when not supplied by Amazon template</option><option value="standard">Standard</option><option value="reorder">Reorder</option><option value="subscribe_and_save">Subscribe & Save</option></select></label>
-            <label className="reorder-inline-check"><input type="checkbox" checked={amazonConfirmed} disabled={locked} onChange={(event) => setAmazonConfirmed(event.target.checked)} /> Coupon details match the current Seller Central configuration.</label>
+        {(discount.unmatched_asins || []).map((asin) => (
+          <div className="reorder-linked-row reorder-static-row" key={asin}>
+            <span><strong>{asin}</strong><small>Product mapping required</small></span>
           </div>
-        </section>
-      )}
+        ))}
+        {!readOnly && mappable.length > 0 && (
+          <div className="cfg-form reorder-map-products">
+            <div className="reorder-product-options">{mappable.map((product) => (
+              <label key={product.id}>
+                <input type="checkbox" checked={mapIds.includes(product.id)} onChange={() => setMapIds(mapIds.includes(product.id) ? mapIds.filter((id) => id !== product.id) : [...mapIds, product.id])} />
+                <span>{product.product_name}</span>
+                <small>{product.asin}</small>
+              </label>
+            ))}</div>
+            <button className="btn" disabled={!mapIds.length || Boolean(busyAction)} onClick={mapProducts}>{busyAction === "map" ? "Matching…" : "Match selected Products"}</button>
+          </div>
+        )}
+      </section>
       {!isCoupon && discount.claim_code_mode === "single_use" && (
         <section className="cfg-section">
           <div className="reorder-section-label">Single-use Claim Code Pool</div>
           <div className="reorder-import-summary">
-            <div><span>Total</span><strong>{discount.codePool.total}</strong></div>
-            <div><span>Available</span><strong>{discount.codePool.available}</strong></div>
-            <div><span>Assigned</span><strong>{discount.codePool.assigned}</strong></div>
-            <div><span>Copied</span><strong>{discount.codePool.copied}</strong></div>
+            <div><span>Total</span><strong>{discount.codePool?.total || 0}</strong></div>
+            <div><span>Available</span><strong>{discount.codePool?.available || 0}</strong></div>
+            <div><span>Assigned</span><strong>{discount.codePool?.assigned || 0}</strong></div>
+            <div><span>Displayed</span><strong>{discount.codePool?.displayed || 0}</strong></div>
+            <div><span>Copied</span><strong>{discount.codePool?.copied || 0}</strong></div>
           </div>
           <div className="cfg-form grid grid-2">
-            <label className="cfg-field"><span className="cfg-label">Codes low threshold</span><input className="cfg-input" type="number" min="0" value={threshold} disabled={locked} onChange={(event) => setThreshold(event.target.value)} /></label>
-            <label className="cfg-field"><span className="cfg-label">Import Amazon Single-use Claim Codes</span><input className="cfg-input reorder-visible-file" type="file" accept=".xlsx,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || Boolean(busyAction) || editing} onChange={(event) => importCodes(event.target.files?.[0])} /></label>
+            <label className="cfg-field"><span className="cfg-label">Codes low threshold</span><input className="cfg-input" type="number" min="0" value={threshold} disabled={readOnly} onChange={(event) => setThreshold(event.target.value)} /></label>
+            <label className="cfg-field"><span className="cfg-label">Import more codes</span><input className="cfg-input reorder-visible-file" type="file" accept=".xlsx,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || Boolean(busyAction)} onChange={(event) => importCodes(event.target.files?.[0])} /></label>
           </div>
-          <p className="reorder-guidance">Accepted means FC can import the Code. Amazon determines whether it is valid and redeemable at checkout.</p>
+          {!readOnly && <button className="btn" disabled={Boolean(busyAction)} onClick={saveThreshold}>{busyAction === "save" ? "Saving…" : "Save threshold"}</button>}
+          <p className="reorder-guidance">Copied is not Redeemed. Amazon decides whether a Code is valid at checkout.</p>
           {importReport && (importReport.duplicates > 0 || importReport.rejected > 0) && <button className="btn" onClick={() => downloadClaimCodeIssues(importReport)}>Download Duplicate / Rejected rows</button>}
         </section>
       )}
@@ -1615,7 +2219,8 @@ function ConsumerPreviewCanvas({ snapshot, availableDiscounts }) {
   const availableMap = new Map((availableDiscounts || []).map((discount) => [discount.id, discount]));
   const visibleDiscounts = (snapshot.product.sellerOfferAvailable ? snapshot.discounts || [] : []).filter((discount) => {
     const source = availableMap.get(discount.id);
-    return !(discount.claimCodeMode === "single_use" && !source?.availableCodes);
+    if (!source) return false;
+    return !(discount.claimCodeMode === "single_use" && !source.availableCodes);
   });
   const ordered = [...visibleDiscounts].sort((left, right) => Number(right.isFeatured) - Number(left.isFeatured));
   const displayed = ordered.length > 1 && !showAll ? ordered.slice(0, 1) : ordered;
@@ -1636,8 +2241,8 @@ function ConsumerPreviewCanvas({ snapshot, availableDiscounts }) {
           {discount.claimCodeMode === "single_use" && <code>Unique Code assigned on the live page</code>}
         </div>
       ))}
-      {ordered.length > 1 && <button className="reorder-consumer-link" onClick={() => setShowAll((value) => !value)}>{showAll ? "Show featured" : "Show all"}</button>}
-      {snapshot.product.sellerOfferAvailable ? <a className="reorder-consumer-primary" href={snapshot.product.attributionUrl} target="_blank" rel="noreferrer">Reorder on Amazon</a> : <p className="reorder-consumer-unavailable">This Seller Offer is currently unavailable.</p>}
+      {ordered.length > 1 && <button className="reorder-consumer-link" onClick={() => setShowAll((value) => !value)}>{showAll ? "Show featured" : `View all ${ordered.length} savings`}</button>}
+          {snapshot.product.sellerOfferAvailable ? <a className="reorder-consumer-primary" href={snapshot.product.attributionUrl} target="_blank" rel="noreferrer">Buy on Amazon</a> : <p className="reorder-consumer-unavailable">This Seller Offer is currently unavailable.</p>}
       <a className="reorder-consumer-secondary" href={snapshot.fallback.url || "#"} target="_blank" rel="noreferrer">Visit Seller Storefront</a>
       {snapshot.survey && <div className="reorder-consumer-survey"><strong>{snapshot.survey.title}</strong><span>{snapshot.survey.description}</span>{snapshot.survey.questions.map((question) => <fieldset key={question.id}><legend>{question.prompt}</legend>{question.options.map((option) => <label key={option.id}><input disabled type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={`consumer-preview-${question.id}`} /> {option.label}</label>)}</fieldset>)}</div>}
     </div>
@@ -1847,7 +2452,7 @@ function SurveyEditorPage({ surveyId, readOnly }) {
         </fieldset>)}
         <button className="btn" disabled={readOnly || form.questions.length >= 3} onClick={() => setForm({ ...form, questions: [...form.questions, blankSurveyQuestion()] })}>Add question</button>
       </section>
-      {previewing && <section className="reorder-survey-preview" aria-label="Survey preview"><div className="reorder-section-label">Consumer Preview</div><strong>{form.title || "Untitled Survey"}</strong><p>{form.description}</p>{form.questions.map((question, index) => <fieldset key={index}><legend>{question.prompt || `Question ${index + 1}`}</legend>{question.options.map((option, optionIndex) => <label key={optionIndex}><input disabled type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={`preview-${index}`} /> {option.label || `Option ${optionIndex + 1}`}</label>)}</fieldset>)}</section>}
+      {previewing && <section className="reorder-survey-preview" aria-label="Survey preview"><div className="reorder-section-label">Question preview</div><p className="reorder-guidance">Temporary layout for checking questions. The live consumer page looks different.</p><strong>{form.title || "Untitled Survey"}</strong><p>{form.description}</p>{form.questions.map((question, index) => <fieldset key={index}><legend>{question.prompt || `Question ${index + 1}`}</legend>{question.options.map((option, optionIndex) => <label key={optionIndex}><input disabled type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={`preview-${index}`} /> {option.label || `Option ${optionIndex + 1}`}</label>)}</fieldset>)}</section>}
       <div className="reorder-editor-actions"><button className="btn" type="button" onClick={() => setPreviewing((value) => !value)}>{previewing ? "Hide preview" : "Show preview"}</button><button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Saving…" : source?.lockedAt ? "Save as new version" : "Save survey"}</button></div>
     </div>
   );
@@ -1898,7 +2503,7 @@ function SurveyDetailPage({ surveyId, readOnly }) {
   return <div className="reorder-page">
     <PageHeader title={survey.title} action={actions} />
     {error && <PageState tone="error">{error}</PageState>}
-    <section className="reorder-flat-section"><div className="reorder-section-label">Survey Overview</div><dl className="reorder-detail-grid"><div><dt>Status</dt><dd><SurveyStatus value={survey.status} label={survey.statusLabel} /></dd></div><div><dt>Version</dt><dd>{survey.version}</dd></div><div className="is-wide"><dt>Eligible Products</dt><dd>{survey.productIds.map((id) => productMap.get(id) || id).join(" · ")}</dd></div><div><dt>Active Period</dt><dd>{formatDate(survey.startsAt)} – {formatDate(survey.endsAt)}</dd></div><div><dt>Questions</dt><dd>{survey.questions.length}</dd></div></dl><div className="reorder-result-summary"><div><strong>{result.starts}</strong><span>Starts</span></div><div><strong>{result.completions}</strong><span>Completions</span></div><div><strong>{result.completionRate}%</strong><span>Completion Rate</span></div></div></section>
+    <section className="reorder-flat-section reorder-survey-overview"><div className="reorder-section-label">Survey Overview</div><div className="reorder-survey-overview-body"><dl className="reorder-detail-grid"><div><dt>Status</dt><dd><SurveyStatus value={survey.status} label={survey.statusLabel} /></dd></div><div><dt>Version</dt><dd>{survey.version}</dd></div><div><dt>Questions</dt><dd>{survey.questions.length}</dd></div><div><dt>Active Period</dt><dd>{formatDate(survey.startsAt)} – {formatDate(survey.endsAt)}</dd></div><div className="is-wide"><dt>Eligible Products</dt><dd>{survey.productIds.map((id) => productMap.get(id) || id).join(" · ")}</dd></div></dl><div className="reorder-result-summary"><div><span>Starts</span><strong>{result.starts}</strong></div><div><span>Completions</span><strong>{result.completions}</strong></div><div><span>Completion Rate</span><strong>{result.completionRate}%</strong></div></div></div></section>
     <section className="reorder-flat-section"><div className="reorder-section-label">Results filters</div><div className="reorder-filter-row"><label><span>From</span><input className="cfg-input" type="date" value={filter.from} onChange={(event) => setFilter({ ...filter, from: event.target.value })} /></label><label><span>To</span><input className="cfg-input" type="date" value={filter.to} onChange={(event) => setFilter({ ...filter, to: event.target.value })} /></label><label><span>Product</span><select className="cfg-input" value={filter.productId} onChange={(event) => setFilter({ ...filter, productId: event.target.value, batchId: "" })}><option value="">All Products</option>{survey.productIds.map((id) => <option key={id} value={id}>{productMap.get(id) || "Product"}</option>)}</select></label><label><span>FC Batch</span><select className="cfg-input" value={filter.batchId} onChange={(event) => setFilter({ ...filter, batchId: event.target.value })}><option value="">All Batches</option>{batches.filter((batch) => !filter.productId || batch.product_version_id === filter.productId).map((batch) => <option key={batch.id} value={batch.id}>{batch.batch_code}</option>)}</select></label><button className="btn" disabled={busy} onClick={() => load(filter)}>{busyAction === "load" ? "Applying…" : "Apply"}</button></div></section>
     <section className="reorder-flat-section"><div className="reorder-section-label">Question Results</div><span className="reorder-sr-only">Each option shows its Response count and Percentage.</span><div className="reorder-question-results">{result.questions.map((question, index) => <article key={question.id}><h2>{index + 1}. {question.prompt}</h2><p>{humanize(question.type)} · {question.respondents} respondents</p>{question.options.map((option) => <div className="reorder-result-option" key={option.id}><span>{option.label}</span><strong>{option.responses} · {option.percentage}%</strong><i style={{ width: `${Math.min(option.percentage, 100)}%` }} /></div>)}</article>)}</div></section>
   </div>;
@@ -2051,8 +2656,8 @@ function resolvePage(path, readOnly) {
   const batchMatch = /^\/reorder\/batches\/([0-9a-f-]{36})$/i.exec(path);
   if (batchMatch) return <BatchDetailPage batchId={batchMatch[1]} readOnly={readOnly} />;
   const productMatch = /^\/reorder\/products\/([0-9a-f-]{36})$/i.exec(path);
-  if (productMatch) return <ProductDetailPage productId={productMatch[1]} />;
-  if (path === "/reorder/discounts") return <DiscountListPage />;
+  if (productMatch) return <ProductDetailPage productId={productMatch[1]} readOnly={readOnly} />;
+  if (path === "/reorder/discounts") return <DiscountListPage readOnly={readOnly} />;
   if (path === "/reorder/discounts/new") return <AddDiscountPage readOnly={readOnly} />;
   const discountMatch = /^\/reorder\/discounts\/([0-9a-f-]{36})$/i.exec(path);
   if (discountMatch) return <DiscountDetailPage discountId={discountMatch[1]} readOnly={readOnly} />;

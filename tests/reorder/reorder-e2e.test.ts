@@ -159,7 +159,7 @@ describe("Reorder isolation and accessibility contracts", () => {
     expect(app).not.toContain("Working…");
     expect(app).not.toContain("Checking…");
     expect(app).not.toContain("Preview & Publish");
-    expect(app).not.toContain("View analytics →");
+    expect(app).toContain("View analytics →");
     expect(app).not.toContain("Register Amazon Promotion");
     expect(app).not.toContain("Import recognized Coupons");
     expect(app).not.toContain("This workspace is read-only.");

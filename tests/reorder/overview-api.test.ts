@@ -33,7 +33,7 @@ function workspace(): OverviewWorkspace {
       { id: batchId, code: "R-2408", productId, activationStatus: "active", fcIdCount: 3360 },
       { id: otherBatchId, code: "S-2406", productId, activationStatus: "draft", fcIdCount: 2100 },
     ],
-    discounts: [{ id: "50000000-0000-4000-8000-000000000001", title: "Welcome saving", status: "active", endAt: "2026-12-31T00:00:00Z", claimCodeMode: "single_use", codePool: { available: 4, status: "codes_low" } }],
+    discounts: [{ id: "50000000-0000-4000-8000-000000000001", title: "Welcome saving", isVisibleOnFc: true, endAt: "2026-12-31T00:00:00Z", claimCodeMode: "single_use", codePool: { available: 4, status: "codes_low" } }],
     surveys: [{ id: "40000000-0000-4000-8000-000000000001", title: "Hydration habits", status: "open", productIds: [productId] }],
   };
 }

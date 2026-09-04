@@ -17,6 +17,7 @@ vi.mock("../../src/services/reorder-discount.service.js", () => ({ listReorderDi
 
 import * as consumerRepo from "../../src/repositories/reorder-consumer.repo.js";
 import * as discountRepo from "../../src/repositories/reorder-discount.repo.js";
+import * as discountService from "../../src/services/reorder-discount.service.js";
 import { resolvePublishedReorderExperience } from "../../src/services/reorder-consumer.service.js";
 
 const singleUseDiscount = {
@@ -57,9 +58,28 @@ const snapshot = {
   valid: true,
 };
 
+function liveDiscount(overrides = {}) {
+  return {
+    id: singleUseDiscount.id,
+    title: singleUseDiscount.title,
+    benefit_summary: singleUseDiscount.benefitSummary,
+    start_at: singleUseDiscount.startAt,
+    end_at: singleUseDiscount.endAt,
+    eligible_asins: ["B0DH4T156M"],
+    is_visible_on_fc: true,
+    discount_kind: "amazon_promotion",
+    claim_code_mode: "single_use",
+    group_claim_code: null,
+    products: [{ id: "product-1", asin: "B0DH4T156M" }],
+    codePool: { available: 10, status: "available" },
+    ...overrides,
+  };
+}
+
 describe("published Reorder Consumer resolver", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(discountService.listReorderDiscounts).mockResolvedValue([liveDiscount()]);
     vi.mocked(consumerRepo.findFcUnit).mockResolvedValue({
       fc_id: "FC-1001",
       batch_id: "batch-1",
@@ -83,11 +103,36 @@ describe("published Reorder Consumer resolver", () => {
     });
   });
 
+  it("hides a Discount that Brand set to Hide on FC without removing Buy on Amazon", async () => {
+    vi.mocked(discountService.listReorderDiscounts).mockResolvedValue([liveDiscount({ is_visible_on_fc: false })]);
+    const result = await resolvePublishedReorderExperience("FC-1001");
+    expect(result).toMatchObject({ showDiscounts: false, availableSavings: [], featuredDiscount: null, primaryCta: snapshot.product.attributionUrl });
+    expect(discountRepo.allocateSingleUseClaimCode).not.toHaveBeenCalled();
+  });
+
   it("hides the entire Single-use Discount when no Code can be allocated", async () => {
     vi.mocked(discountRepo.allocateSingleUseClaimCode).mockResolvedValue(null);
     const result = await resolvePublishedReorderExperience("fc-1001");
-    expect(result).toMatchObject({ showDiscounts: false, availableSavings: [], featuredDiscount: null });
+    expect(result).toMatchObject({ showDiscounts: false, availableSavings: [], featuredDiscount: null, primaryCta: snapshot.product.attributionUrl });
     expect(discountRepo.markClaimCodeEvent).not.toHaveBeenCalled();
+  });
+
+  it("shows a Discount set to Show on FC without waiting for republish", async () => {
+    const shown = liveDiscount({
+      id: "00000000-0000-4000-8000-000000000099",
+      title: "Imported Coupon",
+      discount_kind: "amazon_coupon",
+      claim_code_mode: "none",
+      codePool: null,
+    });
+    vi.mocked(discountService.listReorderDiscounts).mockResolvedValue([shown]);
+    const result = await resolvePublishedReorderExperience("FC-1001");
+    expect(result).toMatchObject({
+      showDiscounts: true,
+      featuredDiscount: { id: shown.id, title: "Imported Coupon" },
+      primaryCta: snapshot.product.attributionUrl,
+    });
+    expect(discountRepo.allocateSingleUseClaimCode).not.toHaveBeenCalled();
   });
 
   it("returns and records a stable displayed Code when allocation succeeds", async () => {

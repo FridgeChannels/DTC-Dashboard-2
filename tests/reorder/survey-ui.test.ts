@@ -37,6 +37,8 @@ describe("Reorder Survey Console", () => {
   });
 
   it("includes mobile-first responsive layouts and visible keyboard focus", () => {
+    expect(app).toContain("reorder-survey-overview");
+    expect(css).toContain(".reorder-survey-overview-body");
     expect(css).toContain(".reorder-survey-row:focus-visible");
     expect(css).toMatch(/@media \(max-width: 640px\)[\s\S]*\.reorder-survey-row/);
     expect(css).toMatch(/\.reorder-result-option \{[\s\S]*min-height: 44px/);
@@ -45,6 +47,8 @@ describe("Reorder Survey Console", () => {
 
   it("previews choice controls and the tap page submits without a reward", () => {
     const tap = readFileSync(new URL("../../src/fc/components/tap.jsx", import.meta.url), "utf8");
+    expect(app).toContain("Question preview");
+    expect(app).toContain("Temporary layout for checking questions. The live consumer page looks different.");
     expect(app).toContain('question.type === "multiple_choice" ? "checkbox" : "radio"');
     expect(tap).toContain("function ReorderSurvey(");
     expect(tap).toContain("/surveys/${survey.id}/start");

@@ -20,7 +20,9 @@ export interface OverviewWorkspace {
   discounts: Array<{
     id: string;
     title: string;
-    status: string;
+    status?: string;
+    isVisibleOnFc?: boolean;
+    issueCode?: string | null;
     endAt: string | null;
     claimCodeMode: string | null;
     codePool: { available: number; status: string } | null;
@@ -101,7 +103,8 @@ function configurationIssues(workspace: OverviewWorkspace, filter: ParsedDashboa
   }
   for (const discount of workspace.discounts) {
     const ended = discount.endAt && Date.parse(discount.endAt) < Date.now();
-    if (discount.status === "active" && ended) issues.push({ code: "discount_ended_active", message: `${discount.title} has ended but is still Active.`, fixPath: `/reorder/discounts/${discount.id}`, fixLabel: "Fix" });
+    if (discount.isVisibleOnFc && ended) issues.push({ code: "discount_expired", message: `${discount.title} Amazon period has ended.`, fixPath: `/reorder/discounts/${discount.id}`, fixLabel: "Fix" });
+    if (discount.issueCode === "product_mapping_required") issues.push({ code: "product_mapping_required", message: `${discount.title} needs Product mapping.`, fixPath: `/reorder/discounts/${discount.id}`, fixLabel: "Fix" });
     if (discount.claimCodeMode === "single_use" && discount.codePool?.status === "exhausted") issues.push({ code: "codes_exhausted", message: `${discount.title} Single-use Claim Code pool is exhausted.`, fixPath: `/reorder/discounts/${discount.id}`, fixLabel: "Fix" });
     else if (discount.claimCodeMode === "single_use" && (discount.codePool?.status === "codes_low" || discount.codePool?.status === "low")) issues.push({ code: "codes_low", message: `${discount.title} Single-use Claim Code pool is below the threshold.`, fixPath: `/reorder/discounts/${discount.id}`, fixLabel: "Fix" });
   }
@@ -159,7 +162,8 @@ export async function loadOverviewWorkspace(customerId: number): Promise<Overvie
     discounts: discounts.map((discount) => ({
       id: discount.id,
       title: discount.title,
-      status: discount.status,
+      isVisibleOnFc: discount.is_visible_on_fc === true,
+      issueCode: discount.issue?.code ?? null,
       endAt: discount.end_at,
       claimCodeMode: discount.claim_code_mode,
       codePool: discount.codePool,
@@ -214,7 +218,7 @@ export async function getReorderOverview(
         { key: "products", label: "Products", value: activeProducts.length },
         { key: "batches", label: "Batches", value: activeBatches.length },
         { key: "fcIds", label: "FC IDs", value: activeBatches.reduce((sum, batch) => sum + batch.fcIdCount, 0) },
-        { key: "discounts", label: "Discounts", value: workspace.discounts.filter((item) => item.status === "active").length },
+        { key: "discounts", label: "Discounts", value: workspace.discounts.filter((item) => item.isVisibleOnFc).length },
         { key: "surveys", label: "Surveys", value: workspace.surveys.filter((item) => item.status === "open").length },
       ],
     },

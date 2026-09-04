@@ -172,6 +172,34 @@
   gap: 20px;
 }
 
+.reorder-page-heading {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.reorder-back-link {
+  margin: 0 0 2px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.reorder-back-link:hover,
+.reorder-back-link:focus-visible {
+  color: var(--ink);
+}
+
 .reorder-page-header h1 {
   margin: 0;
   font-family: var(--font-serif);
@@ -328,6 +356,11 @@
   border-top: 0;
 }
 
+.reorder-app textarea.cfg-input {
+  min-height: 84px;
+  resize: vertical;
+}
+
 .reorder-add-account {
   margin-top: 22px;
 }
@@ -354,6 +387,18 @@
 .reorder-state.is-success {
   background: var(--pos-soft);
   color: var(--pos);
+}
+
+.reorder-empty-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.reorder-empty-action .reorder-state {
+  flex: 1 1 280px;
+  margin: 0;
 }
 
 .reorder-checks {
@@ -437,6 +482,21 @@
 
 .reorder-table tbody tr:hover {
   background: var(--bg-sunken);
+}
+
+.reorder-table tbody tr.is-static,
+.reorder-table tbody tr.is-static:hover {
+  cursor: default;
+  background: transparent;
+}
+
+.reorder-actions-cell {
+  text-align: right;
+}
+
+.reorder-actions-cell .btn {
+  min-height: 44px;
+  white-space: nowrap;
 }
 
 .reorder-product-cell {
@@ -531,6 +591,68 @@
   margin-bottom: 18px;
 }
 
+.reorder-order-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.reorder-order-summary strong {
+  font-size: 22px;
+  word-break: break-word;
+}
+
+.reorder-order-summary .is-remaining {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(24, 24, 24, 0.04);
+}
+
+.reorder-order-summary .is-remaining span {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.reorder-order-summary .is-remaining strong {
+  font-size: 36px;
+  line-height: 1.05;
+}
+
+.reorder-order-summary .is-remaining.is-complete {
+  background: rgba(22, 122, 72, 0.08);
+}
+
+.reorder-field-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.reorder-batch-form .cfg-input.is-invalid {
+  border-color: var(--neg);
+}
+
+.reorder-allocation-footer {
+  max-width: 820px;
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line, rgba(0, 0, 0, 0.08));
+}
+
+.reorder-allocation-status {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.reorder-allocation-footer.is-complete .reorder-allocation-status {
+  color: var(--pos, #167a48);
+}
+
+.reorder-performance-row {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .reorder-quantity-summary div,
 .reorder-performance-row div {
   display: flex;
@@ -566,6 +688,35 @@
   margin-bottom: 10px;
 }
 
+.reorder-batch-form {
+  max-width: 820px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line, rgba(0, 0, 0, 0.08));
+}
+
+.reorder-batch-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.reorder-batch-form .is-wide,
+.reorder-batch-form .reorder-guidance.is-wide,
+.reorder-batch-form .reorder-editor-actions.is-wide {
+  grid-column: 1 / -1;
+}
+
+.reorder-batch-form textarea.cfg-input {
+  min-height: 84px;
+  resize: vertical;
+}
+
 .reorder-text-button,
 .reorder-inline-link {
   border: 0;
@@ -588,8 +739,93 @@
 .reorder-activation-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 18px;
+}
+
+.reorder-fc-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.reorder-fc-switch input {
+  position: absolute;
+  z-index: 1;
+  top: 9px;
+  left: 0;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.reorder-fc-switch-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  box-shadow: inset 0 0 0 1px var(--line, rgba(0, 0, 0, 0.12));
+  transition: background 160ms ease;
+}
+
+.reorder-fc-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: transform 160ms ease;
+}
+
+.reorder-fc-switch.is-on .reorder-fc-switch-track {
+  background: var(--ink);
+  box-shadow: none;
+}
+
+.reorder-fc-switch.is-on .reorder-fc-switch-track::after {
+  transform: translateX(18px);
+}
+
+.reorder-fc-switch input:focus-visible + .reorder-fc-switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.reorder-fc-switch-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.reorder-fc-switch-copy strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.reorder-fc-switch-copy small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.reorder-fc-switch.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reorder-activation-controls .cfg-input {
+  width: min(240px, 100%);
 }
 
 .reorder-linked-row {
@@ -717,9 +953,12 @@
   cursor: pointer;
 }
 
-.reorder-type-switch button.is-active {
-  color: var(--ink);
-  box-shadow: inset 0 -2px var(--accent);
+.reorder-display-toggle.is-show {
+  color: var(--accent);
+}
+
+.reorder-map-products {
+  margin-top: 12px;
 }
 
 .reorder-product-options {
@@ -1070,6 +1309,10 @@
   background: var(--bg-sunken);
 }
 
+.reorder-survey-preview .reorder-guidance {
+  margin: 6px 0 16px;
+}
+
 .reorder-survey-preview > strong {
   font-family: var(--font-serif);
   font-size: 28px;
@@ -1087,6 +1330,64 @@
 .reorder-survey-preview legend {
   margin-bottom: 10px;
   font-weight: 600;
+}
+
+.reorder-survey-overview .reorder-section-label {
+  margin-bottom: 12px;
+}
+
+.reorder-survey-overview + .reorder-flat-section {
+  margin-top: 28px;
+}
+
+.reorder-survey-overview-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 240px);
+  gap: 14px 24px;
+  align-items: stretch;
+}
+
+.reorder-survey-overview .reorder-detail-grid {
+  max-width: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  gap: 10px 28px;
+}
+
+.reorder-survey-overview .reorder-detail-grid > div {
+  min-width: 0;
+}
+
+.reorder-survey-overview .reorder-detail-grid div.is-wide {
+  flex: 1 1 200px;
+  grid-column: auto;
+}
+
+.reorder-survey-overview .reorder-detail-grid dt {
+  margin-bottom: 3px;
+}
+
+.reorder-survey-overview .reorder-result-summary {
+  max-width: none;
+  margin-top: 0;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--bg-sunken);
+}
+
+.reorder-survey-overview .reorder-result-summary div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reorder-survey-overview .reorder-result-summary strong {
+  font-size: 22px;
+  line-height: 1.1;
 }
 
 .reorder-result-summary {
@@ -1700,7 +2001,29 @@
     grid-column: auto;
   }
 
-  .reorder-allocation-row {
+  .reorder-survey-overview-body {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .reorder-survey-overview .reorder-detail-grid div.is-wide {
+    flex: 1 1 160px;
+    grid-column: auto;
+  }
+
+  .reorder-survey-overview .reorder-result-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 16px;
+  }
+
+  .reorder-survey-overview .reorder-result-summary div {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .reorder-allocation-row,
+  .reorder-batch-form {
     grid-template-columns: 1fr;
   }
 
@@ -1778,7 +2101,18 @@
 
   .reorder-result-summary {
     grid-template-columns: 1fr;
-    gap: 14px;
+    gap: 10px;
+  }
+
+  .reorder-survey-overview .reorder-result-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 12px;
+  }
+
+  .reorder-survey-overview .reorder-result-summary div {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
   }
 
   .reorder-source-row {

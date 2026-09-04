@@ -7,6 +7,7 @@ const getCustomerId = vi.hoisted(() => vi.fn());
 const assertCanWrite = vi.hoisted(() => vi.fn());
 const listWorkspace = vi.hoisted(() => vi.fn());
 const saveAllocations = vi.hoisted(() => vi.fn());
+const saveBrandBatch = vi.hoisted(() => vi.fn());
 const transitionActivation = vi.hoisted(() => vi.fn());
 
 vi.mock("../../src/api/tenant-context.js", () => ({
@@ -21,11 +22,15 @@ vi.mock("../../src/services/reorder-fulfillment.service.js", () => ({
   listReorderOrdersAndBatches: listWorkspace,
   listReorderProductBatches: vi.fn(),
   saveReorderAllocations: saveAllocations,
+  saveReorderBrandBatch: saveBrandBatch,
+  deleteReorderBrandBatch: vi.fn(),
   submitReorderAllocations: vi.fn(),
+  submitReorderBrandBatches: vi.fn(),
   transitionReorderBatchActivation: transitionActivation,
 }));
 
 import {
+  handleCreateReorderBrandBatch,
   handleListReorderOrdersAndBatches,
   handlePutReorderBatchActivation,
   handleSaveReorderAllocations,
@@ -54,6 +59,7 @@ describe("Reorder fulfillment API", () => {
     assertCanWrite.mockResolvedValue(undefined);
     listWorkspace.mockResolvedValue({ orders: [], batches: [] });
     saveAllocations.mockResolvedValue([]);
+    saveBrandBatch.mockResolvedValue({ id: "00000000-0000-4000-8000-000000000011" });
     transitionActivation.mockResolvedValue({ id: "00000000-0000-4000-8000-000000000010" });
   });
 
@@ -89,5 +95,18 @@ describe("Reorder fulfillment API", () => {
       status: "active",
       scheduledActivationAt: undefined,
     });
+  });
+
+  it("checks write access before creating a Brand-defined Batch", async () => {
+    const out = response();
+    const input = {
+      productVersionId: "00000000-0000-4000-8000-000000000001",
+      quantity: 2000,
+      label: "Batch A001",
+    };
+    await handleCreateReorderBrandBatch(request(input), out.res, "FC-09001");
+    expect(out.status()).toBe(201);
+    expect(assertCanWrite).toHaveBeenCalledOnce();
+    expect(saveBrandBatch).toHaveBeenCalledWith(7, "FC-09001", input);
   });
 });

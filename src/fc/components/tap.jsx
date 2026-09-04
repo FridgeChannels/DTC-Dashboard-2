@@ -376,7 +376,7 @@ function TapPage() {
             </div>)}
             {savings.length > 1 && <button className="reorder-tap-link" onClick={() => setShowAllSavings((value) => !value)}>{showAllSavings ? "Show Featured saving" : `View all ${savings.length} savings`}</button>}
           </div>}
-          {reorderExperience.primaryCta ? <a className="reorder-tap-primary" href={reorderExperience.primaryCta} rel="noreferrer">Reorder on Amazon</a> : <p className="reorder-tap-unavailable">This Seller Offer is currently unavailable.</p>}
+          {reorderExperience.primaryCta ? <a className="reorder-tap-primary" href={reorderExperience.primaryCta} rel="noreferrer">Buy on Amazon</a> : <p className="reorder-tap-unavailable">This Seller Offer is currently unavailable.</p>}
           {reorderExperience.fallback?.url && <a className="reorder-tap-secondary" href={reorderExperience.fallback.url} rel="noreferrer">Visit Seller Storefront</a>}
           {reorderExperience.survey && !surveyDismissed && <ReorderSurvey sn={sn} survey={reorderExperience.survey} onComplete={() => setSurveyDismissed(true)} />}
         </section>

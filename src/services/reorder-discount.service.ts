@@ -7,6 +7,15 @@ import {
   parseSingleUseClaimCodeFile,
   type UploadedDiscountFile,
 } from "../reorder/discount-files.js";
+import {
+  amazonPeriodLabel,
+  canDisplayDiscountOnConsumer,
+  claimCodeColumn,
+  discountIssues,
+  matchProductsByAsins,
+  parseEligibleAsins,
+  primaryDiscountIssue,
+} from "../reorder/discount-display.js";
 import { encryptClaimCode, hashClaimCode, maskClaimCode } from "./reorder/claim-code-crypto.js";
 
 function requiredText(value: unknown, field: string, maxLength = 500): string {
@@ -60,6 +69,47 @@ function poolSummary(codes: Awaited<ReturnType<typeof discountRepo.listClaimCode
   };
 }
 
+function presentDiscount<T extends {
+  title: string;
+  benefit_summary: string;
+  start_at: string;
+  end_at: string;
+  eligible_asins: string[];
+  is_visible_on_fc?: boolean;
+  discount_kind: "amazon_coupon" | "amazon_promotion";
+  claim_code_mode: "none" | "group" | "single_use";
+  group_claim_code: string | null;
+  products: Array<{ asin?: string }>;
+  codePool: ReturnType<typeof poolSummary> | null;
+}>(discount: T, options: { parsingIssue?: boolean } = {}) {
+  const matchedAsins = [...new Set(discount.products.map((product) => product.asin).filter(Boolean))] as string[];
+  const display = {
+    title: discount.title,
+    benefitSummary: discount.benefit_summary,
+    startAt: discount.start_at,
+    endAt: discount.end_at,
+    eligibleAsins: discount.eligible_asins,
+    matchedAsins,
+    isVisibleOnFc: discount.is_visible_on_fc === true,
+    claimCodeMode: discount.claim_code_mode,
+    discountKind: discount.discount_kind,
+    groupClaimCode: discount.group_claim_code,
+    codePool: discount.codePool,
+    parsingIssue: options.parsingIssue === true,
+  };
+  const issues = discountIssues(display);
+  return {
+    ...discount,
+    fc_display: discount.is_visible_on_fc === true ? "show" : "hide",
+    amazon_period: amazonPeriodLabel(discount.start_at, discount.end_at),
+    claim_code_label: claimCodeColumn(discount.discount_kind, discount.claim_code_mode),
+    issues,
+    issue: primaryDiscountIssue(display),
+    can_display_on_consumer: canDisplayDiscountOnConsumer(display),
+    unmatched_asins: discount.eligible_asins.filter((asin) => !matchedAsins.includes(asin)),
+  };
+}
+
 export async function listReorderDiscounts(customerId: number, options: { revealGroupCodes?: boolean } = {}) {
   const [discounts, accounts] = await Promise.all([
     discountRepo.listDiscounts(customerId),
@@ -83,7 +133,7 @@ export async function listReorderDiscounts(customerId: number, options: { reveal
     const codePool = discount.discount_kind === "amazon_promotion" && discount.claim_code_mode === "single_use"
       ? poolSummary(codeMap.get(discount.id) ?? [], discount.code_low_threshold)
       : null;
-    return {
+    return presentDiscount({
       ...discount,
       group_claim_code: options.revealGroupCodes ? discount.group_claim_code : maskClaimCode(discount.group_claim_code),
       sellingAccount: accountMap.get(discount.selling_account_id) ?? null,
@@ -92,7 +142,7 @@ export async function listReorderDiscounts(customerId: number, options: { reveal
         isFeatured: binding.is_featured,
       })),
       codePool,
-    };
+    });
   });
 }
 
@@ -108,13 +158,13 @@ export async function getReorderDiscount(customerId: number, discountId: string)
   const codePool = discount.discount_kind === "amazon_promotion" && discount.claim_code_mode === "single_use"
     ? poolSummary(await discountRepo.listClaimCodes(customerId, discount.id), discount.code_low_threshold)
     : null;
-  return {
+  return presentDiscount({
     ...discount,
     group_claim_code: maskClaimCode(discount.group_claim_code),
     sellingAccount: account,
     products: bindings.map((binding) => ({ ...productMap.get(binding.product_version_id), isFeatured: binding.is_featured })),
     codePool,
-  };
+  });
 }
 
 async function buildCouponReview(customerId: number, sellingAccountId: unknown, file: UploadedDiscountFile) {
@@ -128,17 +178,17 @@ async function buildCouponReview(customerId: number, sellingAccountId: unknown, 
     const matches = eligibleProducts.filter((product) => row.eligibleAsins.includes(product.asin));
     const matchedAsins = new Set(matches.map((product) => product.asin));
     const missingAsins = row.eligibleAsins.filter((asin) => !matchedAsins.has(asin));
-    const errors = [...row.errors];
-    if (missingAsins.length) errors.push(`Product mapping required for ${missingAsins.join(", ")}`);
     return {
       ...row,
       productVersionIds: matches.map((product) => product.id),
       matchedProducts: matches.map((product) => ({ id: product.id, name: product.product_name, asin: product.asin })),
       missingAsins,
-      errors,
+      mappingStatus: missingAsins.length ? "Product mapping required" : "Matched",
+      errors: [...row.errors],
     };
   });
   const matchedIds = new Set(rows.flatMap((row) => row.productVersionIds));
+  const parseErrors = rows.filter((row) => row.errors.length).length;
   return {
     account,
     parsed,
@@ -147,7 +197,7 @@ async function buildCouponReview(customerId: number, sellingAccountId: unknown, 
       couponsDetected: rows.length,
       productsMatched: matchedIds.size,
       productMappingRequired: rows.filter((row) => row.missingAsins.length).length,
-      rowsWithParsingIssues: rows.filter((row) => row.errors.length).length,
+      rowsWithParsingIssues: parseErrors,
       unmappedColumns: parsed.unmappedColumns,
       canImport: rows.some((row) => !row.errors.length),
     },
@@ -164,7 +214,7 @@ export async function previewAmazonCouponImport(
 
 export async function importAmazonCoupons(
   customerId: number,
-  input: UploadedDiscountFile & { sellingAccountId?: unknown; acknowledgeUnmappedColumns?: unknown },
+  input: UploadedDiscountFile & { sellingAccountId?: unknown; acknowledgeUnmappedColumns?: unknown; isVisibleOnFc?: unknown },
 ) {
   const result = await buildCouponReview(customerId, input.sellingAccountId, input);
   if (result.parsed.unmappedColumns.length && input.acknowledgeUnmappedColumns !== true) {
@@ -182,12 +232,14 @@ export async function importAmazonCoupons(
     unmappedColumns: result.parsed.unmappedColumns,
     totalRows: result.rows.length,
     rejectedRows: result.rows.length - accepted.length,
+    visible: input.isVisibleOnFc === true,
     rows: accepted.map((row) => ({
       ...row,
       marketplaceCode: result.account.marketplace_code,
       errors: undefined,
       matchedProducts: undefined,
       missingAsins: undefined,
+      mappingStatus: undefined,
     })),
   });
   return { imported: imported.length, rejected: result.rows.length - imported.length, discounts: imported, review: result.review };
@@ -196,6 +248,7 @@ export async function importAmazonCoupons(
 export interface CreatePromotionInput {
   sellingAccountId?: unknown;
   productVersionIds?: unknown;
+  eligibleAsins?: unknown;
   title?: unknown;
   amazonReference?: unknown;
   promotionType?: unknown;
@@ -211,18 +264,32 @@ export interface CreatePromotionInput {
   groupClaimCode?: unknown;
   codeLowThreshold?: unknown;
   amazonConfirmed?: unknown;
+  isVisibleOnFc?: unknown;
+}
+
+async function resolvePromotionProducts(customerId: number, sellingAccountId: string, input: CreatePromotionInput) {
+  if (Array.isArray(input.productVersionIds) && input.productVersionIds.length) {
+    const productVersionIds = [...new Set(input.productVersionIds.map((value) => uuid(value, "Product Version")))];
+    const products = await productRepo.listProductVersionsByIds(customerId, productVersionIds);
+    if (products.length !== productVersionIds.length || products.some((product) => product.selling_account_id !== sellingAccountId || !product.is_current)) {
+      throw new ReorderValidationError("Eligible Products must use the selected Selling Account");
+    }
+    return { productVersionIds, products };
+  }
+  const enteredAsins = parseEligibleAsins(input.eligibleAsins);
+  if (!enteredAsins.length) throw new ReorderValidationError("Enter Eligible ASINs to match Products");
+  const catalog = await productRepo.listCurrentProducts(customerId);
+  const { matched } = matchProductsByAsins(
+    catalog.filter((product) => product.selling_account_id === sellingAccountId),
+    enteredAsins,
+  );
+  if (!matched.length) throw new ReorderValidationError("No Products matched these Eligible ASINs");
+  return { productVersionIds: matched.map((product) => product.id), products: matched };
 }
 
 export async function createAmazonPromotion(customerId: number, input: CreatePromotionInput) {
   const account = await requireAccount(customerId, input.sellingAccountId);
-  if (!Array.isArray(input.productVersionIds) || !input.productVersionIds.length) {
-    throw new ReorderValidationError("Select at least one eligible Product Version");
-  }
-  const productVersionIds = [...new Set(input.productVersionIds.map((value) => uuid(value, "Product Version")))];
-  const products = await productRepo.listProductVersionsByIds(customerId, productVersionIds);
-  if (products.length !== productVersionIds.length || products.some((product) => product.selling_account_id !== account.id || !product.is_current)) {
-    throw new ReorderValidationError("Eligible Products must use the selected Selling Account");
-  }
+  const { productVersionIds } = await resolvePromotionProducts(customerId, account.id, input);
   const startAt = isoDate(input.startAt, "Start");
   const endAt = isoDate(input.endAt, "End");
   if (Date.parse(endAt) <= Date.parse(startAt)) throw new ReorderValidationError("End must follow Start");
@@ -234,18 +301,17 @@ export async function createAmazonPromotion(customerId: number, input: CreatePro
   if (!["none", "group", "single_use"].includes(claimCodeMode)) throw new ReorderValidationError("Claim Code Mode is invalid");
   const groupClaimCode = claimCodeMode === "group" ? requiredText(input.groupClaimCode, "Group Claim Code", 64).toUpperCase() : null;
   if (groupClaimCode && !/^[A-Z0-9_-]{4,64}$/.test(groupClaimCode)) throw new ReorderValidationError("Group Claim Code format is invalid");
-  if (input.amazonConfirmed !== true) throw new ReorderValidationError("Confirm that this Promotion already exists in Amazon");
   const qualifyingCondition = requiredText(input.qualifyingCondition, "Buyer purchases / Qualifying condition", 1000);
   const codeLowThreshold = Number(input.codeLowThreshold ?? 20);
   if (!Number.isSafeInteger(codeLowThreshold) || codeLowThreshold < 0) throw new ReorderValidationError("Codes low threshold is invalid");
   const rawBenefitValue = input.benefitValue === "" || input.benefitValue == null ? null : Number(input.benefitValue);
   if (rawBenefitValue != null && (!Number.isFinite(rawBenefitValue) || rawBenefitValue <= 0)) throw new ReorderValidationError("Benefit value is invalid");
 
-  return discountRepo.createAmazonPromotion(customerId, account.id, {
+  const created = await discountRepo.createAmazonPromotion(customerId, account.id, {
     productVersionIds,
     title: requiredText(input.title, "Promotion title", 200),
     amazonReference: optionalText(input.amazonReference, 200),
-    promotionType: requiredText(input.promotionType, "Promotion type", 120),
+    promotionType: optionalText(input.promotionType, 120),
     qualifyingCondition: { buyerPurchases: qualifyingCondition },
     benefitKind,
     benefitValue: rawBenefitValue,
@@ -257,8 +323,11 @@ export async function createAmazonPromotion(customerId: number, input: CreatePro
     claimCodeMode,
     groupClaimCode,
     codeLowThreshold,
-    amazonConfirmed: true,
+    amazonConfirmed: input.amazonConfirmed !== false,
+    isVisibleOnFc: input.isVisibleOnFc === true,
   });
+  if (!created?.id) throw new ReorderValidationError("Amazon Promotion could not be recorded");
+  return getReorderDiscount(customerId, created.id);
 }
 
 export async function importSingleUseClaimCodes(
@@ -312,7 +381,7 @@ export async function importSingleUseClaimCodes(
 export async function updateReorderDiscount(
   customerId: number,
   discountId: string,
-  input: { couponType?: unknown; amazonConfirmed?: unknown; codeLowThreshold?: unknown },
+  input: { couponType?: unknown; amazonConfirmed?: unknown; codeLowThreshold?: unknown; isVisibleOnFc?: unknown },
 ) {
   const discount = await discountRepo.findDiscount(customerId, discountId);
   if (!discount) return null;
@@ -328,7 +397,38 @@ export async function updateReorderDiscount(
     if (!Number.isSafeInteger(threshold) || threshold < 0) throw new ReorderValidationError("Codes low threshold is invalid");
     values.code_low_threshold = threshold;
   }
-  return discountRepo.updateDiscount(customerId, discountId, values);
+  if (input.isVisibleOnFc !== undefined) values.is_visible_on_fc = input.isVisibleOnFc === true;
+  await discountRepo.updateDiscount(customerId, discountId, values);
+  return getReorderDiscount(customerId, discountId);
+}
+
+export async function mapReorderDiscountProducts(
+  customerId: number,
+  discountId: string,
+  productVersionIds: unknown,
+) {
+  const discount = await discountRepo.findDiscount(customerId, discountId);
+  if (!discount) return null;
+  if (!Array.isArray(productVersionIds) || !productVersionIds.length) {
+    throw new ReorderValidationError("Select at least one Product to match");
+  }
+  const ids = [...new Set(productVersionIds.map((value) => uuid(value, "Product Version")))];
+  const products = await productRepo.listProductVersionsByIds(customerId, ids);
+  if (products.length !== ids.length) throw new ReorderValidationError("Product mapping is invalid");
+  if (products.some((product) => product.selling_account_id !== discount.selling_account_id || !discount.eligible_asins.includes(product.asin))) {
+    throw new ReorderValidationError("Mapped Products must use the same Selling Account and an Eligible ASIN");
+  }
+  await discountRepo.bindDiscountProducts(
+    customerId,
+    discountId,
+    products.map((product) => ({
+      product_version_id: product.id,
+      selling_account_id: product.selling_account_id,
+      asin: product.asin,
+      is_featured: false,
+    })),
+  );
+  return getReorderDiscount(customerId, discountId);
 }
 
 export async function featureReorderDiscount(customerId: number, discountId: string, productVersionId: string) {

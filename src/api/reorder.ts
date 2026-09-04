@@ -19,7 +19,10 @@ import {
   listReorderOrdersAndBatches,
   listReorderProductBatches,
   saveReorderAllocations,
+  saveReorderBrandBatch,
+  deleteReorderBrandBatch,
   submitReorderAllocations,
+  submitReorderBrandBatches,
   transitionReorderBatchActivation,
 } from "../services/reorder-fulfillment.service.js";
 import {
@@ -29,6 +32,7 @@ import {
   importAmazonCoupons,
   importSingleUseClaimCodes,
   listReorderDiscounts,
+  mapReorderDiscountProducts,
   previewAmazonCouponImport,
   updateReorderDiscount,
   type CreatePromotionInput,
@@ -466,6 +470,83 @@ export async function handleSubmitReorderAllocations(
   }
 }
 
+export async function handleCreateReorderBrandBatch(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawOrderNumber: string,
+): Promise<void> {
+  try {
+    const input = await readJsonBody(req);
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    const batch = await saveReorderBrandBatch(customerId, decodeOrderNumber(rawOrderNumber), input);
+    if (!batch) return errorJson(res, 404, "FC Order not found");
+    json(res, 201, batch);
+  } catch (error) {
+    handleError(res, error, "Failed to create Batch");
+  }
+}
+
+export async function handleUpdateReorderBrandBatch(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawOrderNumber: string,
+  rawBatchId: string,
+): Promise<void> {
+  try {
+    const input = await readJsonBody(req);
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    const batch = await saveReorderBrandBatch(
+      customerId,
+      decodeOrderNumber(rawOrderNumber),
+      input,
+      decodeUuid(rawBatchId, "Batch ID"),
+    );
+    if (!batch) return errorJson(res, 404, "FC Order not found");
+    json(res, 200, batch);
+  } catch (error) {
+    handleError(res, error, "Failed to update Batch");
+  }
+}
+
+export async function handleDeleteReorderBrandBatch(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawOrderNumber: string,
+  rawBatchId: string,
+): Promise<void> {
+  try {
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    const result = await deleteReorderBrandBatch(
+      customerId,
+      decodeOrderNumber(rawOrderNumber),
+      decodeUuid(rawBatchId, "Batch ID"),
+    );
+    if (!result) return errorJson(res, 404, "Batch not found");
+    json(res, 200, result);
+  } catch (error) {
+    handleError(res, error, "Failed to delete Batch");
+  }
+}
+
+export async function handleSubmitReorderBrandBatches(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawOrderNumber: string,
+): Promise<void> {
+  try {
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    const state = await submitReorderBrandBatches(customerId, decodeOrderNumber(rawOrderNumber));
+    if (!state) return errorJson(res, 404, "FC Order not found");
+    json(res, 200, state);
+  } catch (error) {
+    handleError(res, error, "Failed to submit Batches for production");
+  }
+}
+
 export async function handleGetReorderBatch(
   req: IncomingMessage,
   res: ServerResponse,
@@ -514,7 +595,7 @@ export async function handleListReorderProductBatches(
   try {
     const customerId = await getRequestConfigCustomerId(req, res);
     const productId = decodeUuid(rawProductId, "Product ID");
-    json(res, 200, { batches: await listReorderProductBatches(customerId, productId) });
+    json(res, 200, await listReorderProductBatches(customerId, productId));
   } catch (error) {
     handleError(res, error, "Failed to load Product Batches");
   }
@@ -561,6 +642,7 @@ export async function handleImportReorderCoupons(req: IncomingMessage, res: Serv
       fileName?: unknown;
       fileBase64?: unknown;
       acknowledgeUnmappedColumns?: unknown;
+      isVisibleOnFc?: unknown;
     }>(req);
     await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
@@ -587,7 +669,7 @@ export async function handleUpdateReorderDiscount(
   rawDiscountId: string,
 ): Promise<void> {
   try {
-    const input = await readJsonBody<{ couponType?: unknown; amazonConfirmed?: unknown; codeLowThreshold?: unknown }>(req);
+    const input = await readJsonBody<{ couponType?: unknown; amazonConfirmed?: unknown; codeLowThreshold?: unknown; isVisibleOnFc?: unknown }>(req);
     await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const discount = await updateReorderDiscount(customerId, decodeUuid(rawDiscountId, "Discount ID"), input);
@@ -614,6 +696,27 @@ export async function handleImportReorderClaimCodes(
     ));
   } catch (error) {
     handleError(res, error, "Failed to import Single-use Claim Codes");
+  }
+}
+
+export async function handleMapReorderDiscountProducts(
+  req: IncomingMessage,
+  res: ServerResponse,
+  rawDiscountId: string,
+): Promise<void> {
+  try {
+    const input = await readJsonBody<{ productVersionIds?: unknown }>(req);
+    await assertRequestCanWriteConfig(req, res);
+    const customerId = await getRequestCustomerId(req, res);
+    const discount = await mapReorderDiscountProducts(
+      customerId,
+      decodeUuid(rawDiscountId, "Discount ID"),
+      input.productVersionIds,
+    );
+    if (!discount) return errorJson(res, 404, "Discount not found");
+    json(res, 200, discount);
+  } catch (error) {
+    handleError(res, error, "Failed to map Discount Products");
   }
 }
 

@@ -18,6 +18,23 @@ describe("Reorder Discounts migration", () => {
     expect(sql).toContain("unique (discount_id, assigned_fc_id)");
   });
 
+  it("does not require Promotion type for Amazon Promotion records", () => {
+    const optionalTypeSql = readFileSync("supabase/migrations/20260904250000_reorder_promotion_optional_type.sql", "utf8");
+    expect(optionalTypeSql).toContain("discount_kind = 'amazon_promotion'");
+    expect(optionalTypeSql).not.toContain("char_length(btrim(coalesce(promotion_type, ''))) > 0");
+  });
+
+  it("uses Show on FC instead of brand Draft/Active display states", () => {
+    const displaySql = readFileSync("supabase/migrations/20260904190000_reorder_discount_fc_display.sql", "utf8");
+    const allocateSql = displaySql.slice(
+      displaySql.indexOf("allocate_reorder_single_use_claim_code"),
+      displaySql.indexOf("drop function"),
+    );
+    expect(displaySql).toContain("is_visible_on_fc boolean not null default false");
+    expect(allocateSql).toContain("and is_visible_on_fc = true");
+    expect(allocateSql).not.toContain("status = 'active'");
+  });
+
   it("records only Assigned, Displayed, and Copied facts", () => {
     expect(sql).toContain("assigned_at");
     expect(sql).toContain("displayed_at");

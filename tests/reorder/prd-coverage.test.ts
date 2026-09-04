@@ -21,7 +21,7 @@ describe("FC Reorder v1.8 coverage ledger", () => {
     for (const row of rows) {
       expect(row).toHaveLength(7);
       expect(allowedStatuses.has(row[2])).toBe(true);
-      expect(row[1]).toMatch(/`(?:00_MASTER_PRD|modules\/\d+_[A-Z_]+)\.md`/);
+      expect(row[1]).toMatch(/`(?:00_MASTER_PRD|modules\/\d+_[A-Z_]+|docs\/reorder\/FC_Reorder_Discounts_PRD_v1\.1)\.md`/);
     }
   });
 

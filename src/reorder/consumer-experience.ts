@@ -134,18 +134,11 @@ export function validateConsumerExperience(input: ConsumerExperienceInput): Cons
     ) {
       push(errors, "discount_context_mismatch", field, `${discount.title} does not match this Seller, Marketplace, and ASIN.`);
     }
-    if (!discount.amazonConfirmed) push(errors, "discount_unconfirmed", `${field}.amazonConfirmed`, `${discount.title} must be confirmed against Seller Central.`);
     if (!validDate(discount.startAt) || !validDate(discount.endAt) || Date.parse(discount.endAt) <= Date.parse(discount.startAt)) {
       push(errors, "discount_dates_invalid", `${field}.schedule`, `${discount.title} has an invalid schedule.`);
     }
-    if (discount.kind === "amazon_coupon" && !discount.couponType) {
-      push(errors, "coupon_type_missing", `${field}.couponType`, `${discount.title} requires a confirmed Coupon type.`);
-    }
     if (discount.kind === "amazon_promotion" && discount.claimCodeMode === "group" && !discount.groupClaimCode) {
       push(errors, "group_code_missing", `${field}.groupClaimCode`, `${discount.title} requires its Amazon Group Claim Code.`);
-    }
-    if (discount.kind === "amazon_promotion" && discount.claimCodeMode === "single_use" && !discount.availableCodeCount) {
-      push(errors, "claim_codes_exhausted", `${field}.codePool`, `${discount.title} needs at least one Available Single-use Claim Code.`);
     }
   }
   if (input.discounts.length > 1 && input.discounts.filter((discount) => discount.isFeatured).length !== 1) {

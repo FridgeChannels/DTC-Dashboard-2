@@ -238,7 +238,7 @@ as $$
     join public.q_survey_responses response on response.id = context.response_id
     where context.customer_id = p_customer_id
       and context.survey_campaign_id = p_survey_campaign_id
-      and context.fc_id_hash = encode(digest(p_customer_id::text || ':' || upper(btrim(p_fc_id)), 'sha256'), 'hex')
+      and context.fc_id_hash = encode(extensions.digest(p_customer_id::text || ':' || upper(btrim(p_fc_id)), 'sha256'), 'hex')
       and response.completion_status = 'submitted'
   );
 $$;
@@ -271,7 +271,7 @@ begin
     raise exception 'Published Survey not found' using errcode = 'P0002';
   end if;
 
-  fc_hash := encode(digest(unit.customer_id::text || ':' || unit.fc_id, 'sha256'), 'hex');
+  fc_hash := encode(extensions.digest(unit.customer_id::text || ':' || unit.fc_id, 'sha256'), 'hex');
   select * into existing_context
   from public.reorder_survey_response_context
   where survey_campaign_id = p_survey_campaign_id and fc_id_hash = fc_hash;
@@ -325,7 +325,7 @@ begin
   from public.reorder_survey_response_context response_context
   where response_context.anonymous_response_id = p_anonymous_response_id
     and response_context.survey_campaign_id = p_survey_campaign_id
-    and response_context.fc_id_hash = encode(digest(response_context.customer_id::text || ':' || upper(btrim(p_fc_id)), 'sha256'), 'hex');
+    and response_context.fc_id_hash = encode(extensions.digest(response_context.customer_id::text || ':' || upper(btrim(p_fc_id)), 'sha256'), 'hex');
   if not found then raise exception 'Survey response not found' using errcode = 'P0002'; end if;
 
   select * into response from public.q_survey_responses where id = context.response_id for update;

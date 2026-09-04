@@ -599,7 +599,7 @@ These do not block most implementation and testing:
 
 - The actual 2026 Seller Central Coupon Bulk Template is unavailable. Continue using the documented interim 2025 schema, retain unknown columns, surface them before import, and isolate the parser so a real template can be added as a fixture later. This affects final production-template certification only.
 - Real No Code, Group, Single-use Promotion, and Claim Code samples are unavailable. Implement and test the documented contracts with synthetic fixtures. This affects certification against Amazon-export edge cases only.
-- Current credentials cannot link/deploy the Supabase project. Complete migrations and local/static verification; list production migration deployment and scheduler setup as blocked until an authorized account or deployment pipeline is available.
+- Supabase project `vggkiumpajbvaxiflrtu` was linked and Reorder migrations through `20260904014640` were deployed on 2026-09-04. The activation scheduler must be enabled after the branch's protected runner endpoint is deployed to the application environment.
 - A numeric dwell-time threshold is not defined for MSI. The release can safely require a meaningful action event and exclude bots/staff/rapid repeats. If Product later requires dwell time itself to qualify, the exact duration must be supplied and added as a versioned filter rule.
 
 ## 5. Definition of done

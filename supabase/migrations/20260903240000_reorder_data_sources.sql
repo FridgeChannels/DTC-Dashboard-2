@@ -198,7 +198,7 @@ begin
       attribution_key, order_status, order_type
     ) values (
       manifest.id, p_customer_id, p_source_kind,
-      encode(digest(concat_ws(':', p_source_kind, fact->>'occurredAt', fact->>'granularity',
+      encode(extensions.digest(concat_ws(':', p_source_kind, fact->>'occurredAt', fact->>'granularity',
         fact->>'productVersionId', fact->>'batchId', fact->>'fcId', fact->>'anonymousOrderKey',
         fact->>'attributionKey'), 'sha256'), 'hex'),
       (fact->>'occurredAt')::timestamptz, fact->>'granularity',

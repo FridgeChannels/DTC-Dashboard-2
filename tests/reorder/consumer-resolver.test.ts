@@ -110,6 +110,24 @@ describe("published Reorder Consumer resolver", () => {
     expect(discountRepo.markClaimCodeEvent).toHaveBeenCalledWith(7, singleUseDiscount.id, "FC-1001", "displayed");
   });
 
+  it("decrypts an encrypted Single-use Claim Code before returning it to the consumer", async () => {
+    const { encryptClaimCode } = await import("../../src/services/reorder/claim-code-crypto.js");
+    vi.mocked(discountRepo.allocateSingleUseClaimCode).mockResolvedValue({
+      id: "code-1",
+      discount_id: singleUseDiscount.id,
+      customer_id: 7,
+      code: encryptClaimCode("SAVE-1001"),
+      assigned_fc_id: "FC-1001",
+      assigned_at: "2026-09-03T00:00:00.000Z",
+      displayed_at: null,
+      copied_at: null,
+      created_at: "2026-09-01T00:00:00.000Z",
+    });
+    const result = await resolvePublishedReorderExperience("FC-1001");
+    expect(result).toMatchObject({ featuredDiscount: { claimCode: "SAVE-1001" } });
+    expect(JSON.stringify(result)).not.toContain("enc.v1.");
+  });
+
   it("uses the Seller Storefront fallback without allocating Codes when the Product is unavailable", async () => {
     vi.mocked(consumerRepo.findCurrentPublication).mockResolvedValue({
       id: "publication-1",

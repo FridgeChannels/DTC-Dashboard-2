@@ -51,7 +51,8 @@ export interface ReorderClaimCodeRow {
   id: string;
   discount_id: string;
   customer_id: number;
-  code: string;
+  code?: string;
+  code_hash?: string;
   assigned_fc_id: string | null;
   assigned_at: string | null;
   displayed_at: string | null;
@@ -211,27 +212,42 @@ export async function updateDiscount(
 }
 
 export async function listClaimCodes(customerId: number, discountId: string) {
+  const rows = await listClaimCodesForDiscounts(customerId, [discountId]);
+  return rows.sort((left, right) => left.created_at.localeCompare(right.created_at));
+}
+
+export async function listClaimCodesForDiscounts(customerId: number, discountIds: string[]) {
+  if (!discountIds.length) return [] as ReorderClaimCodeRow[];
   const { data, error } = await getSupabase()
     .from("reorder_claim_code")
-    .select("id, discount_id, customer_id, code, assigned_fc_id, assigned_at, displayed_at, copied_at, created_at")
+    .select("id, discount_id, customer_id, assigned_fc_id, assigned_at, displayed_at, copied_at, created_at")
     .eq("customer_id", customerId)
-    .eq("discount_id", discountId)
-    .order("created_at", { ascending: true });
+    .in("discount_id", discountIds);
   throwIfError(error);
   return (data ?? []) as ReorderClaimCodeRow[];
 }
 
-export async function insertClaimCodes(customerId: number, discountId: string, codes: string[]) {
+export async function listClaimCodeHashes(customerId: number, discountId: string) {
+  const { data, error } = await getSupabase()
+    .from("reorder_claim_code")
+    .select("code_hash")
+    .eq("customer_id", customerId)
+    .eq("discount_id", discountId);
+  throwIfError(error);
+  return new Set((data ?? []).map((row) => String(row.code_hash)));
+}
+
+export async function insertClaimCodes(customerId: number, discountId: string, codes: Array<{ hash: string; ciphertext: string }>) {
   if (!codes.length) return [];
   const { data, error } = await getSupabase()
     .from("reorder_claim_code")
     .upsert(
-      codes.map((code) => ({ customer_id: customerId, discount_id: discountId, code })),
-      { onConflict: "discount_id,code", ignoreDuplicates: true },
+      codes.map((item) => ({ customer_id: customerId, discount_id: discountId, code: item.ciphertext, code_hash: item.hash })),
+      { onConflict: "discount_id,code_hash", ignoreDuplicates: true },
     )
-    .select("id, code");
+    .select("id");
   throwIfError(error);
-  return (data ?? []) as Array<{ id: string; code: string }>;
+  return (data ?? []) as Array<{ id: string }>;
 }
 
 export async function setFeaturedDiscount(customerId: number, productVersionId: string, discountId: string) {

@@ -5,6 +5,8 @@ import { ReorderValidationError } from "./amazon-url.js";
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_IMPORT_ROWS = 1000;
 const TEMPLATE_VERSION = "amazon_spc_2025_interim";
+const COUPON_EXTENSIONS = [".xlsx", ".xls"];
+const CLAIM_CODE_EXTENSIONS = [".csv", ".txt", ".xlsx", ".xls"];
 
 const KNOWN_COUPON_HEADERS = new Set([
   "asin list",
@@ -57,12 +59,20 @@ function normalizeHeader(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function requireFile(input: UploadedDiscountFile) {
+function requireFile(input: UploadedDiscountFile, allowedExtensions: string[]) {
   if (typeof input.fileName !== "string" || !input.fileName.trim()) {
     throw new ReorderValidationError("File name is required");
   }
   if (typeof input.fileBase64 !== "string" || !input.fileBase64.trim()) {
     throw new ReorderValidationError("Choose a file to import");
+  }
+  const fileName = input.fileName.trim().slice(0, 240);
+  if (fileName.includes("..") || /[\\/]/.test(fileName)) {
+    throw new ReorderValidationError("File name is not allowed");
+  }
+  const extension = fileName.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
+  if (!allowedExtensions.includes(extension)) {
+    throw new ReorderValidationError(`File type must be ${allowedExtensions.map((value) => value.slice(1).toUpperCase()).join(", ")}`);
   }
   const raw = input.fileBase64.includes(",")
     ? input.fileBase64.slice(input.fileBase64.indexOf(",") + 1)
@@ -75,7 +85,7 @@ function requireFile(input: UploadedDiscountFile) {
     throw new ReorderValidationError("Import file must be between 1 byte and 5 MB");
   }
   return {
-    fileName: input.fileName.trim().slice(0, 240),
+    fileName,
     fileBase64: raw.replace(/\s/g, ""),
     buffer,
     sha256: createHash("sha256").update(buffer).digest("hex"),
@@ -150,7 +160,7 @@ function asins(value: string): string[] {
 }
 
 export async function parseAmazonCouponWorkbook(input: UploadedDiscountFile): Promise<ParsedCouponFile> {
-  const file = requireFile(input);
+  const file = requireFile(input, COUPON_EXTENSIONS);
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(excelBuffer(file.buffer));
@@ -271,7 +281,7 @@ function delimitedCodeValues(text: string) {
 }
 
 export async function parseSingleUseClaimCodeFile(input: UploadedDiscountFile): Promise<ParsedClaimCodeFile> {
-  const file = requireFile(input);
+  const file = requireFile(input, CLAIM_CODE_EXTENSIONS);
   const isWorkbook = file.buffer[0] === 0x50 && file.buffer[1] === 0x4b;
   let values: Array<{ rowNumber: number; value: string }>;
   if (isWorkbook) {

@@ -1,5 +1,18 @@
 const { useCallback, useEffect, useMemo, useState } = React;
 
+const apiGetCache = new Map();
+const apiInflight = new Map();
+const KEEP_ALIVE_PATHS = new Set([
+  "/reorder/overview",
+  "/reorder/products",
+  "/reorder/products/orders-batches",
+  "/reorder/discounts",
+  "/reorder/surveys",
+  "/reorder/analytics",
+  "/reorder/settings/amazon",
+  "/reorder/settings/data-sources",
+]);
+
 const navigation = [
   { label: "Overview", path: "/reorder/overview" },
   { label: "Products & FC", path: "/reorder/products", match: "/reorder/products" },
@@ -14,20 +27,37 @@ const settingsNavigation = [
 ];
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(data.error || "Request failed");
-    error.details = data.errors || [];
-    throw error;
+  if (window.reorderDemoApi) return window.reorderDemoApi.request(path, options);
+  const method = String(options.method || "GET").toUpperCase();
+  if (method !== "GET") {
+    apiGetCache.clear();
+    apiInflight.clear();
+  } else if (apiInflight.has(path)) {
+    return apiInflight.get(path);
   }
-  return data;
+  const pending = (async () => {
+    const response = await fetch(path, {
+      ...options,
+      headers: {
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {}),
+      },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data.error || "Request failed");
+      error.details = data.errors || [];
+      throw error;
+    }
+    if (method === "GET") apiGetCache.set(path, data);
+    return data;
+  })();
+  if (method === "GET") apiInflight.set(path, pending);
+  try {
+    return await pending;
+  } finally {
+    if (method === "GET") apiInflight.delete(path);
+  }
 }
 
 function readFileAsDataUrl(file) {
@@ -91,6 +121,48 @@ function humanize(value) {
   return String(value || "—").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function cloneData(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function sameData(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function useFlashMessage(timeout = 4000) {
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    if (!message) return undefined;
+    const timer = window.setTimeout(() => setMessage(""), timeout);
+    return () => window.clearTimeout(timer);
+  }, [message, timeout]);
+  return [message, setMessage];
+}
+
+function amazonSetupPersisted(form) {
+  return Boolean(
+    String(form.brandDisplayName || "").trim()
+    || form.brandLogoUrl
+    || (form.sellingAccounts || []).some((account) => account.id || account.sellerId || account.storefrontUrl),
+  );
+}
+
+function activationVerb(status) {
+  if (status === "active") return "Activate";
+  if (status === "paused") return "Pause";
+  if (status === "retired") return "Retire";
+  if (status === "scheduled") return "Schedule";
+  return humanize(status);
+}
+
+function activationBusy(status) {
+  if (status === "active") return "Activating…";
+  if (status === "paused") return "Pausing…";
+  if (status === "retired") return "Retiring…";
+  if (status === "scheduled") return "Scheduling…";
+  return "Saving…";
+}
+
 function Icon({ name }) {
   const paths = {
     overview: <><path d="M4 13h6V4H4v9Z"/><path d="M14 20h6v-9h-6v9Z"/><path d="M4 20h6v-3H4v3Z"/><path d="M14 7h6V4h-6v3Z"/></>,
@@ -143,6 +215,7 @@ function AppShell({ currentPath, user, children }) {
         </nav>
         <div className="reorder-nav reorder-nav-bottom">
           {settingsNavigation.map((item) => <NavItem key={item.path} item={item} currentPath={currentPath} />)}
+          {window.reorderDemoApi && <button className="reorder-reset-demo" onClick={() => { window.reorderDemoApi.reset(); window.location.reload(); }}>Reset preview data</button>}
         </div>
       </aside>
       <main className="reorder-main">{children}</main>
@@ -163,26 +236,6 @@ function PageHeader({ title, action }) {
   );
 }
 
-const demoProducts = [
-  { id: "product-hydration", name: "Daily Hydration" },
-  { id: "product-sleep", name: "Deep Sleep Blend" },
-];
-
-const demoBatches = [
-  { id: "batch-r2408", code: "R-2408", productId: "product-hydration", shippedAt: "2026-08-04", ms: 1840, md: 1712, msi: 1086, mgo: 392, no: 681, taps: 1964, visits: 1431, pdp: 748, storefront: 184, discountShown: 892, discountAction: 426, surveyShown: 604, surveyStarted: 321, surveyCompleted: 244 },
-  { id: "batch-r2407", code: "R-2407", productId: "product-hydration", shippedAt: "2026-07-02", ms: 1520, md: 1426, msi: 887, mgo: 301, no: 526, taps: 1677, visits: 1198, pdp: 621, storefront: 149, discountShown: 731, discountAction: 348, surveyShown: 508, surveyStarted: 270, surveyCompleted: 201 },
-  { id: "batch-s2408", code: "S-2408", productId: "product-sleep", shippedAt: "2026-08-18", ms: 1120, md: 1028, msi: 593, mgo: 188, no: 309, taps: 1084, visits: 806, pdp: 386, storefront: 117, discountShown: 479, discountAction: 201, surveyShown: 342, surveyStarted: 166, surveyCompleted: 119 },
-  { id: "batch-s2406", code: "S-2406", productId: "product-sleep", shippedAt: "2026-06-11", ms: 980, md: 901, msi: 501, mgo: 142, no: 238, taps: 912, visits: 679, pdp: 311, storefront: 94, discountShown: 403, discountAction: 157, surveyShown: 289, surveyStarted: 137, surveyCompleted: 96 },
-];
-
-const metricDefinitions = [
-  { key: "ms", short: "MS", label: "Magnets Shipped", source: "Consumer Fulfillment", rate: null },
-  { key: "md", short: "MD", label: "Magnets Delivered", source: "Delivery / Carrier", rate: "Delivery rate" },
-  { key: "msi", short: "MSI", label: "Scanned & Interacted", source: "FC Event Tracking", rate: "Activation rate" },
-  { key: "mgo", short: "MGO", label: "Generating Orders", source: "Order Attribution", rate: "MGO / MD" },
-  { key: "no", short: "NO", label: "Number of Orders", source: "Order Attribution", rate: "NO / MGO" },
-];
-
 function defaultDashboardFilters() {
   const params = new URLSearchParams(window.location.search);
   return {
@@ -192,34 +245,6 @@ function defaultDashboardFilters() {
     batchId: params.get("batch_id") || "",
     observationMonths: params.get("observation_months") || "3",
   };
-}
-
-function demoRowsFor(filters) {
-  return demoBatches.filter((batch) =>
-    (!filters.productId || batch.productId === filters.productId)
-    && (!filters.batchId || batch.id === filters.batchId)
-    && (!filters.from || batch.shippedAt >= filters.from)
-    && (!filters.to || batch.shippedAt <= filters.to));
-}
-
-function sumRows(rows, key) {
-  return rows.reduce((total, row) => total + Number(row[key] || 0), 0);
-}
-
-function metricsForRows(rows) {
-  const totals = Object.fromEntries(["ms", "md", "msi", "mgo", "no"].map((key) => [key, sumRows(rows, key)]));
-  const rates = {
-    md: ratio(totals.md, totals.ms),
-    msi: ratio(totals.msi, totals.md),
-    mgo: ratio(totals.mgo, totals.md),
-    no: ratio(totals.no, totals.mgo),
-  };
-  return metricDefinitions.map((definition) => ({
-    ...definition,
-    value: rows.length ? totals[definition.key] : null,
-    availability: rows.length ? (definition.key === "msi" && rows.some((row) => row.id === "batch-s2406") ? "partial" : "available") : "unavailable",
-    rateValue: definition.rate ? rates[definition.key] : null,
-  }));
 }
 
 function dashboardQuery(filters, includeWindow = false) {
@@ -232,14 +257,45 @@ function dashboardQuery(filters, includeWindow = false) {
   return params.toString();
 }
 
-function DashboardFilters({ filters, onChange, includeWindow = false }) {
-  const batches = demoBatches.filter((batch) => !filters.productId || batch.productId === filters.productId);
+function useDashboardData(path, filters, includeWindow = false) {
+  const query = dashboardQuery(filters, includeWindow);
+  const requestPath = `${path}?${query}`;
+  const [data, setData] = useState(() => apiGetCache.get(requestPath) || null);
+  const [loading, setLoading] = useState(() => !apiGetCache.has(requestPath));
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    if (!apiGetCache.has(requestPath)) setLoading(true);
+    setError("");
+    api(requestPath)
+      .then((result) => { if (active) setData(result); })
+      .catch((err) => { if (active) setError(err.message); })
+      .finally(() => { if (active) setLoading(false); });
+    const next = `${window.location.pathname}?${query}`;
+    if (`${window.location.pathname}${window.location.search}` !== `?${query}` && `${window.location.pathname}${window.location.search}` !== next) {
+      window.history.replaceState({}, "", next);
+    }
+    return () => { active = false; };
+  }, [path, filters.from, filters.to, filters.productId, filters.batchId, filters.observationMonths, includeWindow]);
+  return { data, loading, error };
+}
+
+function formatMetricRate(metric) {
+  if (!metric.rate) return metric.source;
+  const formatted = metric.rateFormat === "ratio"
+    ? (metric.rateValue == null ? "—" : Number(metric.rateValue).toFixed(2))
+    : formatRate(metric.rateValue);
+  return `${metric.rate} · ${formatted}`;
+}
+
+function DashboardFilters({ filters, onChange, products = [], batches = [], includeWindow = false }) {
+  const visibleBatches = batches.filter((batch) => !filters.productId || batch.productId === filters.productId);
   const update = (key, value) => onChange({ ...filters, [key]: value, ...(key === "productId" ? { batchId: "" } : {}) });
   return <div className="reorder-dashboard-filters" aria-label="Analytics filters">
     <label><span>Date from</span><input className="cfg-input" type="date" value={filters.from} onChange={(event) => update("from", event.target.value)} /></label>
     <label><span>Date to</span><input className="cfg-input" type="date" value={filters.to} onChange={(event) => update("to", event.target.value)} /></label>
-    <label><span>Product</span><select className="cfg-input" value={filters.productId} onChange={(event) => update("productId", event.target.value)}><option value="">All products</option>{demoProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
-    <label><span>Batch</span><select className="cfg-input" value={filters.batchId} onChange={(event) => update("batchId", event.target.value)}><option value="">All batches</option>{batches.map((batch) => <option key={batch.id} value={batch.id}>{batch.code}</option>)}</select></label>
+    <label><span>Product</span><select className="cfg-input" value={filters.productId} onChange={(event) => update("productId", event.target.value)}><option value="">All products</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
+    <label><span>Batch</span><select className="cfg-input" value={filters.batchId} onChange={(event) => update("batchId", event.target.value)}><option value="">All batches</option>{visibleBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.code}</option>)}</select></label>
     {includeWindow && <label><span>Observation window</span><select className="cfg-input" value={filters.observationMonths} onChange={(event) => update("observationMonths", event.target.value)}>{[1, 3, 6, 12].map((month) => <option key={month} value={month}>{month} {month === 1 ? "month" : "months"}</option>)}</select></label>}
   </div>;
 }
@@ -250,50 +306,52 @@ function MetricGrid({ metrics, onMetric }) {
     <strong>{metric.value === null ? "—" : formatNumber(metric.value)}</strong>
     <span className="reorder-metric-name">{metric.label}</span>
     <span className={`reorder-availability is-${metric.availability}`}>{humanize(metric.availability)}</span>
-    <small>{metric.rate ? `${metric.rate} · ${formatRate(metric.rateValue)}` : metric.source}</small>
+    <small>{formatMetricRate(metric)}</small>
+    {metric.availability === "partial" && (metric.missingProductIds?.length || metric.missingBatchIds?.length) ? <em className="reorder-metric-missing">Missing {[...(metric.missingProductIds || []), ...(metric.missingBatchIds || [])].join(", ")}</em> : null}
   </button>)}</div>;
 }
 
 function OverviewPage() {
   const [filters, setFilters] = useState(defaultDashboardFilters);
-  const rows = useMemo(() => demoRowsFor(filters), [filters]);
-  const metrics = useMemo(() => metricsForRows(rows), [rows]);
-  const totals = Object.fromEntries(metrics.map((metric) => [metric.key, metric.value]));
+  const { data, loading, error } = useDashboardData("/api/reorder/overview", filters);
+  const metrics = data?.metrics || [];
   const funnelKeys = ["ms", "md", "msi", "mgo"];
-  const diagnosticKeys = [
-    ["Landing visits", "visits"], ["Amazon PDP clicks", "pdp"], ["Seller Storefront clicks", "storefront"],
-    ["Discount actions", "discountAction"], ["Survey completions", "surveyCompleted"],
-  ];
+  const metricLabels = ["Magnets Shipped", "Magnets Delivered", "Scanned & Interacted", "Generating Orders", "Number of Orders"];
   const openAnalytics = (metric) => navigate(`/reorder/analytics?${dashboardQuery(filters)}${metric ? `&metric=${metric}` : ""}`);
+  const ms = metrics.find((item) => item.key === "ms")?.value;
   return <div className="reorder-page reorder-dashboard-page">
-    <PageHeader title="Overview" action={<span className="reorder-demo-label">Local preview data</span>} />
-    <DashboardFilters filters={filters} onChange={setFilters} />
-    <section className="reorder-attention" aria-labelledby="needs-attention-title">
-      <div><h2 id="needs-attention-title">Needs attention</h2><p>FC Event coverage is partial for Batch S-2406. MSI excludes the uncovered scope.</p></div>
-      <button className="btn" onClick={() => navigate("/reorder/settings/data-sources")}>Fix</button>
-    </section>
-    <MetricGrid metrics={metrics} onMetric={openAnalytics} />
-    <section className="reorder-dashboard-split">
-      <div className="reorder-funnel" data-testid="unique-magnet-funnel">
-        <h2>Unique Magnet Funnel</h2>
-        <div>{funnelKeys.map((key, index) => { const metric = metrics.find((item) => item.key === key); const width = totals.ms ? Math.max(14, (metric.value / totals.ms) * 100) : 0; return <button key={key} onClick={() => openAnalytics(key)}><span><b>{metric.short}</b>{metric.label}</span><strong>{metric.value === null ? "—" : formatNumber(metric.value)}</strong><i style={{ width: `${width}%` }} />{index > 0 && <small>{formatRate(ratio(metric.value, metrics[index - 1].value))} from prior stage</small>}</button>; })}</div>
-      </div>
-      <div className="reorder-order-depth" data-testid="order-depth">
-        <h2>Order Depth</h2>
-        <strong>{totals.no === null ? "—" : formatNumber(totals.no)}</strong>
-        <span>Total final orders</span>
-        <p><b>{totals.no === null ? "—" : (ratio(totals.no, totals.mgo) || 0).toFixed(2)}</b> orders per ordering Magnet</p>
-        <small>{filters.observationMonths || 3}-month observation · Order Attribution</small>
-      </div>
-    </section>
-    <section className="reorder-diagnostics">
-      <h2>Behavioral diagnostics</h2>
-      <div>{diagnosticKeys.map(([label, key]) => <span key={key}><strong>{rows.length ? formatNumber(sumRows(rows, key)) : "—"}</strong><small>{label}</small></span>)}</div>
-    </section>
-    <section className="reorder-config-health">
-      <h2>Active configuration</h2>
-      <div><span><strong>2</strong><small>Products</small></span><span><strong>4</strong><small>Batches</small></span><span><strong>5,460</strong><small>FC IDs</small></span><span><strong>3</strong><small>Discounts</small></span><span><strong>2</strong><small>Surveys</small></span></div>
-    </section>
+    <PageHeader title="Overview" action={window.reorderDemoApi ? <span className="reorder-demo-label">Local preview data</span> : null} />
+    <DashboardFilters filters={filters} onChange={setFilters} products={data?.products} batches={data?.batches} />
+    {error && <PageState tone="error">{error}</PageState>}
+    {loading && !data && <PageState>Loading Overview…</PageState>}
+    {data && <>
+      {data.needsAttention?.length > 0 && data.needsAttention.map((issue) => <section className="reorder-attention" aria-labelledby={`needs-attention-${issue.code}`} key={`${issue.code}-${issue.fixPath}`}>
+        <div><h2 id={`needs-attention-${issue.code}`}>Needs attention</h2><p>{issue.message}</p></div>
+        <button className="btn" onClick={() => navigate(issue.fixPath)}>{issue.fixLabel || "Fix"}</button>
+      </section>)}
+      <MetricGrid metrics={metrics} onMetric={openAnalytics} />
+      <section className="reorder-dashboard-split">
+        <div className="reorder-funnel" data-testid="unique-magnet-funnel">
+          <h2>Unique Magnet Funnel</h2>
+          <div>{(data.funnel || []).map((stage, index) => { const width = ms && stage.value !== null ? Math.max(14, (stage.value / ms) * 100) : 0; return <button key={stage.key} onClick={() => openAnalytics(stage.key)}><span><b>{stage.short}</b>{stage.label}</span><strong>{stage.value === null ? "—" : formatNumber(stage.value)}</strong><i style={{ width: `${width}%` }} />{index > 0 && <small>{formatRate(stage.fromPrior)} from prior stage</small>}</button>; })}</div>
+        </div>
+        <div className="reorder-order-depth" data-testid="order-depth">
+          <h2>Order Depth</h2>
+          <strong>{data.orderDepth?.value === null || data.orderDepth?.value === undefined ? "—" : formatNumber(data.orderDepth.value)}</strong>
+          <span>Total final orders</span>
+          <p><b>{data.orderDepth?.rate == null ? "—" : Number(data.orderDepth.rate).toFixed(2)}</b> orders per ordering Magnet</p>
+          <small>{filters.observationMonths || 3}-month observation · Order Attribution</small>
+        </div>
+      </section>
+      <section className="reorder-diagnostics">
+        <h2>Behavioral diagnostics</h2>
+        <div>{(data.diagnostics?.behavioral || []).map((item) => <span key={item.key}><strong>{item.value === null ? "—" : formatNumber(item.value)}</strong><small>{item.label}</small></span>)}</div>
+      </section>
+      <section className="reorder-config-health">
+        <h2>Active configuration</h2>
+        <div>{(data.diagnostics?.configuration || []).map((item) => <span key={item.key}><strong>{formatNumber(item.value)}</strong><small>{item.label}</small></span>)}</div>
+      </section>
+    </>}
   </div>;
 }
 
@@ -308,47 +366,67 @@ const blankAccount = {
 };
 
 function AmazonSetupPage({ readOnly }) {
-  const [form, setForm] = useState({
+  const emptyForm = {
     brandDisplayName: "",
     brandLogoUrl: "",
     attributionReady: false,
     brbReady: false,
     sellingAccounts: [{ ...blankAccount }],
-  });
+  };
+  const [form, setForm] = useState(emptyForm);
+  const [snapshot, setSnapshot] = useState(emptyForm);
+  const [editing, setEditing] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [logoLocalPreview, setLogoLocalPreview] = useState("");
+  const [logoBroken, setLogoBroken] = useState(false);
+  const [message, setMessage] = useFlashMessage();
   const [error, setError] = useState("");
+
+  const mapSetup = (data, current = emptyForm) => ({
+    brandDisplayName: data.settings?.brand_display_name ?? current.brandDisplayName ?? "",
+    brandLogoUrl: data.settings?.brand_logo_url ?? current.brandLogoUrl ?? "",
+    attributionReady: data.settings ? Boolean(data.settings.attribution_ready) : Boolean(current.attributionReady),
+    brbReady: data.settings ? Boolean(data.settings.brb_ready) : Boolean(current.brbReady),
+    sellingAccounts: data.sellingAccounts?.length
+      ? data.sellingAccounts.map((account) => ({
+          id: account.id,
+          label: account.label,
+          marketplaceCode: account.marketplace_code,
+          marketplaceDomain: account.marketplace_domain,
+          marketplaceId: account.marketplace_id || "",
+          sellerId: account.seller_id,
+          storefrontUrl: account.storefront_url,
+          status: account.status,
+        }))
+      : current.sellingAccounts?.length ? current.sellingAccounts : [{ ...blankAccount }],
+  });
 
   useEffect(() => {
     let active = true;
     api("/api/reorder/amazon-setup")
       .then((data) => {
         if (!active) return;
-        setForm({
-          brandDisplayName: data.settings?.brand_display_name || "",
-          brandLogoUrl: data.settings?.brand_logo_url || "",
-          attributionReady: Boolean(data.settings?.attribution_ready),
-          brbReady: Boolean(data.settings?.brb_ready),
-          sellingAccounts: data.sellingAccounts?.length
-            ? data.sellingAccounts.map((account) => ({
-                id: account.id,
-                label: account.label,
-                marketplaceCode: account.marketplace_code,
-                marketplaceDomain: account.marketplace_domain,
-                marketplaceId: account.marketplace_id || "",
-                sellerId: account.seller_id,
-                storefrontUrl: account.storefront_url,
-                status: account.status,
-              }))
-            : [{ ...blankAccount }],
-        });
+        const next = mapSetup(data);
+        setForm(next);
+        setSnapshot(cloneData(next));
+        setEditing(!amazonSetupPersisted(next));
       })
       .catch((err) => setError(err.message))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    setLogoBroken(false);
+  }, [form.brandLogoUrl, logoLocalPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (logoLocalPreview) URL.revokeObjectURL(logoLocalPreview);
+    };
+  }, [logoLocalPreview]);
 
   const updateAccount = (index, key, value) => {
     setForm((current) => ({
@@ -367,19 +445,10 @@ function AmazonSetupPage({ readOnly }) {
         method: "PUT",
         body: JSON.stringify(form),
       });
-      setForm((current) => ({
-        ...current,
-        sellingAccounts: data.sellingAccounts.map((account) => ({
-          id: account.id,
-          label: account.label,
-          marketplaceCode: account.marketplace_code,
-          marketplaceDomain: account.marketplace_domain,
-          marketplaceId: account.marketplace_id || "",
-          sellerId: account.seller_id,
-          storefrontUrl: account.storefront_url,
-          status: account.status,
-        })),
-      }));
+      const next = mapSetup(data, form);
+      setForm(next);
+      setSnapshot(cloneData(next));
+      setEditing(false);
       setMessage("Amazon setup saved.");
     } catch (err) {
       setError(err.message);
@@ -388,47 +457,81 @@ function AmazonSetupPage({ readOnly }) {
     }
   };
 
+  const cancel = () => {
+    setForm(cloneData(snapshot));
+    setEditing(false);
+    setError("");
+    setLogoLocalPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return "";
+    });
+  };
+
   const uploadLogo = async (file) => {
-    if (!file || readOnly) return;
+    if (!file || readOnly || !editing) return;
+    const localUrl = URL.createObjectURL(file);
+    setLogoLocalPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return localUrl;
+    });
+    setLogoBroken(false);
     setLogoUploading(true);
     setError("");
     try {
       const brandLogoUrl = await uploadAsset(file, "logos");
       setForm((current) => ({ ...current, brandLogoUrl }));
+      setLogoLocalPreview("");
     } catch (err) {
       setError(err.message);
+      setLogoLocalPreview("");
     } finally {
       setLogoUploading(false);
     }
   };
 
+  const logoPreviewSrc = logoLocalPreview || form.brandLogoUrl;
+  const locked = readOnly || !editing;
+  const dirty = !sameData(form, snapshot);
+  const setupAction = readOnly ? null : editing ? (
+    <div className="reorder-header-actions">
+      {amazonSetupPersisted(snapshot) && <button className="btn" type="button" disabled={saving} onClick={cancel}>Cancel</button>}
+      <button className="btn primary" disabled={saving || !dirty} onClick={save}>{saving ? "Saving…" : "Save"}</button>
+    </div>
+  ) : (
+    <button className="btn primary" type="button" onClick={() => setEditing(true)}>Edit</button>
+  );
+
   if (loading) return <div className="reorder-page"><PageHeader title="Amazon setup" /><PageState>Loading…</PageState></div>;
 
   return (
     <div className="reorder-page">
-      <PageHeader
-        title="Amazon setup"
-        action={<button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Saving…" : "Save Amazon setup"}</button>}
-      />
+      <PageHeader title="Amazon setup" action={setupAction} />
       {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
-      {readOnly && <PageState>This workspace is read-only.</PageState>}
+      {readOnly && <PageState>This workspace is view-only.</PageState>}
 
       <section className="cfg-section">
         <div className="reorder-section-label">Brand</div>
         <div className="cfg-form grid grid-2">
           <label className="cfg-field">
             <span className="cfg-label">Brand display name</span>
-            <input className="cfg-input" value={form.brandDisplayName} disabled={readOnly} onChange={(event) => setForm({ ...form, brandDisplayName: event.target.value })} />
+            <input className="cfg-input" value={form.brandDisplayName} disabled={locked} onChange={(event) => setForm({ ...form, brandDisplayName: event.target.value })} />
           </label>
-          <label className="cfg-field">
-            <span className="cfg-label">Brand logo</span>
+          <div className="cfg-field">
+            <span className="cfg-label" id="reorder-brand-logo-label">Brand logo</span>
             <div className="reorder-image-entry">
-              <input className="cfg-input" value={form.brandLogoUrl} disabled readOnly placeholder="Upload the original logo file" />
-              <input id="reorder-brand-logo" className="reorder-file-input" type="file" accept="image/*" disabled={readOnly || logoUploading} onChange={(event) => uploadLogo(event.target.files?.[0])} />
-              <label className={`btn${readOnly || logoUploading ? " is-disabled" : ""}`} htmlFor="reorder-brand-logo">{logoUploading ? "Uploading…" : "Upload"}</label>
+              <input className="cfg-input" value={form.brandLogoUrl} disabled readOnly placeholder="Upload the original logo file" aria-labelledby="reorder-brand-logo-label" />
+              <input id="reorder-brand-logo" className="reorder-file-input" type="file" accept="image/*" disabled={locked || logoUploading} aria-labelledby="reorder-brand-logo-label" onChange={(event) => { uploadLogo(event.target.files?.[0]); event.target.value = ""; }} />
+              <label className={`btn${locked || logoUploading ? " is-disabled" : ""}`} htmlFor="reorder-brand-logo">{logoUploading ? "Uploading…" : "Upload"}</label>
             </div>
-          </label>
+            <div className={`reorder-logo-preview${!logoPreviewSrc ? " is-empty" : ""}${logoBroken ? " is-broken" : ""}`}>
+              {logoPreviewSrc && !logoBroken ? (
+                <img src={logoPreviewSrc} alt="Brand logo preview" onError={() => setLogoBroken(true)} />
+              ) : (
+                <span>{logoBroken ? "Unable to preview" : "No logo yet"}</span>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -438,30 +541,30 @@ function AmazonSetupPage({ readOnly }) {
           <div className="cfg-form grid grid-2">
             <label className="cfg-field">
               <span className="cfg-label">Account label</span>
-              <input className="cfg-input" value={account.label} disabled={readOnly} onChange={(event) => updateAccount(index, "label", event.target.value)} />
+              <input className="cfg-input" value={account.label} disabled={locked} onChange={(event) => updateAccount(index, "label", event.target.value)} />
             </label>
             <label className="cfg-field">
               <span className="cfg-label">Seller ID</span>
-              <input className="cfg-input mono" value={account.sellerId} disabled={readOnly} onChange={(event) => updateAccount(index, "sellerId", event.target.value)} />
+              <input className="cfg-input mono" value={account.sellerId} disabled={locked} onChange={(event) => updateAccount(index, "sellerId", event.target.value)} />
             </label>
             <label className="cfg-field">
               <span className="cfg-label">Marketplace code</span>
-              <input className="cfg-input mono" value={account.marketplaceCode} disabled={readOnly} onChange={(event) => updateAccount(index, "marketplaceCode", event.target.value)} />
+              <input className="cfg-input mono" value={account.marketplaceCode} disabled={locked} onChange={(event) => updateAccount(index, "marketplaceCode", event.target.value)} />
             </label>
             <label className="cfg-field">
               <span className="cfg-label">Marketplace domain</span>
-              <input className="cfg-input mono" value={account.marketplaceDomain} disabled={readOnly} onChange={(event) => updateAccount(index, "marketplaceDomain", event.target.value)} />
+              <input className="cfg-input mono" value={account.marketplaceDomain} disabled={locked} onChange={(event) => updateAccount(index, "marketplaceDomain", event.target.value)} />
             </label>
             <label className="cfg-field cfg-field-full">
               <span className="cfg-label">Seller Storefront URL</span>
-              <input className="cfg-input mono" inputMode="url" value={account.storefrontUrl} disabled={readOnly} onChange={(event) => updateAccount(index, "storefrontUrl", event.target.value)} />
+              <input className="cfg-input mono" inputMode="url" value={account.storefrontUrl} disabled={locked} onChange={(event) => updateAccount(index, "storefrontUrl", event.target.value)} />
               <span className="cfg-hint">Must use the selected Amazon marketplace and contain the matching me Seller ID.</span>
             </label>
           </div>
         </section>
       ))}
 
-      {!readOnly && (
+      {!readOnly && editing && (
         <button className="btn reorder-add-account" type="button" onClick={() => setForm((current) => ({
           ...current,
           sellingAccounts: [...current.sellingAccounts, { ...blankAccount }],
@@ -471,8 +574,9 @@ function AmazonSetupPage({ readOnly }) {
       <section className="cfg-section">
         <div className="reorder-section-label">Readiness</div>
         <div className="reorder-checks">
-          <label><input type="checkbox" checked={form.attributionReady} disabled={readOnly} onChange={(event) => setForm({ ...form, attributionReady: event.target.checked })} /> Amazon Attribution is ready</label>
-          <label><input type="checkbox" checked={form.brbReady} disabled={readOnly} onChange={(event) => setForm({ ...form, brbReady: event.target.checked })} /> Brand Referral Bonus readiness confirmed</label>
+          {/* TODO(ATTRIB-URL): After the Amazon Attribution / FC tagging API is confirmed, collect any brand-supplied tag or credentials here — never as a per-product tagged URL. */}
+          <label><input type="checkbox" checked={form.attributionReady} disabled={locked} onChange={(event) => setForm({ ...form, attributionReady: event.target.checked })} /> Amazon Attribution is ready</label>
+          <label><input type="checkbox" checked={form.brbReady} disabled={locked} onChange={(event) => setForm({ ...form, brbReady: event.target.checked })} /> Brand Referral Bonus readiness confirmed</label>
         </div>
       </section>
     </div>
@@ -480,8 +584,11 @@ function AmazonSetupPage({ readOnly }) {
 }
 
 function ProductListPage({ readOnly }) {
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cachedProducts = apiGetCache.get("/api/reorder/products");
+  const cachedSetup = apiGetCache.get("/api/reorder/amazon-setup");
+  const [products, setProducts] = useState(() => cachedProducts?.products || []);
+  const [setupReady, setSetupReady] = useState(() => (cachedSetup?.sellingAccounts || []).some((account) => account.status === "active"));
+  const [loading, setLoading] = useState(() => !cachedProducts);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [error, setError] = useState("");
@@ -493,7 +600,14 @@ function ProductListPage({ readOnly }) {
 
   useEffect(() => {
     let active = true;
-    loadProducts()
+    Promise.all([
+      loadProducts(),
+      api("/api/reorder/amazon-setup").catch(() => ({ sellingAccounts: [] })),
+    ])
+      .then(([, setup]) => {
+        if (!active) return;
+        setSetupReady((setup.sellingAccounts || []).some((account) => account.status === "active"));
+      })
       .catch((err) => active && setError(err.message))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
@@ -532,7 +646,7 @@ function ProductListPage({ readOnly }) {
         <button className="is-active" role="tab">Products</button>
         <button role="tab" onClick={() => navigate("/reorder/products/orders-batches")}>Orders & batches</button>
       </div>
-      {loading && <PageState>Loading…</PageState>}
+      {loading && products.length === 0 && <PageState>Loading…</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
       {importResult && (
         <PageState tone={importResult.rejected ? "neutral" : "success"}>
@@ -547,7 +661,11 @@ function ProductListPage({ readOnly }) {
         </PageState>
       )}
       {!loading && !error && products.length === 0 && (
-        <PageState>No Product Versions yet. Complete Amazon setup, then add the first product.</PageState>
+        <PageState>
+          {setupReady
+            ? "No Product Versions yet. Add the first product."
+            : "No Product Versions yet. Complete Amazon setup, then add the first product."}
+        </PageState>
       )}
       {products.length > 0 && (
         <div className="reorder-table-wrap">
@@ -555,7 +673,7 @@ function ProductListPage({ readOnly }) {
             <thead><tr><th>Product</th><th>ASIN</th><th>Seller</th><th>Status</th><th>Updated</th></tr></thead>
             <tbody>{products.map((product) => (
               <tr key={product.id} tabIndex="0" onClick={() => navigate(`/reorder/products/${product.id}`)}>
-                <td><div className="reorder-product-cell">{product.image_url ? <img src={product.image_url} alt="" /> : <span className="reorder-image-placeholder" aria-hidden="true" />}<span><strong>{product.product_name}</strong><small>{product.variant_size || "Default version"}</small></span></div></td>
+                <td><div className="reorder-product-cell">{product.image_url ? <img src={product.image_url} alt="" /> : <span className="reorder-image-placeholder" aria-hidden="true" />}<span><strong>{product.product_name}</strong><small>{[product.sku, product.variant_size].filter(Boolean).join(" · ") || "—"}</small></span></div></td>
                 <td className="reorder-mono">{product.asin}</td>
                 <td>{product.sellingAccount?.label || "—"}</td>
                 <td><span className={`reorder-status is-${product.status}`}>{product.status}</span></td>
@@ -570,8 +688,9 @@ function ProductListPage({ readOnly }) {
 }
 
 function OrdersBatchesPage() {
-  const [data, setData] = useState({ orders: [], batches: [] });
-  const [loading, setLoading] = useState(true);
+  const cached = apiGetCache.get("/api/reorder/orders-batches");
+  const [data, setData] = useState(cached || { orders: [], batches: [] });
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -588,9 +707,9 @@ function OrdersBatchesPage() {
         <button role="tab" onClick={() => navigate("/reorder/products")}>Products</button>
         <button className="is-active" role="tab">Orders & batches</button>
       </div>
-      {loading && <PageState>Loading…</PageState>}
+      {loading && !cached && <PageState>Loading…</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
-      {!loading && !error && (
+      {(!loading || cached) && !error && (
         <>
           <section className="reorder-flat-section">
             <div className="reorder-section-label">FC Orders</div>
@@ -656,8 +775,8 @@ function OrderDetailPage({ orderNumber, readOnly }) {
   const [products, setProducts] = useState([]);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [busyAction, setBusyAction] = useState("");
+  const [message, setMessage] = useFlashMessage();
   const [error, setError] = useState("");
 
   const load = async () => {
@@ -689,7 +808,7 @@ function OrderDetailPage({ orderNumber, readOnly }) {
   const updateRow = (index, key, value) => setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row));
 
   const saveDraft = async () => {
-    setSaving(true); setError(""); setMessage("");
+    setBusyAction("draft"); setError(""); setMessage("");
     try {
       await api(`/api/reorder/orders/${encodeURIComponent(orderNumber)}/allocations`, {
         method: "PUT",
@@ -697,11 +816,11 @@ function OrderDetailPage({ orderNumber, readOnly }) {
       });
       await load();
       setMessage("Allocation draft saved.");
-    } catch (err) { setError(err.message); } finally { setSaving(false); }
+    } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
   const submit = async () => {
-    setSaving(true); setError(""); setMessage("");
+    setBusyAction("submit"); setError(""); setMessage("");
     try {
       await api(`/api/reorder/orders/${encodeURIComponent(orderNumber)}/allocations`, {
         method: "PUT",
@@ -710,7 +829,7 @@ function OrderDetailPage({ orderNumber, readOnly }) {
       await api(`/api/reorder/orders/${encodeURIComponent(orderNumber)}/allocations/submit`, { method: "POST" });
       await load();
       setMessage("Allocation submitted to FC.");
-    } catch (err) { setError(err.message); } finally { setSaving(false); }
+    } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
   if (loading) return <div className="reorder-page"><PageHeader title="FC Order" /><PageState>Loading…</PageState></div>;
@@ -718,7 +837,12 @@ function OrderDetailPage({ orderNumber, readOnly }) {
 
   return (
     <div className="reorder-page">
-      <PageHeader title={detail.order.orderNumber} action={!locked && <button className="btn primary" disabled={saving || totals.unallocated !== 0 || !rows.length} onClick={submit}>Submit allocation</button>} />
+      <PageHeader
+        title={detail.order.orderNumber}
+        action={locked
+          ? <span className="reorder-header-status">{detail.order.allocationStatus === "submitted" ? "Submitted" : "View-only"}</span>
+          : <button className="btn primary" disabled={Boolean(busyAction) || totals.unallocated !== 0 || !rows.length} onClick={submit}>{busyAction === "submit" ? "Submitting…" : "Submit allocation"}</button>}
+      />
       {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
       <AllocationSummary order={totals} />
@@ -741,7 +865,7 @@ function OrderDetailPage({ orderNumber, readOnly }) {
         {!locked && (
           <div className="reorder-editor-actions">
             <button className="btn" onClick={() => setRows((current) => [...current, { productVersionId: "", quantity: "" }])}>Add Product</button>
-            <button className="btn" disabled={saving || totals.unallocated < 0} onClick={saveDraft}>Save draft</button>
+            <button className="btn" disabled={Boolean(busyAction) || totals.unallocated < 0} onClick={saveDraft}>{busyAction === "draft" ? "Saving…" : "Save draft"}</button>
           </div>
         )}
       </section>
@@ -785,18 +909,21 @@ function OrderDetailPage({ orderNumber, readOnly }) {
 function ProductFormPage({ readOnly }) {
   const [accounts, setAccounts] = useState([]);
   const [form, setForm] = useState({
-    sellingAccountId: "",
+    marketplaceCode: "",
+    sellerId: "",
+    sku: "",
+    asin: "",
     productName: "",
     variantSize: "",
     imageUrl: "",
-    asin: "",
     amazonSellerPdpUrl: "",
-    attributionUrl: "",
-    sellerOfferAvailable: false,
+    listingConfirmed: false,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
+  const [imageLocalPreview, setImageLocalPreview] = useState("");
+  const [imageBroken, setImageBroken] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -804,19 +931,61 @@ function ProductFormPage({ readOnly }) {
       .then((data) => {
         const activeAccounts = (data.sellingAccounts || []).filter((account) => account.status === "active");
         setAccounts(activeAccounts);
-        if (activeAccounts[0]) setForm((current) => ({ ...current, sellingAccountId: activeAccounts[0].id }));
+        const first = activeAccounts[0];
+        if (first) {
+          setForm((current) => ({
+            ...current,
+            marketplaceCode: first.marketplace_code,
+            sellerId: first.seller_id,
+          }));
+        }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
 
+  const marketplaces = useMemo(() => {
+    const seen = new Map();
+    accounts.forEach((account) => {
+      if (!seen.has(account.marketplace_code)) seen.set(account.marketplace_code, account);
+    });
+    return [...seen.values()];
+  }, [accounts]);
+  const sellers = accounts.filter((account) => account.marketplace_code === form.marketplaceCode);
+  const selectedAccount = accounts.find((account) =>
+    account.marketplace_code === form.marketplaceCode && account.seller_id === form.sellerId);
+  const canSave = Boolean(
+    selectedAccount
+    && form.sku.trim()
+    && form.asin.trim()
+    && form.productName.trim()
+    && form.variantSize.trim()
+    && form.imageUrl.trim()
+    && form.amazonSellerPdpUrl.trim()
+    && form.listingConfirmed
+    && !readOnly
+  );
+
   const save = async () => {
+    if (!canSave || !selectedAccount) return;
     setSaving(true);
     setError("");
     try {
       const product = await api("/api/reorder/products", {
         method: "POST",
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          sellingAccountId: selectedAccount.id,
+          marketplaceCode: form.marketplaceCode,
+          sellerId: form.sellerId,
+          sku: form.sku,
+          asin: form.asin,
+          productName: form.productName,
+          variantSize: form.variantSize,
+          imageUrl: form.imageUrl,
+          amazonSellerPdpUrl: form.amazonSellerPdpUrl,
+          listingConfirmed: true,
+          sellerOfferAvailable: true,
+        }),
       });
       navigate(`/reorder/products/${product.id}`);
     } catch (err) {
@@ -828,17 +997,37 @@ function ProductFormPage({ readOnly }) {
 
   const uploadImage = async (file) => {
     if (!file || readOnly) return;
+    const localUrl = URL.createObjectURL(file);
+    setImageLocalPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return localUrl;
+    });
+    setImageBroken(false);
     setImageUploading(true);
     setError("");
     try {
       const imageUrl = await uploadAsset(file, "products");
       setForm((current) => ({ ...current, imageUrl }));
+      setImageLocalPreview("");
     } catch (err) {
       setError(err.message);
+      setImageLocalPreview("");
     } finally {
       setImageUploading(false);
     }
   };
+
+  useEffect(() => {
+    setImageBroken(false);
+  }, [form.imageUrl, imageLocalPreview]);
+
+  useEffect(() => {
+    return () => {
+      if (imageLocalPreview) URL.revokeObjectURL(imageLocalPreview);
+    };
+  }, [imageLocalPreview]);
+
+  const imagePreviewSrc = imageLocalPreview || form.imageUrl;
 
   if (loading) return <div className="reorder-page"><PageHeader title="Add product" /><PageState>Loading…</PageState></div>;
   if (!accounts.length) return <div className="reorder-page"><PageHeader title="Add product" /><PageState tone="error">Complete Amazon setup before adding a product.</PageState><button className="btn primary" onClick={() => navigate("/reorder/settings/amazon")}>Open Amazon setup</button></div>;
@@ -853,36 +1042,51 @@ function ProductFormPage({ readOnly }) {
 
   return (
     <div className="reorder-page">
-      <PageHeader title="Add product" action={<button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Saving…" : "Save product"}</button>} />
+      <PageHeader title="Add product" action={<button className="btn primary" disabled={!canSave || saving} onClick={save}>{saving ? "Saving…" : "Save product"}</button>} />
       {error && <PageState tone="error">{error}</PageState>}
       <section className="cfg-section">
-        <div className="reorder-section-label">Product version</div>
         <div className="cfg-form grid grid-2">
           <label className="cfg-field">
-            <span className="cfg-label">Selling account</span>
-            <select className="cfg-input" value={form.sellingAccountId} disabled={readOnly} onChange={(event) => setForm({ ...form, sellingAccountId: event.target.value })}>
-              {accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}
+            <span className="cfg-label">Marketplace</span>
+            <select className="cfg-input" value={form.marketplaceCode} disabled={readOnly} onChange={(event) => {
+              const marketplaceCode = event.target.value;
+              const nextSellers = accounts.filter((account) => account.marketplace_code === marketplaceCode);
+              setForm({ ...form, marketplaceCode, sellerId: nextSellers.length === 1 ? nextSellers[0].seller_id : "" });
+            }}>
+              {marketplaces.map((account) => <option key={account.marketplace_code} value={account.marketplace_code}>{account.marketplace_code} · {account.marketplace_domain}</option>)}
             </select>
           </label>
+          <label className="cfg-field">
+            <span className="cfg-label">Seller ID</span>
+            <select className="cfg-input mono" value={form.sellerId} disabled={readOnly} onChange={(event) => setForm({ ...form, sellerId: event.target.value })}>
+              {sellers.length !== 1 && <option value="">Select Seller ID</option>}
+              {sellers.map((account) => <option key={account.id} value={account.seller_id}>{account.seller_id}{account.label ? ` · ${account.label}` : ""}</option>)}
+            </select>
+          </label>
+          {field("sku", "SKU", { mono: true })}
           {field("asin", "ASIN", { mono: true })}
-          {field("productName", "Product name")}
-          {field("variantSize", "Variant / size")}
-          <label className="cfg-field cfg-field-full">
-            <span className="cfg-label">Product image</span>
+          {field("productName", "Product title")}
+          {field("variantSize", "Variant / Size")}
+          <div className="cfg-field cfg-field-full">
+            <span className="cfg-label" id="reorder-product-image-label">Product image</span>
             <div className="reorder-image-entry">
-              <input className="cfg-input" inputMode="url" value={form.imageUrl} disabled={readOnly || imageUploading} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} placeholder="Upload an image or paste its URL" />
-              <input id="reorder-product-image" className="reorder-file-input" type="file" accept="image/*" disabled={readOnly || imageUploading} onChange={(event) => uploadImage(event.target.files?.[0])} />
+              <input className="cfg-input" inputMode="url" value={form.imageUrl} disabled={readOnly || imageUploading} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} placeholder="Upload an image or paste its URL" aria-labelledby="reorder-product-image-label" />
+              <input id="reorder-product-image" className="reorder-file-input" type="file" accept="image/*" disabled={readOnly || imageUploading} aria-labelledby="reorder-product-image-label" onChange={(event) => { uploadImage(event.target.files?.[0]); event.target.value = ""; }} />
               <label className={`btn${readOnly || imageUploading ? " is-disabled" : ""}`} htmlFor="reorder-product-image">{imageUploading ? "Uploading…" : "Upload"}</label>
             </div>
+            <div className={`reorder-product-preview${!imagePreviewSrc ? " is-empty" : ""}${imageBroken ? " is-broken" : ""}`}>
+              {imagePreviewSrc && !imageBroken ? (
+                <img src={imagePreviewSrc} alt="Product image preview" onError={() => setImageBroken(true)} />
+              ) : (
+                <span>{imageBroken ? "Unable to preview" : "No image yet"}</span>
+              )}
+            </div>
+          </div>
+          {field("amazonSellerPdpUrl", "Seller-specific Amazon URL", { full: true, url: true, mono: true, hint: "Seller PDP URL. It must preserve the ASIN and smid Seller ID." })}
+          <label className="reorder-inline-check cfg-field-full">
+            <input type="checkbox" checked={form.listingConfirmed} disabled={readOnly} onChange={(event) => setForm({ ...form, listingConfirmed: event.target.checked })} />
+            I confirm this listing is correct, and listing status is active
           </label>
-        </div>
-      </section>
-      <section className="cfg-section">
-        <div className="reorder-section-label">Amazon destination</div>
-        <div className="cfg-form">
-          {field("amazonSellerPdpUrl", "Amazon-generated Seller PDP URL", { full: true, url: true, mono: true, hint: "Copy the URL generated from the Seller Storefront. It must preserve ASIN and smid." })}
-          {field("attributionUrl", "Attribution-tagged Seller PDP URL", { full: true, url: true, mono: true, hint: "The final consumer destination. ASIN and Seller context must match." })}
-          <label className="reorder-inline-check"><input type="checkbox" checked={form.sellerOfferAvailable} disabled={readOnly} onChange={(event) => setForm({ ...form, sellerOfferAvailable: event.target.checked })} /> Seller Offer is currently available</label>
         </div>
       </section>
     </div>
@@ -906,14 +1110,19 @@ function ProductDetailPage({ productId }) {
       <PageHeader title={product?.product_name || "Product detail"} />
       {error && <PageState tone="error">{error}</PageState>}
       {!error && !product && <PageState>Loading…</PageState>}
+      {product && <p className="reorder-guidance">Product versions are view-only after they are created.</p>}
       {product && (
         <dl className="reorder-detail-grid">
-          <div><dt>ASIN</dt><dd className="reorder-mono">{product.asin}</dd></div>
-          <div><dt>Seller</dt><dd>{product.sellingAccount?.label || "—"}</dd></div>
           <div><dt>Marketplace</dt><dd>{product.sellingAccount?.marketplace_code || "—"}</dd></div>
+          <div><dt>Seller ID</dt><dd className="reorder-mono">{product.sellingAccount?.seller_id || "—"}</dd></div>
+          <div><dt>SKU</dt><dd className="reorder-mono">{product.sku || "—"}</dd></div>
+          <div><dt>ASIN</dt><dd className="reorder-mono">{product.asin}</dd></div>
+          <div><dt>Product title</dt><dd>{product.product_name}</dd></div>
+          <div><dt>Variant / Size</dt><dd>{product.variant_size || "—"}</dd></div>
+          <div className="is-wide"><dt>Product image</dt><dd>{product.image_url ? <a href={product.image_url} target="_blank" rel="noreferrer">Open image ↗</a> : "—"}</dd></div>
+          <div className="is-wide"><dt>Seller-specific Amazon URL</dt><dd><a href={product.amazon_seller_pdp_url} target="_blank" rel="noreferrer">Open on Amazon ↗</a></dd></div>
+          <div><dt>Listing confirmed</dt><dd>{product.listing_confirmed ? "Yes" : "No"}</dd></div>
           <div><dt>Status</dt><dd>{product.status}</dd></div>
-          <div className="is-wide"><dt>Seller-specific PDP</dt><dd><a href={product.amazon_seller_pdp_url} target="_blank" rel="noreferrer">Open on Amazon ↗</a></dd></div>
-          <div className="is-wide"><dt>Attribution destination</dt><dd><a href={product.attribution_url} target="_blank" rel="noreferrer">Test destination ↗</a></dd></div>
         </dl>
       )}
       {product && (
@@ -934,7 +1143,8 @@ function ProductDetailPage({ productId }) {
 function BatchDetailPage({ batchId, readOnly }) {
   const [batch, setBatch] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [pendingStatus, setPendingStatus] = useState("");
+  const [message, setMessage] = useFlashMessage();
   const [error, setError] = useState("");
 
   const load = () => api(`/api/reorder/batches/${batchId}`).then((data) => {
@@ -944,7 +1154,7 @@ function BatchDetailPage({ batchId, readOnly }) {
   useEffect(() => { load().catch((err) => setError(err.message)); }, [batchId]);
 
   const transition = async (status) => {
-    setSaving(true); setError(""); setMessage("");
+    setSaving(true); setPendingStatus(status); setError(""); setMessage("");
     try {
       await api(`/api/reorder/batches/${batchId}/activation`, {
         method: "PUT",
@@ -952,7 +1162,7 @@ function BatchDetailPage({ batchId, readOnly }) {
       });
       await load();
       setMessage(`Activation changed to ${humanize(status)}.`);
-    } catch (err) { setError(err.message); } finally { setSaving(false); }
+    } catch (err) { setError(err.message); } finally { setSaving(false); setPendingStatus(""); }
   };
 
   if (error && !batch) return <div className="reorder-page"><PageHeader title="Batch" /><PageState tone="error">{error}</PageState></div>;
@@ -968,7 +1178,7 @@ function BatchDetailPage({ batchId, readOnly }) {
 
   return (
     <div className="reorder-page">
-      <PageHeader title={batch.batch_code} action={<button className="btn" onClick={() => navigate(`/reorder/analytics?product=${batch.product_version_id}&batch=${batch.id}`)}>View analytics →</button>} />
+      <PageHeader title={batch.batch_code} action={<button className="btn" onClick={() => navigate(`/reorder/analytics?product=${batch.product_version_id}&batch=${batch.id}`)}>Analytics</button>} />
       {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
 
@@ -1017,8 +1227,8 @@ function BatchDetailPage({ batchId, readOnly }) {
         <p className="reorder-guidance">Discount: {batch.consumerExperience.discount || "Not configured"} · Survey: {batch.consumerExperience.survey || "Not configured"}</p>
         {!readOnly && batch.activation_status !== "retired" && (
           <div className="reorder-activation-controls">
-            {["draft", "scheduled", "paused"].includes(batch.activation_status) && <button className="btn primary" onClick={() => navigate(`/reorder/preview?batch=${batch.id}`)}>Preview & Publish</button>}
-            {actions.filter((status) => !["active", "scheduled"].includes(status)).map((status) => <button key={status} className="btn" disabled={saving} onClick={() => transition(status)}>{humanize(status)}</button>)}
+            {["draft", "scheduled", "paused"].includes(batch.activation_status) && <button className="btn primary" onClick={() => navigate(`/reorder/preview?batch=${batch.id}`)}>Preview</button>}
+            {actions.filter((status) => !["active", "scheduled"].includes(status)).map((status) => <button key={status} className="btn" disabled={saving} onClick={() => transition(status)}>{saving && pendingStatus === status ? activationBusy(status) : activationVerb(status)}</button>)}
           </div>
         )}
       </section>
@@ -1043,8 +1253,8 @@ function BatchDetailPage({ batchId, readOnly }) {
 }
 
 function DiscountListPage() {
-  const [discounts, setDiscounts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [discounts, setDiscounts] = useState(() => apiGetCache.get("/api/reorder/discounts")?.discounts || []);
+  const [loading, setLoading] = useState(() => !apiGetCache.has("/api/reorder/discounts"));
   const [error, setError] = useState("");
   useEffect(() => {
     api("/api/reorder/discounts")
@@ -1055,7 +1265,7 @@ function DiscountListPage() {
   return (
     <div className="reorder-page">
       <PageHeader title="Discounts" action={<button className="btn primary" onClick={() => navigate("/reorder/discounts/new")}>Add discount</button>} />
-      {loading && <PageState>Loading…</PageState>}
+      {loading && discounts.length === 0 && <PageState>Loading…</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
       {!loading && !error && !discounts.length && <PageState>No Amazon Coupons or Promotions registered.</PageState>}
       {discounts.length > 0 && (
@@ -1123,7 +1333,7 @@ function CouponImportForm({ accounts, readOnly }) {
           <label className="cfg-field"><span className="cfg-label">Amazon Coupon Bulk Template</span><input className="cfg-input reorder-visible-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || working || !sellingAccountId} onChange={(event) => previewFile(event.target.files?.[0])} /></label>
         </div>
       </section>
-      {working && <PageState>Reading Amazon workbook…</PageState>}
+      {working && !preview && <PageState>Reading Amazon workbook…</PageState>}
       {preview && (
         <section className="reorder-flat-section">
           <div className="reorder-section-label">Import review</div>
@@ -1140,7 +1350,7 @@ function CouponImportForm({ accounts, readOnly }) {
             </PageState>
           )}
           {preview.rows.filter((row) => row.errors.length).map((row) => <p className="reorder-import-row-error" key={row.rowNumber}>Row {row.rowNumber} · {row.errors.join(" · ")}</p>)}
-          <button className="btn primary" disabled={readOnly || working || !preview.review.canImport || (preview.review.unmappedColumns.length > 0 && !acknowledged)} onClick={importFile}>Import recognized Coupons</button>
+          <button className="btn primary" disabled={readOnly || working || !preview.review.canImport || (preview.review.unmappedColumns.length > 0 && !acknowledged)} onClick={importFile}>{working ? "Importing…" : "Import coupons"}</button>
         </section>
       )}
     </>
@@ -1212,7 +1422,7 @@ function PromotionForm({ accounts, products, readOnly }) {
           <label className="reorder-inline-check cfg-field-full"><input type="checkbox" checked={form.amazonConfirmed} disabled={readOnly} onChange={(event) => set("amazonConfirmed", event.target.checked)} /> This Promotion already exists in Amazon and the details above match Seller Central.</label>
         </div>
       </section>
-      <button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Saving…" : "Register Amazon Promotion"}</button>
+      <button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Adding…" : "Add promotion"}</button>
     </>
   );
 }
@@ -1248,21 +1458,32 @@ function DiscountDetailPage({ discountId, readOnly }) {
   const [couponType, setCouponType] = useState("");
   const [amazonConfirmed, setAmazonConfirmed] = useState(false);
   const [threshold, setThreshold] = useState(20);
-  const [working, setWorking] = useState(false);
+  const [snapshot, setSnapshot] = useState({ couponType: "", amazonConfirmed: false, threshold: 20 });
+  const [editing, setEditing] = useState(false);
+  const [busyAction, setBusyAction] = useState("");
   const [importReport, setImportReport] = useState(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useFlashMessage();
   const [error, setError] = useState("");
 
-  const load = () => api(`/api/reorder/discounts/${discountId}`).then((data) => {
+  const settingsValue = (type, confirmed, low) => ({ couponType: type, amazonConfirmed: Boolean(confirmed), threshold: Number(low) });
+
+  const load = (options = {}) => api(`/api/reorder/discounts/${discountId}`).then((data) => {
     setDiscount(data);
-    setCouponType(data.coupon_type || "");
-    setAmazonConfirmed(Boolean(data.amazon_confirmed));
-    setThreshold(data.code_low_threshold ?? 20);
+    const type = data.coupon_type || "";
+    const confirmed = Boolean(data.amazon_confirmed);
+    const low = data.code_low_threshold ?? 20;
+    setCouponType(type);
+    setAmazonConfirmed(confirmed);
+    setThreshold(low);
+    setSnapshot(settingsValue(type, confirmed, low));
+    if (options.resetEditing) {
+      setEditing(data.discount_kind === "amazon_coupon" && !(type && confirmed));
+    }
   });
-  useEffect(() => { load().catch((err) => setError(err.message)); }, [discountId]);
+  useEffect(() => { load({ resetEditing: true }).catch((err) => setError(err.message)); }, [discountId]);
 
   const save = async () => {
-    setWorking(true); setError(""); setMessage("");
+    setBusyAction("save"); setError(""); setMessage("");
     try {
       await api(`/api/reorder/discounts/${discountId}`, {
         method: "PUT",
@@ -1271,13 +1492,21 @@ function DiscountDetailPage({ discountId, readOnly }) {
           ...(discount.claim_code_mode === "single_use" ? { codeLowThreshold: Number(threshold) } : {}),
         }),
       });
-      await load(); setMessage("Discount settings saved.");
-    } catch (err) { setError(err.message); } finally { setWorking(false); }
+      await load(); setEditing(false); setMessage("Discount settings saved.");
+    } catch (err) { setError(err.message); } finally { setBusyAction(""); }
+  };
+
+  const cancel = () => {
+    setCouponType(snapshot.couponType);
+    setAmazonConfirmed(snapshot.amazonConfirmed);
+    setThreshold(snapshot.threshold);
+    setEditing(false);
+    setError("");
   };
 
   const importCodes = async (file) => {
     if (!file) return;
-    setWorking(true); setError(""); setMessage(""); setImportReport(null);
+    setBusyAction("import"); setError(""); setMessage(""); setImportReport(null);
     try {
       const result = await api(`/api/reorder/discounts/${discountId}/claim-codes/import`, {
         method: "POST",
@@ -1286,25 +1515,35 @@ function DiscountDetailPage({ discountId, readOnly }) {
       await load();
       setImportReport(result);
       setMessage(`Total ${result.total}; accepted ${result.accepted}; duplicates ${result.duplicates}; rejected ${result.rejected}. Amazon validity is not verified by FC.`);
-    } catch (err) { setError(err.message); } finally { setWorking(false); }
+    } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
   const feature = async (productVersionId) => {
-    setWorking(true); setError(""); setMessage("");
+    setBusyAction(`feature:${productVersionId}`); setError(""); setMessage("");
     try {
       await api(`/api/reorder/discounts/${discountId}/featured`, { method: "PUT", body: JSON.stringify({ productVersionId }) });
       await load(); setMessage("Featured Discount updated for this Product.");
-    } catch (err) { setError(err.message); } finally { setWorking(false); }
+    } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
   if (error && !discount) return <div className="reorder-page"><PageHeader title="Discount" /><PageState tone="error">{error}</PageState></div>;
   if (!discount) return <div className="reorder-page"><PageHeader title="Discount" /><PageState>Loading…</PageState></div>;
   const isCoupon = discount.discount_kind === "amazon_coupon";
   const canSaveSettings = isCoupon || discount.claim_code_mode === "single_use";
-  const saveDisabled = readOnly || working || (isCoupon && (!couponType || !amazonConfirmed));
+  const locked = readOnly || !editing;
+  const dirty = !sameData(settingsValue(couponType, amazonConfirmed, threshold), snapshot);
+  const saveDisabled = readOnly || Boolean(busyAction) || (isCoupon && (!couponType || !amazonConfirmed)) || !dirty;
+  const settingsAction = !canSaveSettings || readOnly ? null : editing ? (
+    <div className="reorder-header-actions">
+      <button className="btn" type="button" disabled={Boolean(busyAction)} onClick={cancel}>Cancel</button>
+      <button className="btn primary" disabled={saveDisabled} onClick={save}>{busyAction === "save" ? "Saving…" : "Save"}</button>
+    </div>
+  ) : (
+    <button className="btn primary" type="button" onClick={() => setEditing(true)}>Edit</button>
+  );
   return (
     <div className="reorder-page">
-      <PageHeader title={discount.title} action={canSaveSettings ? <button className="btn primary" disabled={saveDisabled} onClick={save}>{working ? "Working…" : "Save settings"}</button> : null} />
+      <PageHeader title={discount.title} action={settingsAction} />
       {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
       <section className="reorder-flat-section">
@@ -1326,7 +1565,7 @@ function DiscountDetailPage({ discountId, readOnly }) {
         {discount.products.map((product) => (
           <div className="reorder-linked-row reorder-static-row" key={product.id}>
             <span><strong>{product.product_name}</strong><small>{product.asin}</small></span>
-            <button className={`btn${product.isFeatured ? " is-disabled" : ""}`} disabled={readOnly || working || product.isFeatured} onClick={() => feature(product.id)}>{product.isFeatured ? "Featured" : "Set as Featured"}</button>
+            <button className={`btn${product.isFeatured ? " is-disabled" : ""}`} disabled={readOnly || Boolean(busyAction) || product.isFeatured || editing} onClick={() => feature(product.id)}>{product.isFeatured ? "Featured" : busyAction === `feature:${product.id}` ? "Featuring…" : "Feature"}</button>
           </div>
         ))}
       </section>
@@ -1334,8 +1573,8 @@ function DiscountDetailPage({ discountId, readOnly }) {
         <section className="cfg-section">
           <div className="reorder-section-label">Coupon confirmation</div>
           <div className="cfg-form grid grid-2">
-            <label className="cfg-field"><span className="cfg-label">Coupon type</span><select className="cfg-input" value={couponType} disabled={readOnly} onChange={(event) => setCouponType(event.target.value)}><option value="">Select when not supplied by Amazon template</option><option value="standard">Standard</option><option value="reorder">Reorder</option><option value="subscribe_and_save">Subscribe & Save</option></select></label>
-            <label className="reorder-inline-check"><input type="checkbox" checked={amazonConfirmed} disabled={readOnly} onChange={(event) => setAmazonConfirmed(event.target.checked)} /> Coupon details match the current Seller Central configuration.</label>
+            <label className="cfg-field"><span className="cfg-label">Coupon type</span><select className="cfg-input" value={couponType} disabled={locked} onChange={(event) => setCouponType(event.target.value)}><option value="">Select when not supplied by Amazon template</option><option value="standard">Standard</option><option value="reorder">Reorder</option><option value="subscribe_and_save">Subscribe & Save</option></select></label>
+            <label className="reorder-inline-check"><input type="checkbox" checked={amazonConfirmed} disabled={locked} onChange={(event) => setAmazonConfirmed(event.target.checked)} /> Coupon details match the current Seller Central configuration.</label>
           </div>
         </section>
       )}
@@ -1349,8 +1588,8 @@ function DiscountDetailPage({ discountId, readOnly }) {
             <div><span>Copied</span><strong>{discount.codePool.copied}</strong></div>
           </div>
           <div className="cfg-form grid grid-2">
-            <label className="cfg-field"><span className="cfg-label">Codes low threshold</span><input className="cfg-input" type="number" min="0" value={threshold} disabled={readOnly} onChange={(event) => setThreshold(event.target.value)} /></label>
-            <label className="cfg-field"><span className="cfg-label">Import Amazon Single-use Claim Codes</span><input className="cfg-input reorder-visible-file" type="file" accept=".xlsx,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || working} onChange={(event) => importCodes(event.target.files?.[0])} /></label>
+            <label className="cfg-field"><span className="cfg-label">Codes low threshold</span><input className="cfg-input" type="number" min="0" value={threshold} disabled={locked} onChange={(event) => setThreshold(event.target.value)} /></label>
+            <label className="cfg-field"><span className="cfg-label">Import Amazon Single-use Claim Codes</span><input className="cfg-input reorder-visible-file" type="file" accept=".xlsx,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || Boolean(busyAction) || editing} onChange={(event) => importCodes(event.target.files?.[0])} /></label>
           </div>
           <p className="reorder-guidance">Accepted means FC can import the Code. Amazon determines whether it is valid and redeemable at checkout.</p>
           {importReport && (importReport.duplicates > 0 || importReport.rejected > 0) && <button className="btn" onClick={() => downloadClaimCodeIssues(importReport)}>Download Duplicate / Rejected rows</button>}
@@ -1387,7 +1626,7 @@ function ConsumerPreviewCanvas({ snapshot, availableDiscounts }) {
           {discount.claimCodeMode === "single_use" && <code>Unique Code assigned on the live page</code>}
         </div>
       ))}
-      {ordered.length > 1 && <button className="reorder-consumer-link" onClick={() => setShowAll((value) => !value)}>{showAll ? "Show Featured saving" : `View all ${ordered.length} savings`}</button>}
+      {ordered.length > 1 && <button className="reorder-consumer-link" onClick={() => setShowAll((value) => !value)}>{showAll ? "Show featured" : "Show all"}</button>}
       {snapshot.product.sellerOfferAvailable ? <a className="reorder-consumer-primary" href={snapshot.product.attributionUrl} target="_blank" rel="noreferrer">Reorder on Amazon</a> : <p className="reorder-consumer-unavailable">This Seller Offer is currently unavailable.</p>}
       <a className="reorder-consumer-secondary" href={snapshot.fallback.url || "#"} target="_blank" rel="noreferrer">Visit Seller Storefront</a>
       {snapshot.survey && <div className="reorder-consumer-survey"><strong>{snapshot.survey.title}</strong><span>{snapshot.survey.description}</span>{snapshot.survey.questions.map((question) => <fieldset key={question.id}><legend>{question.prompt}</legend>{question.options.map((option) => <label key={option.id}><input disabled type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={`consumer-preview-${question.id}`} /> {option.label}</label>)}</fieldset>)}</div>}
@@ -1400,12 +1639,13 @@ function ConsumerPreviewPage({ readOnly }) {
   const [preview, setPreview] = useState(null);
   const [selected, setSelected] = useState(null);
   const [scheduleAt, setScheduleAt] = useState("");
-  const [working, setWorking] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [publishingStatus, setPublishingStatus] = useState("");
   const [error, setError] = useState("");
   const [publishErrors, setPublishErrors] = useState([]);
 
   const load = async (ids = selected) => {
-    setWorking(true); setError("");
+    setLoadingPreview(true); setError("");
     try {
       const result = await api(`/api/reorder/batches/${batchId}/consumer-preview`, {
         method: "POST",
@@ -1414,7 +1654,7 @@ function ConsumerPreviewPage({ readOnly }) {
       setPreview(result);
       if (ids == null) setSelected(result.availableDiscounts.map((discount) => discount.id));
       setPublishErrors(result.errors || []);
-    } catch (err) { setError(err.message); } finally { setWorking(false); }
+    } catch (err) { setError(err.message); } finally { setLoadingPreview(false); }
   };
   useEffect(() => { if (batchId) load(null); else setError("Batch is required for Consumer Preview."); }, [batchId]);
 
@@ -1424,7 +1664,7 @@ function ConsumerPreviewPage({ readOnly }) {
     load(next);
   };
   const publish = async (status) => {
-    setWorking(true); setError(""); setPublishErrors([]);
+    setPublishingStatus(status); setError(""); setPublishErrors([]);
     try {
       await api(`/api/reorder/batches/${batchId}/activation`, {
         method: "PUT",
@@ -1438,7 +1678,7 @@ function ConsumerPreviewPage({ readOnly }) {
     } catch (err) {
       setError(err.message);
       setPublishErrors(err.details || []);
-    } finally { setWorking(false); }
+    } finally { setPublishingStatus(""); }
   };
   const goToError = (item) => {
     const discountMatch = /^discounts\.([0-9a-f-]{36})/i.exec(item.field);
@@ -1459,10 +1699,10 @@ function ConsumerPreviewPage({ readOnly }) {
           <section className="reorder-flat-section">
             <div className="reorder-section-label">Published savings</div>
             {!preview.availableDiscounts.length && <p className="reorder-guidance">No Discount is required. The Product can publish without one.</p>}
-            <div className="reorder-product-options">{preview.availableDiscounts.map((discount) => <label key={discount.id}><input type="checkbox" checked={selected?.includes(discount.id)} disabled={readOnly || working} onChange={() => toggleDiscount(discount.id)} /><span>{discount.title}<small>{discount.benefitSummary} · {humanize(discount.claimCodeMode)}</small></span><small>{discount.isFeatured ? "Featured" : discount.availableCodes != null ? `${discount.availableCodes} Codes` : ""}</small></label>)}</div>
+            <div className="reorder-product-options">{preview.availableDiscounts.map((discount) => <label key={discount.id}><input type="checkbox" checked={selected?.includes(discount.id)} disabled={readOnly || loadingPreview || Boolean(publishingStatus)} onChange={() => toggleDiscount(discount.id)} /><span>{discount.title}<small>{discount.benefitSummary} · {humanize(discount.claimCodeMode)}</small></span><small>{discount.isFeatured ? "Featured" : discount.availableCodes != null ? `${discount.availableCodes} Codes` : ""}</small></label>)}</div>
           </section>
           {publishErrors.length > 0 && <section className="reorder-flat-section"><div className="reorder-section-label">Fix before Publish</div><div className="reorder-publish-errors">{publishErrors.map((item) => <button key={`${item.code}-${item.field}`} onClick={() => goToError(item)}><strong>{item.message}</strong><span>{item.field} →</span></button>)}</div></section>}
-          {!readOnly && <section className="reorder-flat-section"><div className="reorder-section-label">Publish</div><div className="reorder-publish-actions"><input className="cfg-input" type="datetime-local" value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} /><button className="btn" disabled={working || !scheduleAt || publishErrors.length > 0} onClick={() => publish("scheduled")}>Schedule</button><button className="btn primary" disabled={working || publishErrors.length > 0} onClick={() => publish("active")}>{working ? "Checking…" : "Publish"}</button></div></section>}
+          {!readOnly && <section className="reorder-flat-section"><div className="reorder-section-label">Publish</div><div className="reorder-publish-actions"><input className="cfg-input" type="datetime-local" value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} /><button className="btn" disabled={loadingPreview || Boolean(publishingStatus) || !scheduleAt || publishErrors.length > 0} onClick={() => publish("scheduled")}>{publishingStatus === "scheduled" ? "Scheduling…" : "Schedule"}</button><button className="btn primary" disabled={loadingPreview || Boolean(publishingStatus) || publishErrors.length > 0} onClick={() => publish("active")}>{publishingStatus === "active" ? "Publishing…" : "Publish"}</button></div></section>}
         </div>
         <ConsumerPreviewCanvas snapshot={preview.snapshot} availableDiscounts={preview.availableDiscounts.filter((discount) => selected?.includes(discount.id))} />
       </div>}
@@ -1475,10 +1715,10 @@ function SurveyStatus({ value, label }) {
 }
 
 function SurveyListPage({ readOnly }) {
-  const [surveys, setSurveys] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [surveys, setSurveys] = useState(() => apiGetCache.get("/api/reorder/surveys")?.surveys || []);
+  const [products, setProducts] = useState(() => apiGetCache.get("/api/reorder/products")?.products || []);
   const [filter, setFilter] = useState({ productId: "", status: "" });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !apiGetCache.has("/api/reorder/surveys"));
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
@@ -1506,7 +1746,7 @@ function SurveyListPage({ readOnly }) {
         <label><span>Product</span><select className="cfg-input" value={filter.productId} onChange={(event) => setFilter({ ...filter, productId: event.target.value })}><option value="">All Products</option>{products.map((product) => <option key={product.id} value={product.id}>{product.product_name}</option>)}</select></label>
         <label><span>Status</span><select className="cfg-input" value={filter.status} onChange={(event) => setFilter({ ...filter, status: event.target.value })}><option value="">All statuses</option><option value="draft">Draft</option><option value="scheduled">Scheduled</option><option value="open">Active</option><option value="closed">Ended</option></select></label>
       </div>
-      {loading && <PageState>Loading Surveys…</PageState>}
+      {loading && surveys.length === 0 && <PageState>Loading Surveys…</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
       {!loading && !error && visible.length === 0 && <PageState>No Surveys match these filters.</PageState>}
       {visible.length > 0 && <div className="reorder-survey-list" role="list">{visible.map((survey) => (
@@ -1598,7 +1838,7 @@ function SurveyEditorPage({ surveyId, readOnly }) {
         <button className="btn" disabled={readOnly || form.questions.length >= 3} onClick={() => setForm({ ...form, questions: [...form.questions, blankSurveyQuestion()] })}>Add question</button>
       </section>
       {previewing && <section className="reorder-survey-preview" aria-label="Survey preview"><div className="reorder-section-label">Consumer Preview</div><strong>{form.title || "Untitled Survey"}</strong><p>{form.description}</p>{form.questions.map((question, index) => <fieldset key={index}><legend>{question.prompt || `Question ${index + 1}`}</legend>{question.options.map((option, optionIndex) => <label key={optionIndex}><input disabled type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={`preview-${index}`} /> {option.label || `Option ${optionIndex + 1}`}</label>)}</fieldset>)}</section>}
-      <div className="reorder-editor-actions"><button className="btn" type="button" onClick={() => setPreviewing((value) => !value)}>{previewing ? "Hide Preview" : "Preview"}</button><button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Saving…" : source?.lockedAt ? "Save as new version" : "Save survey"}</button></div>
+      <div className="reorder-editor-actions"><button className="btn" type="button" onClick={() => setPreviewing((value) => !value)}>{previewing ? "Hide preview" : "Show preview"}</button><button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Saving…" : source?.lockedAt ? "Save as new version" : "Save survey"}</button></div>
     </div>
   );
 }
@@ -1608,10 +1848,10 @@ function SurveyDetailPage({ surveyId, readOnly }) {
   const [products, setProducts] = useState([]);
   const [batches, setBatches] = useState([]);
   const [filter, setFilter] = useState({ productId: "", batchId: "", from: "", to: "" });
-  const [working, setWorking] = useState(false);
+  const [busyAction, setBusyAction] = useState("");
   const [error, setError] = useState("");
   const load = async (next = filter) => {
-    setWorking(true); setError("");
+    setBusyAction("load"); setError("");
     const params = new URLSearchParams();
     if (next.productId) params.set("product_id", next.productId);
     if (next.batchId) params.set("batch_id", next.batchId);
@@ -1619,17 +1859,17 @@ function SurveyDetailPage({ surveyId, readOnly }) {
     if (next.to) params.set("to", new Date(`${next.to}T23:59:59.999`).toISOString());
     try { setResult(await api(`/api/reorder/surveys/${surveyId}/results?${params}`)); }
     catch (err) { setError(err.message); }
-    finally { setWorking(false); }
+    finally { setBusyAction(""); }
   };
   useEffect(() => {
     Promise.all([api("/api/reorder/products"), api("/api/reorder/orders-batches")])
       .then(([productData, fulfillment]) => { setProducts(productData.products || []); setBatches(fulfillment.batches || []); return load(); })
-      .catch((err) => { setError(err.message); setWorking(false); });
+      .catch((err) => { setError(err.message); setBusyAction(""); });
   }, [surveyId]);
   const transition = async (action) => {
-    setWorking(true); setError("");
+    setBusyAction(action); setError("");
     try { await api(`/api/reorder/surveys/${surveyId}/${action}`, { method: "POST" }); await load(); }
-    catch (err) { setError(err.message); setWorking(false); }
+    catch (err) { setError(err.message); setBusyAction(""); }
   };
   const exportCsv = () => {
     const query = new URLSearchParams();
@@ -1639,16 +1879,17 @@ function SurveyDetailPage({ surveyId, readOnly }) {
     if (filter.to) query.set("to", new Date(`${filter.to}T23:59:59.999`).toISOString());
     window.location.href = `/api/reorder/surveys/${surveyId}/results.csv?${query}`;
   };
-  if (!result && working) return <div className="reorder-page"><PageHeader title="Survey" /><PageState>Loading Results…</PageState></div>;
+  if (!result && busyAction === "load") return <div className="reorder-page"><PageHeader title="Survey" /><PageState>Loading Results…</PageState></div>;
   const survey = result?.survey;
   if (!survey) return <div className="reorder-page"><PageHeader title="Survey" />{error && <PageState tone="error">{error}</PageState>}</div>;
   const productMap = new Map(products.map((product) => [product.id, product.product_name]));
-  const actions = <div className="reorder-header-actions"><button className="btn" onClick={exportCsv}>Export responses</button>{!readOnly && (survey.status === "draft" || survey.lockedAt) && <button className="btn" onClick={() => navigate(`/reorder/surveys/${survey.id}/edit`)}>{survey.lockedAt ? "New version" : "Edit"}</button>}{!readOnly && survey.status === "draft" && survey.startsAt && <button className="btn" disabled={working} onClick={() => transition("schedule")}>Schedule</button>}{!readOnly && ["draft", "scheduled"].includes(survey.status) && <button className="btn primary" disabled={working} onClick={() => transition("open")}>Publish</button>}{!readOnly && ["scheduled", "open"].includes(survey.status) && <button className="btn" disabled={working} onClick={() => transition("close")}>End</button>}</div>;
+  const busy = Boolean(busyAction);
+  const actions = <div className="reorder-header-actions"><button className="btn" onClick={exportCsv}>Export responses</button>{!readOnly && (survey.status === "draft" || survey.lockedAt) && <button className="btn" onClick={() => navigate(`/reorder/surveys/${survey.id}/edit`)}>{survey.lockedAt ? "New version" : "Edit"}</button>}{!readOnly && survey.status === "draft" && survey.startsAt && <button className="btn" disabled={busy} onClick={() => transition("schedule")}>{busyAction === "schedule" ? "Scheduling…" : "Schedule"}</button>}{!readOnly && ["draft", "scheduled"].includes(survey.status) && <button className="btn primary" disabled={busy} onClick={() => transition("open")}>{busyAction === "open" ? "Publishing…" : "Publish"}</button>}{!readOnly && ["scheduled", "open"].includes(survey.status) && <button className="btn" disabled={busy} onClick={() => transition("close")}>{busyAction === "close" ? "Ending…" : "End"}</button>}</div>;
   return <div className="reorder-page">
     <PageHeader title={survey.title} action={actions} />
     {error && <PageState tone="error">{error}</PageState>}
     <section className="reorder-flat-section"><div className="reorder-section-label">Survey Overview</div><dl className="reorder-detail-grid"><div><dt>Status</dt><dd><SurveyStatus value={survey.status} label={survey.statusLabel} /></dd></div><div><dt>Version</dt><dd>{survey.version}</dd></div><div className="is-wide"><dt>Eligible Products</dt><dd>{survey.productIds.map((id) => productMap.get(id) || id).join(" · ")}</dd></div><div><dt>Active Period</dt><dd>{formatDate(survey.startsAt)} – {formatDate(survey.endsAt)}</dd></div><div><dt>Questions</dt><dd>{survey.questions.length}</dd></div></dl><div className="reorder-result-summary"><div><strong>{result.starts}</strong><span>Starts</span></div><div><strong>{result.completions}</strong><span>Completions</span></div><div><strong>{result.completionRate}%</strong><span>Completion Rate</span></div></div></section>
-    <section className="reorder-flat-section"><div className="reorder-section-label">Results filters</div><div className="reorder-filter-row"><label><span>From</span><input className="cfg-input" type="date" value={filter.from} onChange={(event) => setFilter({ ...filter, from: event.target.value })} /></label><label><span>To</span><input className="cfg-input" type="date" value={filter.to} onChange={(event) => setFilter({ ...filter, to: event.target.value })} /></label><label><span>Product</span><select className="cfg-input" value={filter.productId} onChange={(event) => setFilter({ ...filter, productId: event.target.value, batchId: "" })}><option value="">All Products</option>{survey.productIds.map((id) => <option key={id} value={id}>{productMap.get(id) || "Product"}</option>)}</select></label><label><span>FC Batch</span><select className="cfg-input" value={filter.batchId} onChange={(event) => setFilter({ ...filter, batchId: event.target.value })}><option value="">All Batches</option>{batches.filter((batch) => !filter.productId || batch.product_version_id === filter.productId).map((batch) => <option key={batch.id} value={batch.id}>{batch.batch_code}</option>)}</select></label><button className="btn" disabled={working} onClick={() => load(filter)}>Apply</button></div></section>
+    <section className="reorder-flat-section"><div className="reorder-section-label">Results filters</div><div className="reorder-filter-row"><label><span>From</span><input className="cfg-input" type="date" value={filter.from} onChange={(event) => setFilter({ ...filter, from: event.target.value })} /></label><label><span>To</span><input className="cfg-input" type="date" value={filter.to} onChange={(event) => setFilter({ ...filter, to: event.target.value })} /></label><label><span>Product</span><select className="cfg-input" value={filter.productId} onChange={(event) => setFilter({ ...filter, productId: event.target.value, batchId: "" })}><option value="">All Products</option>{survey.productIds.map((id) => <option key={id} value={id}>{productMap.get(id) || "Product"}</option>)}</select></label><label><span>FC Batch</span><select className="cfg-input" value={filter.batchId} onChange={(event) => setFilter({ ...filter, batchId: event.target.value })}><option value="">All Batches</option>{batches.filter((batch) => !filter.productId || batch.product_version_id === filter.productId).map((batch) => <option key={batch.id} value={batch.id}>{batch.batch_code}</option>)}</select></label><button className="btn" disabled={busy} onClick={() => load(filter)}>{busyAction === "load" ? "Applying…" : "Apply"}</button></div></section>
     <section className="reorder-flat-section"><div className="reorder-section-label">Question Results</div><span className="reorder-sr-only">Each option shows its Response count and Percentage.</span><div className="reorder-question-results">{result.questions.map((question, index) => <article key={question.id}><h2>{index + 1}. {question.prompt}</h2><p>{humanize(question.type)} · {question.respondents} respondents</p>{question.options.map((option) => <div className="reorder-result-option" key={option.id}><span>{option.label}</span><strong>{option.responses} · {option.percentage}%</strong><i style={{ width: `${Math.min(option.percentage, 100)}%` }} /></div>)}</article>)}</div></section>
   </div>;
 }
@@ -1661,8 +1902,8 @@ const dataSourceLabels = {
 };
 
 function DataSourcesPage({ readOnly }) {
-  const [sources, setSources] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [sources, setSources] = useState(() => apiGetCache.get("/api/reorder/data-sources")?.sources || []);
+  const [loading, setLoading] = useState(() => !apiGetCache.has("/api/reorder/data-sources"));
   const [error, setError] = useState("");
   const [flow, setFlow] = useState(null);
   const [working, setWorking] = useState(false);
@@ -1693,7 +1934,7 @@ function DataSourcesPage({ readOnly }) {
   return <div className="reorder-page">
     <PageHeader title="Data sources" />
     {error && <PageState tone="error">{error}</PageState>}
-    {loading && <PageState>Loading Data Sources…</PageState>}
+    {loading && sources.length === 0 && <PageState>Loading Data Sources…</PageState>}
     {!loading && <div className="reorder-source-list" role="list">{sources.map((source) => {
       const label = dataSourceLabels[source.source_kind] || { name: humanize(source.source_kind), metric: "—" };
       const importable = source.source_kind !== "fc_event";
@@ -1711,81 +1952,73 @@ function DataSourcesPage({ readOnly }) {
       <div className="reorder-mode-switch"><button className={`btn${flow.mode === "import" ? " primary" : ""}`} onClick={() => setFlow({ ...flow, mode: "import" })}>Import</button><button className={`btn${flow.mode === "replace" ? " primary" : ""}`} onClick={() => setFlow({ ...flow, mode: "replace" })}>Replace data</button></div>
       {flow.mode === "replace" && <div className="cfg-form grid grid-2 reorder-replace-scope"><label className="cfg-field"><span className="cfg-label">Replace from</span><input className="cfg-input" type="date" value={flow.from} onChange={(event) => setFlow({ ...flow, from: event.target.value })} /></label><label className="cfg-field"><span className="cfg-label">Replace to</span><input className="cfg-input" type="date" value={flow.to} onChange={(event) => setFlow({ ...flow, to: event.target.value })} /></label><label className="cfg-field"><span className="cfg-label">Product Version ID (optional)</span><input className="cfg-input" value={flow.productVersionId} onChange={(event) => setFlow({ ...flow, productVersionId: event.target.value })} /></label><label className="cfg-field"><span className="cfg-label">Batch ID (optional)</span><input className="cfg-input" value={flow.batchId} onChange={(event) => setFlow({ ...flow, batchId: event.target.value })} /></label><label className="cfg-field cfg-field-full"><span className="cfg-label">Replacement reason</span><input className="cfg-input" value={flow.reason} onChange={(event) => setFlow({ ...flow, reason: event.target.value })} /></label></div>}
       <p className="reorder-guidance">Only the displayed date and optional Product / Batch scope will be replaced. Unrelated facts remain unchanged.</p>
-      <div className="reorder-editor-actions"><button className="btn" onClick={() => setFlow(null)}>Cancel</button><button className="btn primary" disabled={working || flow.preview.acceptedRows === 0 || (flow.mode === "replace" && (!flow.from || !flow.to || !flow.reason.trim()))} onClick={commit}>{working ? "Saving…" : flow.mode === "replace" ? "Confirm replacement" : "Confirm import"}</button></div>
+      <div className="reorder-editor-actions"><button className="btn" onClick={() => setFlow(null)}>Cancel</button><button className="btn primary" disabled={working || flow.preview.acceptedRows === 0 || (flow.mode === "replace" && (!flow.from || !flow.to || !flow.reason.trim()))} onClick={commit}>{working ? (flow.mode === "replace" ? "Replacing…" : "Importing…") : flow.mode === "replace" ? "Confirm replacement" : "Confirm import"}</button></div>
     </section>}
   </div>;
 }
 
-function exportAnalyticsCsv(rows, filters) {
-  const columns = ["Batch", "Product", "Shipped date", "MS", "MD", "MSI", "MGO", "NO", "Delivery rate", "Activation rate", "MGO / MD", "NO / MGO", "Coverage", "Sources"];
-  const data = rows.map((row) => {
-    const product = demoProducts.find((item) => item.id === row.productId)?.name || "Unknown";
-    return [row.code, product, row.shippedAt, row.ms, row.md, row.msi, row.mgo, row.no, formatRate(ratio(row.md, row.ms)), formatRate(ratio(row.msi, row.md)), formatRate(ratio(row.mgo, row.md)), (ratio(row.no, row.mgo) || 0).toFixed(2), row.id === "batch-s2406" ? "Partial" : "Available", "Fulfillment · Delivery · FC Event · Order Attribution"];
+function exportAnalyticsCsv(filters) {
+  const path = `/api/reorder/analytics/export.csv?${dashboardQuery(filters, true)}`;
+  const download = (csv) => {
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv; charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "fc-reorder-analytics.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  if (window.reorderDemoApi) return window.reorderDemoApi.request(path).then(download);
+  return fetch(path).then(async (response) => {
+    if (!response.ok) throw new Error("Export failed");
+    download(await response.text());
   });
-  const note = [`Observation window: ${filters.observationMonths} months`, "No FC IDs, device IDs, anonymous order keys or Claim Codes are included"];
-  const csv = [note, [], columns, ...data].map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "fc-reorder-analytics.csv";
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function Breakdown({ title, rows }) {
-  const max = Math.max(...rows.map((row) => row.value), 1);
-  return <section className="reorder-breakdown"><h2>{title}</h2><div>{rows.map((row) => <span key={row.label}><small>{row.label}</small><i><b style={{ width: `${(row.value / max) * 100}%` }} /></i><strong>{formatNumber(row.value)}</strong></span>)}</div></section>;
+  const max = Math.max(...rows.map((row) => Number(row.value) || 0), 1);
+  return <section className="reorder-breakdown"><h2>{title}</h2><div>{rows.map((row) => <span key={row.label}><small>{row.label}</small><i><b style={{ width: `${((Number(row.value) || 0) / max) * 100}%` }} /></i><strong>{row.value === null ? "—" : formatNumber(row.value)}</strong></span>)}</div></section>;
 }
 
 function AnalyticsPage() {
   const [filters, setFilters] = useState(defaultDashboardFilters);
   const [expandedBatch, setExpandedBatch] = useState(null);
-  const rows = useMemo(() => demoRowsFor(filters), [filters]);
-  const metrics = useMemo(() => metricsForRows(rows), [rows]);
+  const { data, loading, error } = useDashboardData("/api/reorder/analytics", filters, true);
+  const metrics = data?.metrics || [];
   const totals = Object.fromEntries(metrics.map((metric) => [metric.key, metric.value]));
-  const totalOrders = totals.no || 0;
-  const typeRows = [
-    ["One-time", 0.55], ["New subscription first charge", 0.2], ["Subscription renewal", 0.18], ["Cross-sell", 0.07],
-  ].map(([label, share]) => ({ label, value: Math.round(totalOrders * share) }));
-  typeRows[0].value += totalOrders - typeRows.reduce((sum, row) => sum + row.value, 0);
-  const statusRows = [
-    { label: "Final paid", value: totalOrders },
-    { label: "Refunded", value: Math.round(totalOrders * 0.052) },
-    { label: "Cancelled", value: Math.round(totalOrders * 0.028) },
-    { label: "Chargeback", value: Math.round(totalOrders * 0.004) },
-  ];
-  const excluded = Math.round(sumRows(rows, "taps") * 0.13);
   return <div className="reorder-page reorder-dashboard-page">
-    <PageHeader title="Analytics" action={<div className="reorder-header-actions"><span className="reorder-demo-label">Local preview data</span><button className="btn" disabled={!rows.length} onClick={() => exportAnalyticsCsv(rows, filters)}>Export CSV</button></div>} />
-    <DashboardFilters filters={filters} onChange={setFilters} includeWindow />
+    <PageHeader title="Analytics" action={<div className="reorder-header-actions">{window.reorderDemoApi && <span className="reorder-demo-label">Local preview data</span>}<button className="btn" disabled={!data?.batches?.length} onClick={() => exportAnalyticsCsv(filters)}>Export CSV</button></div>} />
+    <DashboardFilters filters={filters} onChange={setFilters} products={data?.products} batches={data?.batches} includeWindow />
     <p className="reorder-observation-note">MGO and NO use the same fixed {filters.observationMonths}-month observation window from each Magnet deployment.</p>
-    {!rows.length ? <PageState>No covered data matches the selected range. Metrics are unavailable, not zero.</PageState> : <>
+    {error && <PageState tone="error">{error}</PageState>}
+    {loading && !data && <PageState>Loading Analytics…</PageState>}
+    {data && !data.batches?.length ? <PageState>No covered data matches the selected range. Metrics are unavailable, not zero.</PageState> : null}
+    {data && data.batches?.length > 0 && <>
       <MetricGrid metrics={metrics} />
-      <div className="reorder-rate-strip"><span><strong>{formatRate(ratio(totals.md, totals.ms))}</strong><small>Delivery rate</small></span><span><strong>{formatRate(ratio(totals.msi, totals.md))}</strong><small>Activation rate</small></span><span><strong>{formatRate(ratio(totals.mgo, totals.md))}</strong><small>Order-generating Magnet rate</small></span><span><strong>{(ratio(totals.no, totals.mgo) || 0).toFixed(2)}</strong><small>Orders per ordering Magnet</small></span></div>
+      <div className="reorder-rate-strip"><span><strong>{formatRate(data.rates?.delivery)}</strong><small>Delivery rate</small></span><span><strong>{formatRate(data.rates?.activation)}</strong><small>Activation rate</small></span><span><strong>{formatRate(data.rates?.orderGenerating)}</strong><small>Order-generating Magnet rate</small></span><span><strong>{data.rates?.orderDepth == null ? "—" : Number(data.rates.orderDepth).toFixed(2)}</strong><small>Orders per ordering Magnet</small></span></div>
       <p className="reorder-data-rule">NO is based on final paid orders. Refunded, cancelled and chargeback orders remain visible below but are excluded from NO.</p>
       <div className="reorder-two-column">
-        <Breakdown title="Order type" rows={typeRows} />
-        <Breakdown title="Order status" rows={statusRows} />
+        <Breakdown title="Order type" rows={data.orderTypes || []} />
+        <Breakdown title="Order status" rows={data.orderStatuses || []} />
       </div>
       <section className="reorder-filter-diagnostic">
         <div><h2>Valid interaction filter</h2><p>MSI counts unique FC IDs only after a meaningful action. A page open alone never qualifies.</p></div>
-        <div className="reorder-filter-count"><strong>{formatNumber(totals.msi)}</strong><span>Valid unique Magnets</span></div>
-        <dl><div><dt>Bot or automation</dt><dd>{formatNumber(Math.round(excluded * 0.27))}</dd></div><div><dt>Rapid repeat</dt><dd>{formatNumber(Math.round(excluded * 0.31))}</dd></div><div><dt>Staff test</dt><dd>{formatNumber(Math.round(excluded * 0.12))}</dd></div><div><dt>No meaningful interaction</dt><dd>{formatNumber(Math.round(excluded * 0.3))}</dd></div></dl>
+        <div className="reorder-filter-count"><strong>{totals.msi === null || totals.msi === undefined ? "—" : formatNumber(totals.msi)}</strong><span>Valid unique Magnets</span></div>
+        <dl>{(data.interactionFilter?.reasons || []).map((item) => <div key={item.reason}><dt>{item.label}</dt><dd>{item.value === null ? "—" : formatNumber(item.value)}</dd></div>)}</dl>
       </section>
       <div className="reorder-two-column">
-        <Breakdown title="Discount diagnostics" rows={[{ label: "Displayed", value: sumRows(rows, "discountShown") }, { label: "Copied / viewed on Amazon", value: sumRows(rows, "discountAction") }]} />
-        <Breakdown title="Survey diagnostics" rows={[{ label: "Shown", value: sumRows(rows, "surveyShown") }, { label: "Started", value: sumRows(rows, "surveyStarted") }, { label: "Completed", value: sumRows(rows, "surveyCompleted") }]} />
+        <Breakdown title="Discount diagnostics" rows={data.discountDiagnostics || []} />
+        <Breakdown title="Survey diagnostics" rows={data.surveyDiagnostics || []} />
       </div>
       <section className="reorder-batch-analysis">
         <h2>Batch drill-down</h2>
         <div className="reorder-batch-header" aria-hidden="true"><span>Batch</span><span>MS</span><span>MD</span><span>MSI</span><span>MGO</span><span>NO</span><span>MSI / MD</span><span>MGO / MD</span><span>NO / MGO</span></div>
-        {rows.map((row) => <article key={row.id} className={expandedBatch === row.id ? "is-expanded" : ""}>
+        {data.batches.map((row) => <article key={row.id} className={expandedBatch === row.id ? "is-expanded" : ""}>
           <button className="reorder-batch-row" aria-expanded={expandedBatch === row.id} onClick={() => setExpandedBatch(expandedBatch === row.id ? null : row.id)}>
-            <span><strong>{row.code}</strong><small>{demoProducts.find((item) => item.id === row.productId)?.name}</small></span>
-            {[row.ms, row.md, row.msi, row.mgo, row.no].map((value, index) => <span key={index} data-label={metricDefinitions[index].short}>{formatNumber(value)}</span>)}
-            <span data-label="MSI / MD">{formatRate(ratio(row.msi, row.md))}</span><span data-label="MGO / MD">{formatRate(ratio(row.mgo, row.md))}</span><span data-label="NO / MGO">{(ratio(row.no, row.mgo) || 0).toFixed(2)}</span>
+            <span><strong>{row.code}</strong><small>{row.productName}</small></span>
+            {["ms", "md", "msi", "mgo", "no"].map((key) => <span key={key} data-label={key.toUpperCase()}>{row.values[key] === null ? "—" : formatNumber(row.values[key])}</span>)}
+            <span data-label="MSI / MD">{formatRate(row.rates.activation)}</span><span data-label="MGO / MD">{formatRate(row.rates.orderGenerating)}</span><span data-label="NO / MGO">{row.rates.orderDepth == null ? "—" : Number(row.rates.orderDepth).toFixed(2)}</span>
           </button>
-          {expandedBatch === row.id && <div className="reorder-batch-detail"><span><strong>{formatNumber(row.taps)}</strong><small>Raw FC taps</small></span><span><strong>{formatNumber(row.visits)}</strong><small>Landing visits</small></span><span><strong>{formatNumber(row.pdp)}</strong><small>Amazon PDP clicks</small></span><span><strong>{formatNumber(row.discountAction)}</strong><small>Discount actions</small></span><span><strong>{formatNumber(row.surveyCompleted)}</strong><small>Survey completions</small></span><p>Sources: Consumer Fulfillment · Delivery / Carrier · FC Event Tracking · Order Attribution</p></div>}
+          {expandedBatch === row.id && <div className="reorder-batch-detail"><span><strong>{formatNumber(row.diagnostics.taps)}</strong><small>Raw FC taps</small></span><span><strong>{formatNumber(row.diagnostics.visits)}</strong><small>Landing visits</small></span><span><strong>{formatNumber(row.diagnostics.pdp)}</strong><small>Amazon PDP clicks</small></span><span><strong>{formatNumber(row.diagnostics.discountAction)}</strong><small>Discount actions</small></span><span><strong>{formatNumber(row.diagnostics.surveyCompleted)}</strong><small>Survey completions</small></span><p>Sources: {row.sources.join(" · ")}</p></div>}
         </article>)}
       </section>
       <p className="reorder-export-privacy">Exports contain aggregate Product and Batch metrics only. No FC IDs, device IDs, anonymous order keys or Claim Codes are included.</p>
@@ -1826,8 +2059,10 @@ function resolvePage(path, readOnly) {
 }
 
 function ReorderApp() {
-  const [path, setPath] = useState(window.location.pathname);
+  const initialPath = window.location.pathname === "/reorder" ? "/reorder/overview" : window.location.pathname;
+  const [path, setPath] = useState(initialPath);
   const [auth, setAuth] = useState({ loading: true, user: null });
+  const [mountedPaths, setMountedPaths] = useState(() => KEEP_ALIVE_PATHS.has(initialPath) ? [initialPath] : []);
 
   useEffect(() => {
     if (window.location.pathname === "/reorder") {
@@ -1840,6 +2075,11 @@ function ReorderApp() {
   }, []);
 
   useEffect(() => {
+    if (!KEEP_ALIVE_PATHS.has(path)) return;
+    setMountedPaths((current) => current.includes(path) ? current : [...current, path]);
+  }, [path]);
+
+  useEffect(() => {
     api("/api/auth/me")
       .then((user) => setAuth({ loading: false, user }))
       .catch(() => {
@@ -1850,7 +2090,16 @@ function ReorderApp() {
 
   if (auth.loading) return <div className="reorder-boot">Loading FC Reorder…</div>;
   const readOnly = auth.user?.access?.canWriteConfig === false;
-  return <AppShell currentPath={path} user={auth.user}>{resolvePage(path, readOnly)}</AppShell>;
+  return (
+    <AppShell currentPath={path} user={auth.user}>
+      {mountedPaths.map((mountedPath) => (
+        <div key={mountedPath} hidden={mountedPath !== path}>
+          {resolvePage(mountedPath, readOnly)}
+        </div>
+      ))}
+      {!KEEP_ALIVE_PATHS.has(path) && resolvePage(path, readOnly)}
+    </AppShell>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<ReorderApp />);

@@ -7,12 +7,14 @@ export interface ReorderProductVersionRow {
   customer_id: number;
   selling_account_id: string;
   product_name: string;
+  sku: string | null;
   variant_size: string | null;
   image_url: string | null;
   asin: string;
   amazon_seller_pdp_url: string;
   attribution_url: string;
   seller_offer_available: boolean;
+  listing_confirmed: boolean;
   status: "draft" | "ready" | "active" | "retired";
   is_current: boolean;
   created_at: string;
@@ -64,12 +66,14 @@ export async function createProductVersion(input: {
   customerId: number;
   sellingAccountId: string;
   productName: string;
+  sku: string;
   variantSize: string | null;
   imageUrl: string | null;
   asin: string;
   amazonSellerPdpUrl: string;
   attributionUrl: string;
   sellerOfferAvailable: boolean;
+  listingConfirmed: boolean;
 }): Promise<ReorderProductVersionRow> {
   const { data, error } = await getSupabase()
     .from("reorder_product_version")
@@ -77,12 +81,14 @@ export async function createProductVersion(input: {
       customer_id: input.customerId,
       selling_account_id: input.sellingAccountId,
       product_name: input.productName,
+      sku: input.sku,
       variant_size: input.variantSize,
       image_url: input.imageUrl,
       asin: input.asin,
       amazon_seller_pdp_url: input.amazonSellerPdpUrl,
       attribution_url: input.attributionUrl,
       seller_offer_available: input.sellerOfferAvailable,
+      listing_confirmed: input.listingConfirmed,
       status: input.sellerOfferAvailable ? "ready" : "draft",
     })
     .select("*")

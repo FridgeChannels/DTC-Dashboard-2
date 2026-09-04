@@ -3,23 +3,42 @@ import { ReorderValidationError } from "./amazon-url.js";
 export interface ReorderProductCsvRow {
   rowNumber: number;
   productName: string;
+  sku: string;
   variantSize: string;
   marketplaceCode: string;
-  sellingAccount: string;
+  sellerId: string;
   asin: string;
   amazonSellerPdpUrl: string;
-  attributionUrl: string;
-  sellerOfferAvailable: boolean;
   imageUrl: string;
 }
 
+// TODO(ATTRIB-URL): Do not collect "Attribution-tagged Seller PDP URL" from Brand.
+// After the Amazon Attribution / FC tagging API is confirmed, compose it from the Seller PDP.
+const HEADER_ALIASES: Record<string, string> = {
+  marketplace: "marketplace",
+  "seller id": "seller id",
+  "selling account": "seller id",
+  "seller sku": "seller sku",
+  sku: "seller sku",
+  asin: "asin",
+  "product title": "product title",
+  "product name": "product title",
+  "variant / size": "variant / size",
+  "variant/size": "variant / size",
+  "seller-specific amazon url": "seller-specific amazon url",
+  "amazon-generated seller pdp url": "seller-specific amazon url",
+  "product image url": "product image url",
+  "product image": "product image url",
+};
+
 const REQUIRED_HEADERS = [
-  "product name",
   "marketplace",
-  "selling account",
+  "seller id",
+  "seller sku",
   "asin",
-  "amazon-generated seller pdp url",
-  "attribution-tagged seller pdp url",
+  "product title",
+  "variant / size",
+  "seller-specific amazon url",
 ] as const;
 
 function parseCells(csv: string): string[][] {
@@ -61,10 +80,6 @@ function parseCells(csv: string): string[][] {
   return rows;
 }
 
-function truthy(value: string): boolean {
-  return ["1", "true", "yes", "y"].includes(value.trim().toLowerCase());
-}
-
 export function parseReorderProductCsv(csv: unknown): ReorderProductCsvRow[] {
   if (typeof csv !== "string" || !csv.trim()) {
     throw new ReorderValidationError("Choose a non-empty CSV file");
@@ -74,7 +89,7 @@ export function parseReorderProductCsv(csv: unknown): ReorderProductCsvRow[] {
     throw new ReorderValidationError("CSV must include a header and at least one product");
   }
 
-  const headers = rows[0].map((header) => header.trim().toLowerCase());
+  const headers = rows[0].map((header) => HEADER_ALIASES[header.trim().toLowerCase()] || header.trim().toLowerCase());
   const indexes = new Map(headers.map((header, index) => [header, index]));
   const missing = REQUIRED_HEADERS.filter((header) => !indexes.has(header));
   if (missing.length) {
@@ -87,14 +102,13 @@ export function parseReorderProductCsv(csv: unknown): ReorderProductCsvRow[] {
   const get = (cells: string[], header: string) => cells[indexes.get(header) ?? -1] || "";
   return rows.slice(1).map((cells, index) => ({
     rowNumber: index + 2,
-    productName: get(cells, "product name"),
+    productName: get(cells, "product title"),
+    sku: get(cells, "seller sku"),
     variantSize: get(cells, "variant / size"),
     marketplaceCode: get(cells, "marketplace").toUpperCase(),
-    sellingAccount: get(cells, "selling account"),
+    sellerId: get(cells, "seller id"),
     asin: get(cells, "asin"),
-    amazonSellerPdpUrl: get(cells, "amazon-generated seller pdp url"),
-    attributionUrl: get(cells, "attribution-tagged seller pdp url"),
-    sellerOfferAvailable: truthy(get(cells, "seller offer availability")),
+    amazonSellerPdpUrl: get(cells, "seller-specific amazon url"),
     imageUrl: get(cells, "product image url"),
   }));
 }

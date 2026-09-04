@@ -13,6 +13,7 @@ import {
   type ConsumerPublishError,
 } from "../reorder/consumer-experience.js";
 import { ReorderValidationError } from "../reorder/amazon-url.js";
+import { revealClaimCode } from "./reorder/claim-code-crypto.js";
 import { listReorderDiscounts } from "./reorder-discount.service.js";
 import { listReorderSurveys } from "./reorder/survey-service.js";
 
@@ -36,7 +37,7 @@ async function loadBatchExperience(customerId: number, batchId: string, selected
   const [product, brand, discounts] = await Promise.all([
     productRepo.findProductVersion(customerId, batch.product_version_id),
     amazonRepo.getBrandSettings(customerId),
-    listReorderDiscounts(customerId),
+    listReorderDiscounts(customerId, { revealGroupCodes: true }),
   ]);
   const account = product
     ? await amazonRepo.findSellingAccount(customerId, product.selling_account_id)
@@ -204,7 +205,7 @@ export async function resolvePublishedReorderExperience(fcIdValue: string) {
       const assigned = await discountRepo.allocateSingleUseClaimCode(unit.customer_id, discount.id, fcId);
       if (!assigned) continue;
       await discountRepo.markClaimCodeEvent(unit.customer_id, discount.id, fcId, "displayed");
-      resolvedDiscounts.push({ ...discount, claimCode: assigned.code });
+      resolvedDiscounts.push({ ...discount, claimCode: revealClaimCode(assigned.code) });
     } else if (discount.kind === "amazon_promotion" && discount.claimCodeMode === "group") {
       resolvedDiscounts.push({ ...discount, claimCode: discount.groupClaimCode });
     } else {

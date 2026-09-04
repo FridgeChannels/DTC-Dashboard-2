@@ -81,6 +81,14 @@ describe("Single-use Claim Code parser", () => {
     expect(result.rejected).toHaveLength(1);
   });
 
+  it("rejects path traversal and unsupported file types", async () => {
+    const file = Buffer.from("SAVE-001").toString("base64");
+    await expect(parseSingleUseClaimCodeFile({ fileName: "../codes.csv", fileBase64: file }))
+      .rejects.toThrow("File name is not allowed");
+    await expect(parseSingleUseClaimCodeFile({ fileName: "codes.exe", fileBase64: file }))
+      .rejects.toThrow("File type must be CSV, TXT, XLSX, XLS");
+  });
+
   it("does not guess a code column in a multi-column unknown file", async () => {
     const file = Buffer.from("Value,Metadata\nSAVE-001,Anything").toString("base64");
     await expect(parseSingleUseClaimCodeFile({ fileName: "unknown.csv", fileBase64: file }))

@@ -27,6 +27,10 @@ export interface OrderAttributionIssue {
 const SAFE_KEY = /^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/;
 const FINAL_STATUSES = new Set<ReorderOrderStatus>(["paid", "captured", "fulfilled", "partially_refunded"]);
 
+export function isFinalOrderStatus(status: string | null | undefined): boolean {
+  return FINAL_STATUSES.has(String(status ?? "").toLowerCase() as ReorderOrderStatus);
+}
+
 export function validateAttributedOrderEvent(event: AttributedOrderEvent, index = 0, contexts?: ReadonlyMap<string, AttributionContext>): OrderAttributionIssue[] {
   const issues: OrderAttributionIssue[] = [];
   if (!SAFE_KEY.test(event.source)) issues.push({ index, code: "invalid_source" });

@@ -128,6 +128,12 @@ import {
   handleReorderDataSourceTemplate,
 } from "./api/reorder-data-sources.js";
 import {
+  handleExportReorderAnalytics,
+  handleGetReorderAnalytics,
+  handleGetReorderAnalyticsBatches,
+  handleGetReorderOverview,
+} from "./api/reorder-metrics.js";
+import {
   handleGetBrandCollectConfig,
   handlePostBrand,
   handlePostBrandColors,
@@ -287,6 +293,26 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && pathname === "/api/reorder/amazon-setup") {
     await handleGetReorderAmazonSetup(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/reorder/overview") {
+    await handleGetReorderOverview(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/reorder/analytics") {
+    await handleGetReorderAnalytics(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/reorder/analytics/batches") {
+    await handleGetReorderAnalyticsBatches(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/reorder/analytics/export.csv") {
+    await handleExportReorderAnalytics(req, res, url);
     return;
   }
 

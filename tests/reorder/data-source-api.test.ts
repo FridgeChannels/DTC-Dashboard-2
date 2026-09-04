@@ -40,7 +40,7 @@ describe("Reorder Data Source API", () => {
     const out = response(); const input = { customerId: 999, csv: "data", fileName: "facts.csv" };
     await handleCommitReorderDataSource(request(input), out.res, "fulfillment", "import");
     expect(assertCanWrite).toHaveBeenCalledOnce();
-    expect(commitImport).toHaveBeenCalledWith(7, "fulfillment", input, "import");
+    expect(commitImport).toHaveBeenCalledWith(7, "fulfillment", input, "import", "7");
     expect(out.status()).toBe(201);
   });
 });

@@ -47,3 +47,35 @@ export async function listImportErrors(customerId: number, importId: string) {
   const { data, error } = await getSupabase().from("reorder_data_import_error").select("row_number,field_name,error_code,safe_message").eq("customer_id", customerId).eq("import_id", importId).order("row_number");
   throwIfError(error); return data ?? [];
 }
+
+export interface ReorderSourceFactRow {
+  source_kind: "fulfillment" | "delivery" | "order_attribution";
+  occurred_at: string;
+  product_version_id: string | null;
+  batch_id: string | null;
+  fc_id: string | null;
+  quantity: number;
+  anonymous_order_key: string | null;
+  attribution_key: string | null;
+  order_status: string | null;
+  order_type: string | null;
+}
+
+export async function listSourceFacts(customerId: number, coveredTo: string) {
+  const rows: ReorderSourceFactRow[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await getSupabase()
+      .from("reorder_source_fact")
+      .select("source_kind,occurred_at,product_version_id,batch_id,fc_id,quantity,anonymous_order_key,attribution_key,order_status,order_type")
+      .eq("customer_id", customerId)
+      .lte("occurred_at", /^\d{4}-\d{2}-\d{2}$/.test(coveredTo) ? `${coveredTo}T23:59:59.999Z` : coveredTo)
+      .order("occurred_at", { ascending: true })
+      .range(from, from + pageSize - 1);
+    throwIfError(error);
+    const page = (data ?? []) as ReorderSourceFactRow[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}

@@ -8,14 +8,17 @@ import {
 import { parseReorderProductCsv } from "../reorder/product-csv.js";
 
 export interface CreateReorderProductInput {
-  sellingAccountId: string;
+  sellingAccountId?: string;
+  marketplaceCode?: string;
+  sellerId?: string;
   productName: string;
+  sku: string;
   variantSize?: string | null;
   imageUrl?: string | null;
   asin: string;
   amazonSellerPdpUrl: string;
-  attributionUrl: string;
   sellerOfferAvailable?: boolean;
+  listingConfirmed?: boolean;
 }
 
 function requiredText(value: unknown, field: string, maxLength = 500): string {
@@ -54,15 +57,37 @@ export async function getReorderProduct(
   return { ...product, sellingAccount };
 }
 
+function resolveSellingAccount(
+  accounts: Awaited<ReturnType<typeof amazonRepo.listSellingAccounts>>,
+  input: CreateReorderProductInput,
+) {
+  const active = accounts.filter((account) => account.status === "active");
+  if (input.sellingAccountId) {
+    return active.find((account) => account.id === input.sellingAccountId) ?? null;
+  }
+  const marketplace = requiredText(input.marketplaceCode, "Marketplace", 24).toUpperCase();
+  const sellerId = requiredText(input.sellerId, "Seller ID", 32).toUpperCase();
+  const matches = active.filter(
+    (account) =>
+      account.marketplace_code === marketplace
+      && account.seller_id.toUpperCase() === sellerId,
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
 export async function createReorderProduct(
   customerId: number,
   input: CreateReorderProductInput,
   options: { allowMissingImage?: boolean } = {},
 ) {
-  const accountId = requiredText(input.sellingAccountId, "Selling Account", 80);
-  const account = await amazonRepo.findSellingAccount(customerId, accountId);
-  if (!account || account.status !== "active") {
-    throw new ReorderValidationError("Select an active Selling Account");
+  const accounts = await amazonRepo.listSellingAccounts(customerId);
+  const account = resolveSellingAccount(accounts, input);
+  if (!account) {
+    throw new ReorderValidationError("Select a Marketplace and Seller ID from Amazon setup");
+  }
+
+  if (!input.listingConfirmed) {
+    throw new ReorderValidationError("Confirm this listing is correct");
   }
 
   const asin = normalizeAsin(input.asin);
@@ -73,14 +98,13 @@ export async function createReorderProduct(
   };
   const amazonSellerPdpUrl = validateSellerPdpUrl(
     input.amazonSellerPdpUrl,
-    "Amazon-generated Seller PDP URL",
+    "Seller-specific Amazon URL",
     context,
   );
-  const attributionUrl = validateSellerPdpUrl(
-    input.attributionUrl,
-    "Attribution-tagged Seller PDP URL",
-    context,
-  );
+  // TODO(ATTRIB-URL): Replace this placeholder after the Amazon Attribution / FC
+  // tagging API is confirmed. Brand must not paste a tagged URL; FC composes it
+  // from the Seller PDP (and any setup-level tag/credentials the API requires).
+  const attributionUrl = amazonSellerPdpUrl;
 
   const imageUrl = input.imageUrl?.trim() || null;
   if (!imageUrl && !options.allowMissingImage) {
@@ -90,13 +114,15 @@ export async function createReorderProduct(
   return productRepo.createProductVersion({
     customerId,
     sellingAccountId: account.id,
-    productName: requiredText(input.productName, "Product name", 200),
-    variantSize: input.variantSize?.trim() || null,
+    productName: requiredText(input.productName, "Product title", 200),
+    sku: requiredText(input.sku, "SKU", 80),
+    variantSize: requiredText(input.variantSize, "Variant / Size", 80),
     imageUrl: imageUrl ? requiredText(imageUrl, "Product image", 2000) : null,
     asin,
     amazonSellerPdpUrl,
     attributionUrl,
-    sellerOfferAvailable: Boolean(input.sellerOfferAvailable),
+    sellerOfferAvailable: input.sellerOfferAvailable !== false,
+    listingConfirmed: true,
   });
 }
 
@@ -112,25 +138,30 @@ export async function importReorderProducts(customerId: number, csv: unknown) {
 
   for (const row of rows) {
     try {
-      const accountName = row.sellingAccount.trim().toLowerCase();
+      const sellerKey = row.sellerId.trim().toUpperCase();
       const matches = accounts.filter((account) =>
         account.status === "active"
         && account.marketplace_code === row.marketplaceCode
-        && (account.id === row.sellingAccount || account.label.trim().toLowerCase() === accountName));
+        && (
+          account.seller_id.toUpperCase() === sellerKey
+          || account.id === row.sellerId
+          || account.label.trim().toLowerCase() === row.sellerId.trim().toLowerCase()
+        ));
       if (matches.length !== 1) {
         throw new ReorderValidationError(
-          matches.length ? "Selling Account is ambiguous" : "Selling Account and Marketplace do not match Amazon setup",
+          matches.length ? "Seller ID is ambiguous" : "Marketplace and Seller ID do not match Amazon setup",
         );
       }
       const product = await createReorderProduct(customerId, {
         sellingAccountId: matches[0].id,
         productName: row.productName,
+        sku: row.sku,
         variantSize: row.variantSize,
         imageUrl: row.imageUrl,
         asin: row.asin,
         amazonSellerPdpUrl: row.amazonSellerPdpUrl,
-        attributionUrl: row.attributionUrl,
-        sellerOfferAvailable: row.sellerOfferAvailable,
+        sellerOfferAvailable: true,
+        listingConfirmed: true,
       }, { allowMissingImage: true });
       results.push({ rowNumber: row.rowNumber, productName: row.productName, productId: product.id });
     } catch (error) {

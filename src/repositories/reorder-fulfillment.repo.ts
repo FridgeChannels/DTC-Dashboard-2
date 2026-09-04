@@ -114,6 +114,16 @@ export async function listAllocations(customerId: number, orderIds: number[]) {
   return (data ?? []) as ReorderAllocationRow[];
 }
 
+export async function listCustomerBatches(customerId: number) {
+  const { data, error } = await getSupabase()
+    .from("reorder_fc_batch")
+    .select(BATCH_SELECT)
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false });
+  throwIfError(error);
+  return (data ?? []) as unknown as ReorderBatchRow[];
+}
+
 export async function listBatches(customerId: number, orderIds: number[]) {
   if (!orderIds.length) return [];
   const { data, error } = await getSupabase()

@@ -11,6 +11,9 @@ import {
 } from "./data-source-contract.js";
 import { REORDER_ORDER_STATUSES, REORDER_ORDER_TYPES } from "./order-attribution.js";
 
+const MAX_SOURCE_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_SOURCE_ROWS = 10_000;
+
 export interface ReorderParserReferences {
   productVersionIds?: ReadonlySet<string>;
   batchIds?: ReadonlySet<string>;
@@ -66,8 +69,12 @@ export function parseReorderDataSourceCsv(
   references: ReorderParserReferences = {},
 ): ReorderImportPreview {
   const text = Buffer.isBuffer(input) ? input.toString("utf8") : input;
+  if (Buffer.byteLength(text, "utf8") > MAX_SOURCE_FILE_BYTES) {
+    throw new Error("CSV import is limited to 5 MB");
+  }
   const rows = csvRows(text.replace(/^\uFEFF/, ""));
   if (!rows.length) throw new Error("CSV is empty");
+  if (rows.length - 1 > MAX_SOURCE_ROWS) throw new Error("CSV import is limited to 10,000 rows");
   const headers = rows[0].map((header) => header.trim().toLowerCase());
   const duplicates = headers.filter((header, index) => headers.indexOf(header) !== index);
   if (duplicates.length) throw new Error(`Duplicate CSV header: ${duplicates[0]}`);

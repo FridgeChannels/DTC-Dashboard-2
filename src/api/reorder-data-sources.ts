@@ -26,7 +26,7 @@ export async function handlePreviewReorderDataSource(req: IncomingMessage, res: 
 }
 
 export async function handleCommitReorderDataSource(req: IncomingMessage, res: ServerResponse, kind: string, mode: "import" | "replace") {
-  try { const input = await readJsonBody<Record<string, unknown>>(req); await assertRequestCanWriteConfig(req, res); const customerId = await getRequestCustomerId(req, res); json(res, 201, await commitReorderDataImport(customerId, kind, input, mode)); }
+  try { const input = await readJsonBody<Record<string, unknown>>(req); await assertRequestCanWriteConfig(req, res); const customerId = await getRequestCustomerId(req, res); json(res, 201, await commitReorderDataImport(customerId, kind, input, mode, String(customerId))); }
   catch (error) { fail(res, error, `Failed to ${mode} data`); }
 }
 

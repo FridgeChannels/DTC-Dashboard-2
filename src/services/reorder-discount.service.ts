@@ -7,6 +7,7 @@ import {
   parseSingleUseClaimCodeFile,
   type UploadedDiscountFile,
 } from "../reorder/discount-files.js";
+import { encryptClaimCode, hashClaimCode, maskClaimCode } from "./reorder/claim-code-crypto.js";
 
 function requiredText(value: unknown, field: string, maxLength = 500): string {
   if (typeof value !== "string" || !value.trim()) throw new ReorderValidationError(`${field} is required`);
@@ -59,7 +60,7 @@ function poolSummary(codes: Awaited<ReturnType<typeof discountRepo.listClaimCode
   };
 }
 
-export async function listReorderDiscounts(customerId: number) {
+export async function listReorderDiscounts(customerId: number, options: { revealGroupCodes?: boolean } = {}) {
   const [discounts, accounts] = await Promise.all([
     discountRepo.listDiscounts(customerId),
     amazonRepo.listSellingAccounts(customerId),
@@ -72,13 +73,19 @@ export async function listReorderDiscounts(customerId: number) {
   const bindingMap = groupBindings(bindings);
   const accountMap = new Map(accounts.map((account) => [account.id, account]));
   const productMap = new Map(products.map((product) => [product.id, product]));
-  return Promise.all(discounts.map(async (discount) => {
+  const singleUseIds = discounts
+    .filter((discount) => discount.discount_kind === "amazon_promotion" && discount.claim_code_mode === "single_use")
+    .map((discount) => discount.id);
+  const codeRows = await discountRepo.listClaimCodesForDiscounts(customerId, singleUseIds);
+  const codeMap = groupBindings(codeRows);
+  return discounts.map((discount) => {
     const discountBindings = bindingMap.get(discount.id) ?? [];
     const codePool = discount.discount_kind === "amazon_promotion" && discount.claim_code_mode === "single_use"
-      ? poolSummary(await discountRepo.listClaimCodes(customerId, discount.id), discount.code_low_threshold)
+      ? poolSummary(codeMap.get(discount.id) ?? [], discount.code_low_threshold)
       : null;
     return {
       ...discount,
+      group_claim_code: options.revealGroupCodes ? discount.group_claim_code : maskClaimCode(discount.group_claim_code),
       sellingAccount: accountMap.get(discount.selling_account_id) ?? null,
       products: discountBindings.map((binding) => ({
         ...productMap.get(binding.product_version_id),
@@ -86,7 +93,7 @@ export async function listReorderDiscounts(customerId: number) {
       })),
       codePool,
     };
-  }));
+  });
 }
 
 export async function getReorderDiscount(customerId: number, discountId: string) {
@@ -103,6 +110,7 @@ export async function getReorderDiscount(customerId: number, discountId: string)
     : null;
   return {
     ...discount,
+    group_claim_code: maskClaimCode(discount.group_claim_code),
     sellingAccount: account,
     products: bindings.map((binding) => ({ ...productMap.get(binding.product_version_id), isFeatured: binding.is_featured })),
     codePool,
@@ -263,11 +271,14 @@ export async function importSingleUseClaimCodes(
     throw new ReorderValidationError("Single-use Amazon Promotion not found");
   }
   const parsed = await parseSingleUseClaimCodeFile(input);
-  const existing = await discountRepo.listClaimCodes(customerId, discountId);
-  const existingCodes = new Set(existing.map((row) => row.code));
-  const alreadyImported = parsed.accepted.filter((code) => existingCodes.has(code));
-  const newCodes = parsed.accepted.filter((code) => !existingCodes.has(code));
-  const inserted = await discountRepo.insertClaimCodes(customerId, discountId, newCodes);
+  const existingHashes = await discountRepo.listClaimCodeHashes(customerId, discountId);
+  const alreadyImported = parsed.accepted.filter((code) => existingHashes.has(hashClaimCode(code)));
+  const newCodes = parsed.accepted.filter((code) => !existingHashes.has(hashClaimCode(code)));
+  const inserted = await discountRepo.insertClaimCodes(
+    customerId,
+    discountId,
+    newCodes.map((code) => ({ hash: hashClaimCode(code), ciphertext: encryptClaimCode(code) })),
+  );
   await discountRepo.createImport({
     customerId,
     importKind: "single_use_claim_codes",
@@ -288,8 +299,11 @@ export async function importSingleUseClaimCodes(
     accepted: inserted.length,
     duplicates: parsed.duplicates.length + alreadyImported.length,
     rejected: parsed.rejected.length,
-    duplicateRows: [...parsed.duplicates, ...alreadyImported.map((value) => ({ rowNumber: 0, value }))],
-    rejectedRows: parsed.rejected,
+    duplicateRows: [
+      ...parsed.duplicates.map((row) => ({ rowNumber: row.rowNumber, value: "••••" })),
+      ...alreadyImported.map(() => ({ rowNumber: 0, value: "••••" })),
+    ],
+    rejectedRows: parsed.rejected.map((row) => ({ rowNumber: row.rowNumber, value: "••••", reason: row.reason })),
     codePool: poolSummary(allCodes, discount.code_low_threshold),
     amazonValidityVerified: false,
   };

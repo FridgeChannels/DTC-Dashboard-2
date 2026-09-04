@@ -98,3 +98,7 @@ export function normalizeSellerId(raw: string): string {
   }
   return sellerId;
 }
+
+// TODO(ATTRIB-URL): Look up the Amazon Attribution / FC tagging API before composing
+// the consumer destination. Brand supplies the Seller PDP; FC must attach the tag.
+// Do not guess query params (tag=, maas=, etc.) until the API contract is confirmed.

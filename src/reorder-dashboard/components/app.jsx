@@ -5,7 +5,7 @@ const navigation = [
   { label: "Products & FC", path: "/reorder/products", match: "/reorder/products" },
   { label: "Discounts", path: "/reorder/discounts", match: "/reorder/discounts" },
   { label: "Surveys", path: "/reorder/surveys", match: "/reorder/surveys" },
-  { label: "Analytics", path: "/reorder/analytics", pending: true },
+  { label: "Analytics", path: "/reorder/analytics" },
 ];
 
 const settingsNavigation = [
@@ -71,6 +71,14 @@ function navigate(path) {
 
 function formatNumber(value) {
   return new Intl.NumberFormat().format(Number(value || 0));
+}
+
+function formatRate(value) {
+  return value === null || !Number.isFinite(value) ? "—" : `${(value * 100).toFixed(1)}%`;
+}
+
+function ratio(numerator, denominator) {
+  return denominator > 0 ? numerator / denominator : null;
 }
 
 function formatDate(value, fallback = "—") {
@@ -155,19 +163,138 @@ function PageHeader({ title, action }) {
   );
 }
 
+const demoProducts = [
+  { id: "product-hydration", name: "Daily Hydration" },
+  { id: "product-sleep", name: "Deep Sleep Blend" },
+];
+
+const demoBatches = [
+  { id: "batch-r2408", code: "R-2408", productId: "product-hydration", shippedAt: "2026-08-04", ms: 1840, md: 1712, msi: 1086, mgo: 392, no: 681, taps: 1964, visits: 1431, pdp: 748, storefront: 184, discountShown: 892, discountAction: 426, surveyShown: 604, surveyStarted: 321, surveyCompleted: 244 },
+  { id: "batch-r2407", code: "R-2407", productId: "product-hydration", shippedAt: "2026-07-02", ms: 1520, md: 1426, msi: 887, mgo: 301, no: 526, taps: 1677, visits: 1198, pdp: 621, storefront: 149, discountShown: 731, discountAction: 348, surveyShown: 508, surveyStarted: 270, surveyCompleted: 201 },
+  { id: "batch-s2408", code: "S-2408", productId: "product-sleep", shippedAt: "2026-08-18", ms: 1120, md: 1028, msi: 593, mgo: 188, no: 309, taps: 1084, visits: 806, pdp: 386, storefront: 117, discountShown: 479, discountAction: 201, surveyShown: 342, surveyStarted: 166, surveyCompleted: 119 },
+  { id: "batch-s2406", code: "S-2406", productId: "product-sleep", shippedAt: "2026-06-11", ms: 980, md: 901, msi: 501, mgo: 142, no: 238, taps: 912, visits: 679, pdp: 311, storefront: 94, discountShown: 403, discountAction: 157, surveyShown: 289, surveyStarted: 137, surveyCompleted: 96 },
+];
+
+const metricDefinitions = [
+  { key: "ms", short: "MS", label: "Magnets Shipped", source: "Consumer Fulfillment", rate: null },
+  { key: "md", short: "MD", label: "Magnets Delivered", source: "Delivery / Carrier", rate: "Delivery rate" },
+  { key: "msi", short: "MSI", label: "Scanned & Interacted", source: "FC Event Tracking", rate: "Activation rate" },
+  { key: "mgo", short: "MGO", label: "Generating Orders", source: "Order Attribution", rate: "MGO / MD" },
+  { key: "no", short: "NO", label: "Number of Orders", source: "Order Attribution", rate: "NO / MGO" },
+];
+
+function defaultDashboardFilters() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    from: params.get("from") || "2026-06-01",
+    to: params.get("to") || "2026-09-04",
+    productId: params.get("product_id") || "",
+    batchId: params.get("batch_id") || "",
+    observationMonths: params.get("observation_months") || "3",
+  };
+}
+
+function demoRowsFor(filters) {
+  return demoBatches.filter((batch) =>
+    (!filters.productId || batch.productId === filters.productId)
+    && (!filters.batchId || batch.id === filters.batchId)
+    && (!filters.from || batch.shippedAt >= filters.from)
+    && (!filters.to || batch.shippedAt <= filters.to));
+}
+
+function sumRows(rows, key) {
+  return rows.reduce((total, row) => total + Number(row[key] || 0), 0);
+}
+
+function metricsForRows(rows) {
+  const totals = Object.fromEntries(["ms", "md", "msi", "mgo", "no"].map((key) => [key, sumRows(rows, key)]));
+  const rates = {
+    md: ratio(totals.md, totals.ms),
+    msi: ratio(totals.msi, totals.md),
+    mgo: ratio(totals.mgo, totals.md),
+    no: ratio(totals.no, totals.mgo),
+  };
+  return metricDefinitions.map((definition) => ({
+    ...definition,
+    value: rows.length ? totals[definition.key] : null,
+    availability: rows.length ? (definition.key === "msi" && rows.some((row) => row.id === "batch-s2406") ? "partial" : "available") : "unavailable",
+    rateValue: definition.rate ? rates[definition.key] : null,
+  }));
+}
+
+function dashboardQuery(filters, includeWindow = false) {
+  const params = new URLSearchParams();
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  if (filters.productId) params.set("product_id", filters.productId);
+  if (filters.batchId) params.set("batch_id", filters.batchId);
+  if (includeWindow) params.set("observation_months", filters.observationMonths);
+  return params.toString();
+}
+
+function DashboardFilters({ filters, onChange, includeWindow = false }) {
+  const batches = demoBatches.filter((batch) => !filters.productId || batch.productId === filters.productId);
+  const update = (key, value) => onChange({ ...filters, [key]: value, ...(key === "productId" ? { batchId: "" } : {}) });
+  return <div className="reorder-dashboard-filters" aria-label="Analytics filters">
+    <label><span>Date from</span><input className="cfg-input" type="date" value={filters.from} onChange={(event) => update("from", event.target.value)} /></label>
+    <label><span>Date to</span><input className="cfg-input" type="date" value={filters.to} onChange={(event) => update("to", event.target.value)} /></label>
+    <label><span>Product</span><select className="cfg-input" value={filters.productId} onChange={(event) => update("productId", event.target.value)}><option value="">All products</option>{demoProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
+    <label><span>Batch</span><select className="cfg-input" value={filters.batchId} onChange={(event) => update("batchId", event.target.value)}><option value="">All batches</option>{batches.map((batch) => <option key={batch.id} value={batch.id}>{batch.code}</option>)}</select></label>
+    {includeWindow && <label><span>Observation window</span><select className="cfg-input" value={filters.observationMonths} onChange={(event) => update("observationMonths", event.target.value)}>{[1, 3, 6, 12].map((month) => <option key={month} value={month}>{month} {month === 1 ? "month" : "months"}</option>)}</select></label>}
+  </div>;
+}
+
+function MetricGrid({ metrics, onMetric }) {
+  return <div className="reorder-metric-grid">{metrics.map((metric) => <button type="button" key={metric.key} className="reorder-metric" onClick={() => onMetric?.(metric.key)}>
+    <span className="reorder-metric-code">{metric.short}</span>
+    <strong>{metric.value === null ? "—" : formatNumber(metric.value)}</strong>
+    <span className="reorder-metric-name">{metric.label}</span>
+    <span className={`reorder-availability is-${metric.availability}`}>{humanize(metric.availability)}</span>
+    <small>{metric.rate ? `${metric.rate} · ${formatRate(metric.rateValue)}` : metric.source}</small>
+  </button>)}</div>;
+}
+
 function OverviewPage() {
-  return (
-    <div className="reorder-page">
-      <PageHeader title="Overview" />
-      <div className="reorder-foundation">
-        <p>Amazon setup and Product Version management are ready for configuration.</p>
-        <div className="reorder-foundation-actions">
-          <button className="btn primary" onClick={() => navigate("/reorder/settings/amazon")}>Configure Amazon</button>
-          <button className="btn" onClick={() => navigate("/reorder/products")}>View products</button>
-        </div>
+  const [filters, setFilters] = useState(defaultDashboardFilters);
+  const rows = useMemo(() => demoRowsFor(filters), [filters]);
+  const metrics = useMemo(() => metricsForRows(rows), [rows]);
+  const totals = Object.fromEntries(metrics.map((metric) => [metric.key, metric.value]));
+  const funnelKeys = ["ms", "md", "msi", "mgo"];
+  const diagnosticKeys = [
+    ["Landing visits", "visits"], ["Amazon PDP clicks", "pdp"], ["Seller Storefront clicks", "storefront"],
+    ["Discount actions", "discountAction"], ["Survey completions", "surveyCompleted"],
+  ];
+  const openAnalytics = (metric) => navigate(`/reorder/analytics?${dashboardQuery(filters)}${metric ? `&metric=${metric}` : ""}`);
+  return <div className="reorder-page reorder-dashboard-page">
+    <PageHeader title="Overview" action={<span className="reorder-demo-label">Local preview data</span>} />
+    <DashboardFilters filters={filters} onChange={setFilters} />
+    <section className="reorder-attention" aria-labelledby="needs-attention-title">
+      <div><h2 id="needs-attention-title">Needs attention</h2><p>FC Event coverage is partial for Batch S-2406. MSI excludes the uncovered scope.</p></div>
+      <button className="btn" onClick={() => navigate("/reorder/settings/data-sources")}>Fix</button>
+    </section>
+    <MetricGrid metrics={metrics} onMetric={openAnalytics} />
+    <section className="reorder-dashboard-split">
+      <div className="reorder-funnel" data-testid="unique-magnet-funnel">
+        <h2>Unique Magnet Funnel</h2>
+        <div>{funnelKeys.map((key, index) => { const metric = metrics.find((item) => item.key === key); const width = totals.ms ? Math.max(14, (metric.value / totals.ms) * 100) : 0; return <button key={key} onClick={() => openAnalytics(key)}><span><b>{metric.short}</b>{metric.label}</span><strong>{metric.value === null ? "—" : formatNumber(metric.value)}</strong><i style={{ width: `${width}%` }} />{index > 0 && <small>{formatRate(ratio(metric.value, metrics[index - 1].value))} from prior stage</small>}</button>; })}</div>
       </div>
-    </div>
-  );
+      <div className="reorder-order-depth" data-testid="order-depth">
+        <h2>Order Depth</h2>
+        <strong>{totals.no === null ? "—" : formatNumber(totals.no)}</strong>
+        <span>Total final orders</span>
+        <p><b>{totals.no === null ? "—" : (ratio(totals.no, totals.mgo) || 0).toFixed(2)}</b> orders per ordering Magnet</p>
+        <small>{filters.observationMonths || 3}-month observation · Order Attribution</small>
+      </div>
+    </section>
+    <section className="reorder-diagnostics">
+      <h2>Behavioral diagnostics</h2>
+      <div>{diagnosticKeys.map(([label, key]) => <span key={key}><strong>{rows.length ? formatNumber(sumRows(rows, key)) : "—"}</strong><small>{label}</small></span>)}</div>
+    </section>
+    <section className="reorder-config-health">
+      <h2>Active configuration</h2>
+      <div><span><strong>2</strong><small>Products</small></span><span><strong>4</strong><small>Batches</small></span><span><strong>5,460</strong><small>FC IDs</small></span><span><strong>3</strong><small>Discounts</small></span><span><strong>2</strong><small>Surveys</small></span></div>
+    </section>
+  </div>;
 }
 
 const blankAccount = {
@@ -1589,6 +1716,83 @@ function DataSourcesPage({ readOnly }) {
   </div>;
 }
 
+function exportAnalyticsCsv(rows, filters) {
+  const columns = ["Batch", "Product", "Shipped date", "MS", "MD", "MSI", "MGO", "NO", "Delivery rate", "Activation rate", "MGO / MD", "NO / MGO", "Coverage", "Sources"];
+  const data = rows.map((row) => {
+    const product = demoProducts.find((item) => item.id === row.productId)?.name || "Unknown";
+    return [row.code, product, row.shippedAt, row.ms, row.md, row.msi, row.mgo, row.no, formatRate(ratio(row.md, row.ms)), formatRate(ratio(row.msi, row.md)), formatRate(ratio(row.mgo, row.md)), (ratio(row.no, row.mgo) || 0).toFixed(2), row.id === "batch-s2406" ? "Partial" : "Available", "Fulfillment · Delivery · FC Event · Order Attribution"];
+  });
+  const note = [`Observation window: ${filters.observationMonths} months`, "No FC IDs, device IDs, anonymous order keys or Claim Codes are included"];
+  const csv = [note, [], columns, ...data].map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "fc-reorder-analytics.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function Breakdown({ title, rows }) {
+  const max = Math.max(...rows.map((row) => row.value), 1);
+  return <section className="reorder-breakdown"><h2>{title}</h2><div>{rows.map((row) => <span key={row.label}><small>{row.label}</small><i><b style={{ width: `${(row.value / max) * 100}%` }} /></i><strong>{formatNumber(row.value)}</strong></span>)}</div></section>;
+}
+
+function AnalyticsPage() {
+  const [filters, setFilters] = useState(defaultDashboardFilters);
+  const [expandedBatch, setExpandedBatch] = useState(null);
+  const rows = useMemo(() => demoRowsFor(filters), [filters]);
+  const metrics = useMemo(() => metricsForRows(rows), [rows]);
+  const totals = Object.fromEntries(metrics.map((metric) => [metric.key, metric.value]));
+  const totalOrders = totals.no || 0;
+  const typeRows = [
+    ["One-time", 0.55], ["New subscription first charge", 0.2], ["Subscription renewal", 0.18], ["Cross-sell", 0.07],
+  ].map(([label, share]) => ({ label, value: Math.round(totalOrders * share) }));
+  typeRows[0].value += totalOrders - typeRows.reduce((sum, row) => sum + row.value, 0);
+  const statusRows = [
+    { label: "Final paid", value: totalOrders },
+    { label: "Refunded", value: Math.round(totalOrders * 0.052) },
+    { label: "Cancelled", value: Math.round(totalOrders * 0.028) },
+    { label: "Chargeback", value: Math.round(totalOrders * 0.004) },
+  ];
+  const excluded = Math.round(sumRows(rows, "taps") * 0.13);
+  return <div className="reorder-page reorder-dashboard-page">
+    <PageHeader title="Analytics" action={<div className="reorder-header-actions"><span className="reorder-demo-label">Local preview data</span><button className="btn" disabled={!rows.length} onClick={() => exportAnalyticsCsv(rows, filters)}>Export CSV</button></div>} />
+    <DashboardFilters filters={filters} onChange={setFilters} includeWindow />
+    <p className="reorder-observation-note">MGO and NO use the same fixed {filters.observationMonths}-month observation window from each Magnet deployment.</p>
+    {!rows.length ? <PageState>No covered data matches the selected range. Metrics are unavailable, not zero.</PageState> : <>
+      <MetricGrid metrics={metrics} />
+      <div className="reorder-rate-strip"><span><strong>{formatRate(ratio(totals.md, totals.ms))}</strong><small>Delivery rate</small></span><span><strong>{formatRate(ratio(totals.msi, totals.md))}</strong><small>Activation rate</small></span><span><strong>{formatRate(ratio(totals.mgo, totals.md))}</strong><small>Order-generating Magnet rate</small></span><span><strong>{(ratio(totals.no, totals.mgo) || 0).toFixed(2)}</strong><small>Orders per ordering Magnet</small></span></div>
+      <p className="reorder-data-rule">NO is based on final paid orders. Refunded, cancelled and chargeback orders remain visible below but are excluded from NO.</p>
+      <div className="reorder-two-column">
+        <Breakdown title="Order type" rows={typeRows} />
+        <Breakdown title="Order status" rows={statusRows} />
+      </div>
+      <section className="reorder-filter-diagnostic">
+        <div><h2>Valid interaction filter</h2><p>MSI counts unique FC IDs only after a meaningful action. A page open alone never qualifies.</p></div>
+        <div className="reorder-filter-count"><strong>{formatNumber(totals.msi)}</strong><span>Valid unique Magnets</span></div>
+        <dl><div><dt>Bot or automation</dt><dd>{formatNumber(Math.round(excluded * 0.27))}</dd></div><div><dt>Rapid repeat</dt><dd>{formatNumber(Math.round(excluded * 0.31))}</dd></div><div><dt>Staff test</dt><dd>{formatNumber(Math.round(excluded * 0.12))}</dd></div><div><dt>No meaningful interaction</dt><dd>{formatNumber(Math.round(excluded * 0.3))}</dd></div></dl>
+      </section>
+      <div className="reorder-two-column">
+        <Breakdown title="Discount diagnostics" rows={[{ label: "Displayed", value: sumRows(rows, "discountShown") }, { label: "Copied / viewed on Amazon", value: sumRows(rows, "discountAction") }]} />
+        <Breakdown title="Survey diagnostics" rows={[{ label: "Shown", value: sumRows(rows, "surveyShown") }, { label: "Started", value: sumRows(rows, "surveyStarted") }, { label: "Completed", value: sumRows(rows, "surveyCompleted") }]} />
+      </div>
+      <section className="reorder-batch-analysis">
+        <h2>Batch drill-down</h2>
+        <div className="reorder-batch-header" aria-hidden="true"><span>Batch</span><span>MS</span><span>MD</span><span>MSI</span><span>MGO</span><span>NO</span><span>MSI / MD</span><span>MGO / MD</span><span>NO / MGO</span></div>
+        {rows.map((row) => <article key={row.id} className={expandedBatch === row.id ? "is-expanded" : ""}>
+          <button className="reorder-batch-row" aria-expanded={expandedBatch === row.id} onClick={() => setExpandedBatch(expandedBatch === row.id ? null : row.id)}>
+            <span><strong>{row.code}</strong><small>{demoProducts.find((item) => item.id === row.productId)?.name}</small></span>
+            {[row.ms, row.md, row.msi, row.mgo, row.no].map((value, index) => <span key={index} data-label={metricDefinitions[index].short}>{formatNumber(value)}</span>)}
+            <span data-label="MSI / MD">{formatRate(ratio(row.msi, row.md))}</span><span data-label="MGO / MD">{formatRate(ratio(row.mgo, row.md))}</span><span data-label="NO / MGO">{(ratio(row.no, row.mgo) || 0).toFixed(2)}</span>
+          </button>
+          {expandedBatch === row.id && <div className="reorder-batch-detail"><span><strong>{formatNumber(row.taps)}</strong><small>Raw FC taps</small></span><span><strong>{formatNumber(row.visits)}</strong><small>Landing visits</small></span><span><strong>{formatNumber(row.pdp)}</strong><small>Amazon PDP clicks</small></span><span><strong>{formatNumber(row.discountAction)}</strong><small>Discount actions</small></span><span><strong>{formatNumber(row.surveyCompleted)}</strong><small>Survey completions</small></span><p>Sources: Consumer Fulfillment · Delivery / Carrier · FC Event Tracking · Order Attribution</p></div>}
+        </article>)}
+      </section>
+      <p className="reorder-export-privacy">Exports contain aggregate Product and Batch metrics only. No FC IDs, device IDs, anonymous order keys or Claim Codes are included.</p>
+    </>}
+  </div>;
+}
+
 function PendingPage({ title }) {
   return <div className="reorder-page"><PageHeader title={title} /><PageState>This module is queued after Products and FC Order allocation.</PageState></div>;
 }
@@ -1615,7 +1819,7 @@ function resolvePage(path, readOnly) {
   if (surveyEditMatch) return <SurveyEditorPage surveyId={surveyEditMatch[1]} readOnly={readOnly} />;
   const surveyMatch = /^\/reorder\/surveys\/([0-9a-f-]{36})$/i.exec(path);
   if (surveyMatch) return <SurveyDetailPage surveyId={surveyMatch[1]} readOnly={readOnly} />;
-  if (path === "/reorder/analytics") return <PendingPage title="Analytics" />;
+  if (path === "/reorder/analytics") return <AnalyticsPage />;
   if (path === "/reorder/settings/data-sources") return <DataSourcesPage readOnly={readOnly} />;
   if (path === "/reorder/preview") return <ConsumerPreviewPage readOnly={readOnly} />;
   return <div className="reorder-page"><PageHeader title="Page not found" /><button className="btn primary" onClick={() => navigate("/reorder/overview")}>Return to overview</button></div>;

@@ -354,7 +354,10 @@ button { font-family: inherit; }
 }
 
 .reorder-tap-link {
-  padding: 2px 0 8px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 0;
 }
 
 .reorder-tap-primary,

@@ -9,6 +9,7 @@ import {
   type ReorderSourceFactDraft,
   type ReorderSourceKind,
 } from "./data-source-contract.js";
+import { REORDER_ORDER_STATUSES, REORDER_ORDER_TYPES } from "./order-attribution.js";
 
 export interface ReorderParserReferences {
   productVersionIds?: ReadonlySet<string>;
@@ -108,6 +109,8 @@ export function parseReorderDataSourceCsv(
     if (kind === "order_attribution") {
       if (!values.anonymous_order_key) rowIssues.push(issue(rowNumber, "anonymous_order_key", "order_key_required", "Anonymous order key is required."));
       if (!values.attribution_key) rowIssues.push(issue(rowNumber, "attribution_key", "attribution_required", "Anonymous attribution key is required."));
+      if (!REORDER_ORDER_STATUSES.includes(values.order_status as typeof REORDER_ORDER_STATUSES[number])) rowIssues.push(issue(rowNumber, "order_status", "invalid_order_status", "Order status is not supported."));
+      if (!REORDER_ORDER_TYPES.includes(values.order_type as typeof REORDER_ORDER_TYPES[number])) rowIssues.push(issue(rowNumber, "order_type", "invalid_order_type", "Order type is not supported."));
     }
     if (rowIssues.length || !occurredAt || !REORDER_GRANULARITIES.includes(granularity)) { issues.push(...rowIssues); continue; }
     facts.push({

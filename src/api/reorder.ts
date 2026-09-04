@@ -76,7 +76,10 @@ function handleError(res: ServerResponse, error: unknown, fallback: string): voi
     return;
   }
   console.error(`[reorder] ${fallback}`, error);
-  errorJson(res, 500, fallback);
+  const detail = error && typeof error === "object" && "message" in error
+    ? String((error as { message?: unknown }).message || fallback)
+    : fallback;
+  errorJson(res, 500, detail || fallback);
 }
 
 function surveyFilter(url: URL) {

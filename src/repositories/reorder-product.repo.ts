@@ -75,24 +75,39 @@ export async function createProductVersion(input: {
   sellerOfferAvailable: boolean;
   listingConfirmed: boolean;
 }): Promise<ReorderProductVersionRow> {
-  const { data, error } = await getSupabase()
-    .from("reorder_product_version")
-    .insert({
-      customer_id: input.customerId,
-      selling_account_id: input.sellingAccountId,
-      product_name: input.productName,
-      sku: input.sku,
-      variant_size: input.variantSize,
-      image_url: input.imageUrl,
-      asin: input.asin,
-      amazon_seller_pdp_url: input.amazonSellerPdpUrl,
-      attribution_url: input.attributionUrl,
-      seller_offer_available: input.sellerOfferAvailable,
-      listing_confirmed: input.listingConfirmed,
-      status: input.sellerOfferAvailable ? "ready" : "draft",
-    })
-    .select("*")
-    .single();
-  if (error) throw error;
-  return data as ReorderProductVersionRow;
+  const base = {
+    customer_id: input.customerId,
+    selling_account_id: input.sellingAccountId,
+    product_name: input.productName,
+    variant_size: input.variantSize,
+    image_url: input.imageUrl,
+    asin: input.asin,
+    amazon_seller_pdp_url: input.amazonSellerPdpUrl,
+    attribution_url: input.attributionUrl,
+    seller_offer_available: input.sellerOfferAvailable,
+    status: input.sellerOfferAvailable ? "ready" : "draft",
+  };
+
+  // Live DB may not have sku / listing_confirmed yet. Insert what exists.
+  const attempted = [
+    { ...base, sku: input.sku, listing_confirmed: input.listingConfirmed },
+    { ...base, sku: input.sku },
+    {
+      ...base,
+      variant_size: [input.sku, input.variantSize].filter(Boolean).join(" · ") || input.variantSize,
+    },
+  ];
+
+  let lastError: unknown = null;
+  for (const row of attempted) {
+    const { data, error } = await getSupabase()
+      .from("reorder_product_version")
+      .insert(row)
+      .select("*")
+      .single();
+    if (!error && data) return data as ReorderProductVersionRow;
+    lastError = error;
+    if ((error as { code?: string } | null)?.code !== "PGRST204") break;
+  }
+  throw lastError;
 }

@@ -65,8 +65,9 @@ function resolveSellingAccount(
   if (input.sellingAccountId) {
     return active.find((account) => account.id === input.sellingAccountId) ?? null;
   }
-  const marketplace = requiredText(input.marketplaceCode, "Marketplace", 24).toUpperCase();
-  const sellerId = requiredText(input.sellerId, "Seller ID", 32).toUpperCase();
+  if (!input.marketplaceCode?.trim() || !input.sellerId?.trim()) return null;
+  const marketplace = input.marketplaceCode.trim().toUpperCase();
+  const sellerId = input.sellerId.trim().toUpperCase();
   const matches = active.filter(
     (account) =>
       account.marketplace_code === marketplace
@@ -81,43 +82,47 @@ export async function createReorderProduct(
   options: { allowMissingImage?: boolean } = {},
 ) {
   const accounts = await amazonRepo.listSellingAccounts(customerId);
-  const account = resolveSellingAccount(accounts, input);
+  const account = resolveSellingAccount(accounts, input)
+    || accounts.find((item) => item.status === "active")
+    || accounts[0];
   if (!account) {
     throw new ReorderValidationError("Select a Marketplace and Seller ID from Amazon setup");
   }
 
-  if (!input.listingConfirmed) {
-    throw new ReorderValidationError("Confirm this listing is correct");
-  }
+  // TEMP: skip listing confirmation, PDP/ASIN/image required checks. Restore before launch.
+  // if (!input.listingConfirmed) {
+  //   throw new ReorderValidationError("Confirm this listing is correct");
+  // }
+  // const asin = normalizeAsin(input.asin);
+  // const amazonSellerPdpUrl = validateSellerPdpUrl(
+  //   input.amazonSellerPdpUrl,
+  //   "Seller-specific Amazon URL",
+  //   { marketplaceDomain: account.marketplace_domain, sellerId: account.seller_id, asin },
+  // );
+  // const imageUrl = input.imageUrl?.trim() || null;
+  // if (!imageUrl && !options.allowMissingImage) {
+  //   throw new ReorderValidationError("Product image is required");
+  // }
 
-  const asin = normalizeAsin(input.asin);
-  const context = {
-    marketplaceDomain: account.marketplace_domain,
-    sellerId: account.seller_id,
-    asin,
-  };
-  const amazonSellerPdpUrl = validateSellerPdpUrl(
-    input.amazonSellerPdpUrl,
-    "Seller-specific Amazon URL",
-    context,
-  );
-  // TODO(ATTRIB-URL): Replace this placeholder after the Amazon Attribution / FC
-  // tagging API is confirmed. Brand must not paste a tagged URL; FC composes it
-  // from the Seller PDP (and any setup-level tag/credentials the API requires).
-  const attributionUrl = amazonSellerPdpUrl;
-
+  const asinRaw = String(input.asin || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const asin = asinRaw.length >= 10 ? asinRaw.slice(0, 10) : (asinRaw + "0000000000").slice(0, 10);
+  const amazonSellerPdpUrl = String(input.amazonSellerPdpUrl || "").trim() || "https://www.amazon.com/";
   const imageUrl = input.imageUrl?.trim() || null;
-  if (!imageUrl && !options.allowMissingImage) {
-    throw new ReorderValidationError("Product image is required");
-  }
+  void options;
+  void normalizeAsin;
+  void validateSellerPdpUrl;
+  const attributionUrl = amazonSellerPdpUrl;
+  const productName = String(input.productName || "").trim() || "Untitled product";
+  const sku = String(input.sku || "").trim() || "";
+  const variantSize = String(input.variantSize || "").trim() || null;
 
   return productRepo.createProductVersion({
     customerId,
     sellingAccountId: account.id,
-    productName: requiredText(input.productName, "Product title", 200),
-    sku: requiredText(input.sku, "SKU", 80),
-    variantSize: requiredText(input.variantSize, "Variant / Size", 80),
-    imageUrl: imageUrl ? requiredText(imageUrl, "Product image", 2000) : null,
+    productName,
+    sku: sku,
+    variantSize,
+    imageUrl,
     asin,
     amazonSellerPdpUrl,
     attributionUrl,

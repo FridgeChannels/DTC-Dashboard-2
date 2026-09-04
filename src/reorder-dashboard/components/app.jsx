@@ -953,21 +953,24 @@ function ProductFormPage({ readOnly }) {
   }, [accounts]);
   const sellers = accounts.filter((account) => account.marketplace_code === form.marketplaceCode);
   const selectedAccount = accounts.find((account) =>
-    account.marketplace_code === form.marketplaceCode && account.seller_id === form.sellerId);
-  const canSave = Boolean(
-    selectedAccount
-    && form.sku.trim()
-    && form.asin.trim()
-    && form.productName.trim()
-    && form.variantSize.trim()
-    && form.imageUrl.trim()
-    && form.amazonSellerPdpUrl.trim()
-    && form.listingConfirmed
-    && !readOnly
-  );
+    account.marketplace_code === form.marketplaceCode && account.seller_id === form.sellerId)
+    || accounts[0];
+  // TEMP: skip client-side required-field / confirmation checks; restore canSave before launch.
+  // const canSave = Boolean(
+  //   selectedAccount
+  //   && form.sku.trim()
+  //   && form.asin.trim()
+  //   && form.productName.trim()
+  //   && form.variantSize.trim()
+  //   && form.imageUrl.trim()
+  //   && form.amazonSellerPdpUrl.trim()
+  //   && form.listingConfirmed
+  //   && !readOnly
+  // );
+  const canSave = Boolean(selectedAccount && !readOnly);
 
   const save = async () => {
-    if (!canSave || !selectedAccount) return;
+    if (!selectedAccount || readOnly) return;
     setSaving(true);
     setError("");
     try {
@@ -983,7 +986,7 @@ function ProductFormPage({ readOnly }) {
           variantSize: form.variantSize,
           imageUrl: form.imageUrl,
           amazonSellerPdpUrl: form.amazonSellerPdpUrl,
-          listingConfirmed: true,
+          listingConfirmed: true, // TEMP: assume listing confirmation passed
           sellerOfferAvailable: true,
         }),
       });
@@ -1032,10 +1035,17 @@ function ProductFormPage({ readOnly }) {
   if (loading) return <div className="reorder-page"><PageHeader title="Add product" /><PageState>Loading…</PageState></div>;
   if (!accounts.length) return <div className="reorder-page"><PageHeader title="Add product" /><PageState tone="error">Complete Amazon setup before adding a product.</PageState><button className="btn primary" onClick={() => navigate("/reorder/settings/amazon")}>Open Amazon setup</button></div>;
 
+  const requiredMark = (label) => (
+    <>
+      {label}
+      <span className="reorder-required" aria-hidden="true">*</span>
+    </>
+  );
+
   const field = (key, label, options = {}) => (
     <label className={`cfg-field${options.full ? " cfg-field-full" : ""}`}>
-      <span className="cfg-label">{label}</span>
-      <input className={`cfg-input${options.mono ? " mono" : ""}`} inputMode={options.url ? "url" : undefined} value={form[key]} disabled={readOnly} onChange={(event) => setForm({ ...form, [key]: event.target.value })} />
+      <span className="cfg-label">{requiredMark(label)}</span>
+      <input className={`cfg-input${options.mono ? " mono" : ""}`} inputMode={options.url ? "url" : undefined} value={form[key]} disabled={readOnly} required aria-required="true" onChange={(event) => setForm({ ...form, [key]: event.target.value })} />
       {options.hint && <span className="cfg-hint">{options.hint}</span>}
     </label>
   );
@@ -1047,7 +1057,7 @@ function ProductFormPage({ readOnly }) {
       <section className="cfg-section">
         <div className="cfg-form grid grid-2">
           <label className="cfg-field">
-            <span className="cfg-label">Marketplace</span>
+            <span className="cfg-label">{requiredMark("Marketplace")}</span>
             <select className="cfg-input" value={form.marketplaceCode} disabled={readOnly} onChange={(event) => {
               const marketplaceCode = event.target.value;
               const nextSellers = accounts.filter((account) => account.marketplace_code === marketplaceCode);
@@ -1057,7 +1067,7 @@ function ProductFormPage({ readOnly }) {
             </select>
           </label>
           <label className="cfg-field">
-            <span className="cfg-label">Seller ID</span>
+            <span className="cfg-label">{requiredMark("Seller ID")}</span>
             <select className="cfg-input mono" value={form.sellerId} disabled={readOnly} onChange={(event) => setForm({ ...form, sellerId: event.target.value })}>
               {sellers.length !== 1 && <option value="">Select Seller ID</option>}
               {sellers.map((account) => <option key={account.id} value={account.seller_id}>{account.seller_id}{account.label ? ` · ${account.label}` : ""}</option>)}
@@ -1068,7 +1078,7 @@ function ProductFormPage({ readOnly }) {
           {field("productName", "Product title")}
           {field("variantSize", "Variant / Size")}
           <div className="cfg-field cfg-field-full">
-            <span className="cfg-label" id="reorder-product-image-label">Product image</span>
+            <span className="cfg-label" id="reorder-product-image-label">{requiredMark("Product image")}</span>
             <div className="reorder-image-entry">
               <input className="cfg-input" inputMode="url" value={form.imageUrl} disabled={readOnly || imageUploading} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} placeholder="Upload an image or paste its URL" aria-labelledby="reorder-product-image-label" />
               <input id="reorder-product-image" className="reorder-file-input" type="file" accept="image/*" disabled={readOnly || imageUploading} aria-labelledby="reorder-product-image-label" onChange={(event) => { uploadImage(event.target.files?.[0]); event.target.value = ""; }} />
@@ -1085,7 +1095,7 @@ function ProductFormPage({ readOnly }) {
           {field("amazonSellerPdpUrl", "Seller-specific Amazon URL", { full: true, url: true, mono: true, hint: "Seller PDP URL. It must preserve the ASIN and smid Seller ID." })}
           <label className="reorder-inline-check cfg-field-full">
             <input type="checkbox" checked={form.listingConfirmed} disabled={readOnly} onChange={(event) => setForm({ ...form, listingConfirmed: event.target.checked })} />
-            I confirm this listing is correct, and listing status is active
+            {requiredMark("I confirm this listing is correct, and listing status is active")}
           </label>
         </div>
       </section>

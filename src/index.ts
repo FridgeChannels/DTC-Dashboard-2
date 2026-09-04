@@ -121,6 +121,13 @@ import {
 } from "./api/reorder-fc-ops.js";
 import { handleRunReorderActivationJobs } from "./api/reorder-jobs.js";
 import {
+  handleCommitReorderDataSource,
+  handleListReorderDataSources,
+  handlePreviewReorderDataSource,
+  handleReorderDataSourceErrors,
+  handleReorderDataSourceTemplate,
+} from "./api/reorder-data-sources.js";
+import {
   handleGetBrandCollectConfig,
   handlePostBrand,
   handlePostBrandColors,
@@ -280,6 +287,31 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && pathname === "/api/reorder/amazon-setup") {
     await handleGetReorderAmazonSetup(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/api/reorder/data-sources") {
+    await handleListReorderDataSources(req, res);
+    return;
+  }
+
+  const reorderDataSourceTemplateMatch = /^\/api\/reorder\/data-sources\/([^/]+)\/template\.csv$/.exec(pathname);
+  if (req.method === "GET" && reorderDataSourceTemplateMatch) {
+    await handleReorderDataSourceTemplate(req, res, reorderDataSourceTemplateMatch[1]);
+    return;
+  }
+
+  const reorderDataSourceActionMatch = /^\/api\/reorder\/data-sources\/([^/]+)\/(preview|import|replace)$/.exec(pathname);
+  if (req.method === "POST" && reorderDataSourceActionMatch) {
+    const action = reorderDataSourceActionMatch[2];
+    if (action === "preview") await handlePreviewReorderDataSource(req, res, reorderDataSourceActionMatch[1]);
+    else await handleCommitReorderDataSource(req, res, reorderDataSourceActionMatch[1], action as "import" | "replace");
+    return;
+  }
+
+  const reorderDataSourceErrorsMatch = /^\/api\/reorder\/data-sources\/[^/]+\/imports\/([^/]+)\/errors\.csv$/.exec(pathname);
+  if (req.method === "GET" && reorderDataSourceErrorsMatch) {
+    await handleReorderDataSourceErrors(req, res, reorderDataSourceErrorsMatch[1]);
     return;
   }
 

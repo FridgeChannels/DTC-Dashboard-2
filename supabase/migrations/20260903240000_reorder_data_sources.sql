@@ -123,9 +123,114 @@ create index if not exists reorder_source_fact_fc_idx on public.reorder_source_f
 create trigger set_reorder_data_source_updated_at before update on public.reorder_data_source
 for each row execute function public.set_reorder_updated_at();
 
+create or replace function public.commit_reorder_data_import(
+  p_customer_id bigint,
+  p_source_kind text,
+  p_import_mode text,
+  p_file_name text,
+  p_file_sha256 text,
+  p_facts jsonb,
+  p_errors jsonb default '[]'::jsonb,
+  p_replacement_scope jsonb default null,
+  p_replacement_reason text default null,
+  p_created_by uuid default null
+)
+returns public.reorder_data_import
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare source public.reorder_data_source%rowtype;
+declare manifest public.reorder_data_import%rowtype;
+declare fact jsonb;
+declare import_error jsonb;
+declare first_granularity text;
+begin
+  if p_source_kind not in ('fulfillment','delivery','order_attribution') then raise exception 'Unsupported import source'; end if;
+  if jsonb_typeof(p_facts) <> 'array' or jsonb_array_length(p_facts) = 0 then raise exception 'At least one accepted fact is required'; end if;
+  if p_import_mode = 'replace' and (p_replacement_scope is null or char_length(btrim(coalesce(p_replacement_reason,''))) = 0) then raise exception 'Replacement scope and reason are required'; end if;
+  if p_import_mode not in ('import','replace') then raise exception 'Invalid import mode'; end if;
+
+  insert into public.reorder_data_source (customer_id, source_kind)
+  values (p_customer_id, p_source_kind)
+  on conflict (customer_id, source_kind) do nothing;
+  select * into source from public.reorder_data_source
+  where customer_id = p_customer_id and source_kind = p_source_kind for update;
+
+  select * into manifest from public.reorder_data_import
+  where customer_id = p_customer_id and source_kind = p_source_kind and source_file_sha256 = p_file_sha256;
+  if found then return manifest; end if;
+
+  select item->>'granularity' into first_granularity from jsonb_array_elements(p_facts) item limit 1;
+  if exists (select 1 from jsonb_array_elements(p_facts) item where item->>'granularity' <> first_granularity) then raise exception 'One import cannot mix granularities'; end if;
+
+  insert into public.reorder_data_import (
+    customer_id, data_source_id, source_kind, import_mode, status, source_file_name,
+    source_file_sha256, granularity, total_rows, accepted_rows, rejected_rows,
+    covered_from, covered_to, covered_product_version_ids, covered_batch_ids,
+    replacement_scope, replacement_reason, replaces_import_id, committed_at, created_by
+  ) select p_customer_id, source.id, p_source_kind, p_import_mode, 'committed', p_file_name,
+    p_file_sha256, first_granularity, jsonb_array_length(p_facts) + jsonb_array_length(p_errors),
+    jsonb_array_length(p_facts), jsonb_array_length(p_errors),
+    min((item->>'occurredAt')::timestamptz), max((item->>'occurredAt')::timestamptz),
+    coalesce(array_agg(distinct (item->>'productVersionId')::uuid) filter (where item->>'productVersionId' is not null), '{}'),
+    coalesce(array_agg(distinct (item->>'batchId')::uuid) filter (where item->>'batchId' is not null), '{}'),
+    p_replacement_scope, p_replacement_reason,
+    case when p_import_mode = 'replace' then source.latest_import_id else null end,
+    now(), p_created_by
+  from jsonb_array_elements(p_facts) item returning * into manifest;
+
+  if p_import_mode = 'replace' then
+    delete from public.reorder_source_fact existing
+    where existing.customer_id = p_customer_id and existing.source_kind = p_source_kind
+      and existing.occurred_at >= (p_replacement_scope->>'from')::timestamptz
+      and existing.occurred_at <= (p_replacement_scope->>'to')::timestamptz
+      and (p_replacement_scope->>'productVersionId' is null or existing.product_version_id = (p_replacement_scope->>'productVersionId')::uuid)
+      and (p_replacement_scope->>'batchId' is null or existing.batch_id = (p_replacement_scope->>'batchId')::uuid);
+  end if;
+
+  for fact in select * from jsonb_array_elements(p_facts) loop
+    insert into public.reorder_source_fact (
+      import_id, customer_id, source_kind, external_key, occurred_at, granularity,
+      product_version_id, batch_id, fc_id, quantity, anonymous_order_key,
+      attribution_key, order_status, order_type
+    ) values (
+      manifest.id, p_customer_id, p_source_kind,
+      encode(digest(concat_ws(':', p_source_kind, fact->>'occurredAt', fact->>'granularity',
+        fact->>'productVersionId', fact->>'batchId', fact->>'fcId', fact->>'anonymousOrderKey',
+        fact->>'attributionKey'), 'sha256'), 'hex'),
+      (fact->>'occurredAt')::timestamptz, fact->>'granularity',
+      (fact->>'productVersionId')::uuid, (fact->>'batchId')::uuid, fact->>'fcId',
+      (fact->>'quantity')::integer, fact->>'anonymousOrderKey', fact->>'attributionKey',
+      fact->>'orderStatus', fact->>'orderType'
+    ) on conflict (customer_id, source_kind, external_key) do update set
+      import_id = excluded.import_id, occurred_at = excluded.occurred_at, quantity = excluded.quantity,
+      order_status = excluded.order_status, order_type = excluded.order_type;
+  end loop;
+
+  for import_error in select * from jsonb_array_elements(p_errors) loop
+    insert into public.reorder_data_import_error (import_id, customer_id, row_number, field_name, error_code, safe_message)
+    values (manifest.id, p_customer_id, (import_error->>'rowNumber')::integer, import_error->>'field', import_error->>'code', import_error->>'message');
+  end loop;
+
+  update public.reorder_data_source set
+    coverage_status = case when jsonb_array_length(p_errors) > 0 then 'partial' else 'connected' end,
+    freshness_status = 'current', granularity = first_granularity,
+    covered_from = (select min(occurred_at) from public.reorder_source_fact where customer_id = p_customer_id and source_kind = p_source_kind),
+    covered_to = (select max(occurred_at) from public.reorder_source_fact where customer_id = p_customer_id and source_kind = p_source_kind),
+    covered_product_version_ids = coalesce((select array_agg(distinct product_version_id) from public.reorder_source_fact where customer_id = p_customer_id and source_kind = p_source_kind and product_version_id is not null), '{}'),
+    covered_batch_ids = coalesce((select array_agg(distinct batch_id) from public.reorder_source_fact where customer_id = p_customer_id and source_kind = p_source_kind and batch_id is not null), '{}'),
+    latest_import_id = manifest.id, last_updated_at = now()
+  where id = source.id;
+  return manifest;
+end;
+$$;
+
 alter table public.reorder_data_source enable row level security;
 alter table public.reorder_data_import enable row level security;
 alter table public.reorder_data_import_error enable row level security;
 alter table public.reorder_source_fact enable row level security;
 revoke all on public.reorder_data_source, public.reorder_data_import, public.reorder_data_import_error, public.reorder_source_fact from public, anon, authenticated;
+revoke all on function public.commit_reorder_data_import(bigint,text,text,text,text,jsonb,jsonb,jsonb,text,uuid) from public, anon, authenticated;
 grant select, insert, update, delete on public.reorder_data_source, public.reorder_data_import, public.reorder_data_import_error, public.reorder_source_fact to service_role;
+grant execute on function public.commit_reorder_data_import(bigint,text,text,text,text,jsonb,jsonb,jsonb,text,uuid) to service_role;

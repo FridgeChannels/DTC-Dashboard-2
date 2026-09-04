@@ -119,6 +119,7 @@ import {
   handleUpdateReorderProductionFromOps,
   handleUpdateReorderShipmentFromOps,
 } from "./api/reorder-fc-ops.js";
+import { handleRunReorderActivationJobs } from "./api/reorder-jobs.js";
 import {
   handleGetBrandCollectConfig,
   handlePostBrand,
@@ -224,6 +225,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && pathname === "/api/internal/reorder/batches") {
     await handleCreateReorderBatchFromOps(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/api/internal/reorder/jobs/activate-due") {
+    await handleRunReorderActivationJobs(req, res);
     return;
   }
 

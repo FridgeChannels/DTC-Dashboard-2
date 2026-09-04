@@ -12,6 +12,7 @@ create table if not exists public.reorder_data_source (
   covered_product_version_ids uuid[] not null default '{}',
   covered_batch_ids uuid[] not null default '{}',
   latest_import_id uuid,
+  latest_import_error_count integer not null default 0,
   last_updated_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -20,6 +21,7 @@ create table if not exists public.reorder_data_source (
   constraint reorder_data_source_freshness_check check (freshness_status in ('current','stale','unknown')),
   constraint reorder_data_source_granularity_check check (granularity is null or granularity in ('aggregate','batch','fc_id')),
   constraint reorder_data_source_range_check check (covered_from is null or covered_to is null or covered_to >= covered_from),
+  constraint reorder_data_source_error_count_check check (latest_import_error_count >= 0),
   unique (customer_id, source_kind),
   unique (id, customer_id),
   unique (id, customer_id, source_kind)
@@ -220,7 +222,7 @@ begin
     covered_to = (select max(occurred_at) from public.reorder_source_fact where customer_id = p_customer_id and source_kind = p_source_kind),
     covered_product_version_ids = coalesce((select array_agg(distinct product_version_id) from public.reorder_source_fact where customer_id = p_customer_id and source_kind = p_source_kind and product_version_id is not null), '{}'),
     covered_batch_ids = coalesce((select array_agg(distinct batch_id) from public.reorder_source_fact where customer_id = p_customer_id and source_kind = p_source_kind and batch_id is not null), '{}'),
-    latest_import_id = manifest.id, last_updated_at = now()
+    latest_import_id = manifest.id, latest_import_error_count = jsonb_array_length(p_errors), last_updated_at = now()
   where id = source.id;
   return manifest;
 end;

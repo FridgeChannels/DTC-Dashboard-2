@@ -18,6 +18,7 @@ describe("Reorder data source migration", () => {
     expect(sql).toContain("replaces_import_id");
     expect(sql).toContain("source_file_sha256");
     expect(sql).toContain("safe_message");
+    expect(sql).toContain("latest_import_error_count");
     expect(sql).not.toContain("raw_value");
   });
 

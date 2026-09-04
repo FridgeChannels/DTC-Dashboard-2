@@ -4,7 +4,7 @@ import type { ReorderImportIssue, ReorderSourceFactDraft, ReorderSourceKind } fr
 export interface ReorderDataSourceRow {
   id: string; customer_id: number; source_kind: ReorderSourceKind; coverage_status: string;
   freshness_status: string; granularity: string | null; covered_from: string | null; covered_to: string | null;
-  covered_product_version_ids: string[]; covered_batch_ids: string[]; latest_import_id: string | null; last_updated_at: string | null;
+  covered_product_version_ids: string[]; covered_batch_ids: string[]; latest_import_id: string | null; latest_import_error_count: number; last_updated_at: string | null;
 }
 
 function throwIfError(error: unknown) { if (error) throw error; }

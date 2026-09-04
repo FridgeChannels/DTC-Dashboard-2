@@ -10,7 +10,7 @@ const navigation = [
 
 const settingsNavigation = [
   { label: "Amazon setup", path: "/reorder/settings/amazon" },
-  { label: "Data sources", path: "/reorder/settings/data-sources", pending: true },
+  { label: "Data sources", path: "/reorder/settings/data-sources" },
 ];
 
 async function api(path, options = {}) {
@@ -1526,6 +1526,69 @@ function SurveyDetailPage({ surveyId, readOnly }) {
   </div>;
 }
 
+const dataSourceLabels = {
+  fulfillment: { name: "Consumer Fulfillment", metric: "MS" },
+  delivery: { name: "Delivery / Carrier", metric: "MD" },
+  fc_event: { name: "FC Event Tracking", metric: "MSI" },
+  order_attribution: { name: "Order Attribution", metric: "MGO / NO" },
+};
+
+function DataSourcesPage({ readOnly }) {
+  const [sources, setSources] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [flow, setFlow] = useState(null);
+  const [working, setWorking] = useState(false);
+  const load = () => {
+    setLoading(true); setError("");
+    api("/api/reorder/data-sources").then((data) => setSources(data.sources || [])).catch((err) => setError(err.message)).finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+  const selectFile = async (event, kind) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setWorking(true); setError("");
+    try {
+      const input = { fileName: file.name, csv: await file.text() };
+      const preview = await api(`/api/reorder/data-sources/${kind}/preview`, { method: "POST", body: JSON.stringify(input) });
+      setFlow({ kind, input, preview, mode: "import", from: preview.coveredFrom?.slice(0, 10) || "", to: preview.coveredTo?.slice(0, 10) || "", productVersionId: "", batchId: "", reason: "" });
+    } catch (err) { setError(err.message); }
+    finally { setWorking(false); event.target.value = ""; }
+  };
+  const commit = async () => {
+    setWorking(true); setError("");
+    try {
+      const payload = flow.mode === "replace" ? { ...flow.input, reason: flow.reason, scope: { from: flow.from, to: flow.to, ...(flow.productVersionId ? { productVersionId: flow.productVersionId } : {}), ...(flow.batchId ? { batchId: flow.batchId } : {}) } } : flow.input;
+      await api(`/api/reorder/data-sources/${flow.kind}/${flow.mode}`, { method: "POST", body: JSON.stringify(payload) });
+      setFlow(null); load();
+    } catch (err) { setError(err.message); setWorking(false); }
+  };
+  return <div className="reorder-page">
+    <PageHeader title="Data sources" />
+    {error && <PageState tone="error">{error}</PageState>}
+    {loading && <PageState>Loading Data Sources…</PageState>}
+    {!loading && <div className="reorder-source-list" role="list">{sources.map((source) => {
+      const label = dataSourceLabels[source.source_kind] || { name: humanize(source.source_kind), metric: "—" };
+      const importable = source.source_kind !== "fc_event";
+      return <section className="reorder-source-row" role="listitem" key={source.source_kind}>
+        <div className="reorder-source-name"><strong>{label.name}</strong><span>Provides {label.metric}</span></div>
+        <span className={`reorder-source-status is-${source.coverage_status}`}>{humanize(source.coverage_status)}</span>
+        <dl className="reorder-source-meta"><div><dt>Last updated</dt><dd>{formatDate(source.last_updated_at)}</dd></div><div><dt>Covered range</dt><dd>{source.covered_from ? `${formatDate(source.covered_from)} – ${formatDate(source.covered_to)}` : "—"}</dd></div><div><dt>Products / Batches</dt><dd>{source.covered_product_version_ids?.length || 0} / {source.covered_batch_ids?.length || 0}</dd></div><div><dt>Granularity</dt><dd>{humanize(source.granularity)}</dd></div><div><dt>Import errors</dt><dd>{source.latest_import_error_count > 0 ? <a href={`/api/reorder/data-sources/${source.source_kind}/imports/${source.latest_import_id}/errors.csv`}>{source.latest_import_error_count} · Download</a> : "None"}</dd></div></dl>
+        <div className="reorder-source-actions">{importable && <><a className="btn" href={`/api/reorder/data-sources/${source.source_kind}/template.csv`}>Template</a><label className={`btn${readOnly ? " is-disabled" : ""}`}>Import / Replace data<input className="reorder-file-input" type="file" accept=".csv,text/csv" disabled={readOnly || working} onChange={(event) => selectFile(event, source.source_kind)} /></label></>}{!importable && <span className="reorder-source-native">Native event stream · {humanize(source.freshness_status)}</span>}</div>
+      </section>;
+    })}</div>}
+    {flow && <section className="reorder-import-panel" aria-label="Import preview">
+      <div className="reorder-section-label">Import preview · {dataSourceLabels[flow.kind].name}</div>
+      <div className="reorder-import-summary"><div><strong>{flow.preview.totalRows}</strong><span>Total rows</span></div><div><strong>{flow.preview.acceptedRows}</strong><span>Accepted</span></div><div><strong>{flow.preview.rejectedRows}</strong><span>Rejected</span></div><div><strong>{humanize(flow.preview.granularity)}</strong><span>Granularity</span></div></div>
+      {flow.preview.issues.length > 0 && <div className="reorder-import-errors"><strong>Import errors</strong>{flow.preview.issues.slice(0, 8).map((issue, index) => <p key={`${issue.rowNumber}-${issue.code}-${index}`}>Row {issue.rowNumber} · {humanize(issue.field)} — {issue.message}</p>)}</div>}
+      <div className="reorder-mode-switch"><button className={`btn${flow.mode === "import" ? " primary" : ""}`} onClick={() => setFlow({ ...flow, mode: "import" })}>Import</button><button className={`btn${flow.mode === "replace" ? " primary" : ""}`} onClick={() => setFlow({ ...flow, mode: "replace" })}>Replace data</button></div>
+      {flow.mode === "replace" && <div className="cfg-form grid grid-2 reorder-replace-scope"><label className="cfg-field"><span className="cfg-label">Replace from</span><input className="cfg-input" type="date" value={flow.from} onChange={(event) => setFlow({ ...flow, from: event.target.value })} /></label><label className="cfg-field"><span className="cfg-label">Replace to</span><input className="cfg-input" type="date" value={flow.to} onChange={(event) => setFlow({ ...flow, to: event.target.value })} /></label><label className="cfg-field"><span className="cfg-label">Product Version ID (optional)</span><input className="cfg-input" value={flow.productVersionId} onChange={(event) => setFlow({ ...flow, productVersionId: event.target.value })} /></label><label className="cfg-field"><span className="cfg-label">Batch ID (optional)</span><input className="cfg-input" value={flow.batchId} onChange={(event) => setFlow({ ...flow, batchId: event.target.value })} /></label><label className="cfg-field cfg-field-full"><span className="cfg-label">Replacement reason</span><input className="cfg-input" value={flow.reason} onChange={(event) => setFlow({ ...flow, reason: event.target.value })} /></label></div>}
+      <p className="reorder-guidance">Only the displayed date and optional Product / Batch scope will be replaced. Unrelated facts remain unchanged.</p>
+      <div className="reorder-editor-actions"><button className="btn" onClick={() => setFlow(null)}>Cancel</button><button className="btn primary" disabled={working || flow.preview.acceptedRows === 0 || (flow.mode === "replace" && (!flow.from || !flow.to || !flow.reason.trim()))} onClick={commit}>{working ? "Saving…" : flow.mode === "replace" ? "Confirm replacement" : "Confirm import"}</button></div>
+    </section>}
+  </div>;
+}
+
 function PendingPage({ title }) {
   return <div className="reorder-page"><PageHeader title={title} /><PageState>This module is queued after Products and FC Order allocation.</PageState></div>;
 }
@@ -1553,7 +1616,7 @@ function resolvePage(path, readOnly) {
   const surveyMatch = /^\/reorder\/surveys\/([0-9a-f-]{36})$/i.exec(path);
   if (surveyMatch) return <SurveyDetailPage surveyId={surveyMatch[1]} readOnly={readOnly} />;
   if (path === "/reorder/analytics") return <PendingPage title="Analytics" />;
-  if (path === "/reorder/settings/data-sources") return <PendingPage title="Data sources" />;
+  if (path === "/reorder/settings/data-sources") return <DataSourcesPage readOnly={readOnly} />;
   if (path === "/reorder/preview") return <ConsumerPreviewPage readOnly={readOnly} />;
   return <div className="reorder-page"><PageHeader title="Page not found" /><button className="btn primary" onClick={() => navigate("/reorder/overview")}>Return to overview</button></div>;
 }

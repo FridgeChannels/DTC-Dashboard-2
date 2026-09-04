@@ -16,7 +16,7 @@ export async function listReorderDataSources(customerId: number) {
   return REORDER_SOURCE_KINDS.map((kind) => rows.find((row) => row.source_kind === kind) ?? {
     source_kind: kind, coverage_status: kind === "fc_event" ? "degraded" : "missing", freshness_status: "unknown",
     granularity: kind === "fc_event" ? "fc_id" : null, covered_from: null, covered_to: null,
-    covered_product_version_ids: [], covered_batch_ids: [], latest_import_id: null, last_updated_at: null,
+    covered_product_version_ids: [], covered_batch_ids: [], latest_import_id: null, latest_import_error_count: 0, last_updated_at: null,
   });
 }
 

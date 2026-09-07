@@ -1,5 +1,5 @@
 import type { ReorderSourceKind } from "./data-source-contract.js";
-import { assessSourceCoverage, buildNeedsAttention, type CoverageManifest, type MetricScope } from "./coverage-engine.js";
+import { assessSourceCoverage, type CoverageManifest, type MetricScope } from "./coverage-engine.js";
 
 export type ReorderMetricKey = "ms" | "md" | "msi" | "mgo" | "no";
 export type ObservationMonths = 1 | 3 | 6 | 12;
@@ -104,6 +104,5 @@ export function calculateReorderMetrics(input: MetricEngineInput) {
     metrics,
     rates: { delivery: safeRatio(values.md, values.ms), activation: safeRatio(values.msi, values.md), orderGenerating: safeRatio(values.mgo, values.md), orderDepth: safeRatio(values.no, values.mgo) },
     coverage,
-    needsAttention: buildNeedsAttention(coverage),
   };
 }

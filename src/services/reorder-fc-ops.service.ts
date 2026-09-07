@@ -60,8 +60,8 @@ export function parseFcIdCsv(csvValue: unknown): string[] {
 
 export async function createReorderBatchFromOps(customerIdValue: unknown, input: Record<string, unknown>) {
   const customerId = positiveInteger(customerIdValue, "Customer ID");
-  const allocationId = requiredText(input.allocationId, "Product Allocation ID", 36);
-  if (!UUID.test(allocationId)) throw new ReorderValidationError("Product Allocation ID is invalid");
+  const allocationId = requiredText(input.allocationId, "Amazon Catalog Item Allocation ID", 36);
+  if (!UUID.test(allocationId)) throw new ReorderValidationError("Amazon Catalog Item Allocation ID is invalid");
   return opsRepo.createBatch({
     customerId, allocationId, batchCode: requiredText(input.batchCode, "Batch code", 80),
     label: requiredText(input.label, "Batch label"), quantity: positiveInteger(input.quantity, "Batch Quantity"),

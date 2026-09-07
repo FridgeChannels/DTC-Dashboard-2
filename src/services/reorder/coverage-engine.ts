@@ -51,11 +51,3 @@ export function assessSourceCoverage(manifest: CoverageManifest | null, scope: M
   return { sourceKind: manifest.sourceKind, availability, coveredFrom: manifest.coveredFrom, coveredTo: manifest.coveredTo, missingProductIds, missingBatchIds, freshness: manifest.freshness, granularity: manifest.granularity };
 }
 
-export function buildNeedsAttention(coverage: readonly CoverageResult[]) {
-  return coverage.flatMap((result) => {
-    if (result.availability === "unavailable") return [{ code: "source_unavailable", sourceKind: result.sourceKind, message: `${result.sourceKind.replaceAll("_", " ")} data is unavailable.`, fixPath: "/reorder/settings/data-sources" }];
-    if (result.freshness === "stale") return [{ code: "source_stale", sourceKind: result.sourceKind, message: `${result.sourceKind.replaceAll("_", " ")} data is stale.`, fixPath: "/reorder/settings/data-sources" }];
-    if (result.availability === "partial") return [{ code: "source_partial", sourceKind: result.sourceKind, message: `${result.sourceKind.replaceAll("_", " ")} coverage is partial.`, fixPath: "/reorder/settings/data-sources" }];
-    return [];
-  });
-}

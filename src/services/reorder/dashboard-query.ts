@@ -45,7 +45,7 @@ export function parseReorderDashboardFilter(query: DashboardQuery, options: { de
   if (!DATE.test(from) || !DATE.test(to) || from > to) throw new ReorderValidationError("Date range is invalid");
   const productId = query.product_id?.trim() || null;
   const batchId = query.batch_id?.trim() || null;
-  if (productId && !UUID.test(productId)) throw new ReorderValidationError("Product filter is invalid");
+  if (productId && !UUID.test(productId)) throw new ReorderValidationError("Amazon Catalog Item filter is invalid");
   if (batchId && !UUID.test(batchId)) throw new ReorderValidationError("Batch filter is invalid");
   const observationMonths = Number(query.observation_months || options.defaultObservation || 3) as ObservationMonths;
   if (!WINDOWS.includes(observationMonths)) throw new ReorderValidationError("Observation window must be 1, 3, 6, or 12 months");

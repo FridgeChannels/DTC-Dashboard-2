@@ -102,12 +102,12 @@ export function parseReorderDataSourceCsv(
     const productVersionId = values.product_version_id || null;
     const batchId = values.batch_id || null;
     const fcId = values.fc_id?.toUpperCase() || null;
-    if (productVersionId && !uuid(productVersionId)) rowIssues.push(issue(rowNumber, "product_version_id", "invalid_product", "Product Version ID must be a UUID."));
+    if (productVersionId && !uuid(productVersionId)) rowIssues.push(issue(rowNumber, "product_version_id", "invalid_product", "Amazon Catalog Item Version ID must be a UUID."));
     if (batchId && !uuid(batchId)) rowIssues.push(issue(rowNumber, "batch_id", "invalid_batch", "Batch ID must be a UUID."));
     if (granularity === "batch" && !batchId) rowIssues.push(issue(rowNumber, "batch_id", "batch_required", "Batch granularity requires Batch ID."));
     if (granularity === "fc_id" && !fcId) rowIssues.push(issue(rowNumber, "fc_id", "fc_id_required", "FC ID granularity requires FC ID."));
     if (granularity !== "fc_id" && fcId) rowIssues.push(issue(rowNumber, "fc_id", "granularity_conflict", "FC ID is allowed only with fc_id granularity."));
-    if (references.productVersionIds && productVersionId && !references.productVersionIds.has(productVersionId)) rowIssues.push(issue(rowNumber, "product_version_id", "unknown_product", "Product Version was not found."));
+    if (references.productVersionIds && productVersionId && !references.productVersionIds.has(productVersionId)) rowIssues.push(issue(rowNumber, "product_version_id", "unknown_product", "Amazon Catalog Item Version was not found."));
     if (references.batchIds && batchId && !references.batchIds.has(batchId)) rowIssues.push(issue(rowNumber, "batch_id", "unknown_batch", "Batch was not found."));
     if (references.fcIds && fcId && !references.fcIds.has(fcId)) rowIssues.push(issue(rowNumber, "fc_id", "unknown_fc_id", "FC ID was not found."));
     const key = headers.map((header) => values[header]).join("\u001f");

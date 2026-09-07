@@ -101,7 +101,7 @@ describe("Reorder Overview metrics", () => {
     expect(result.metrics.every((metric) => metric.availability === "available")).toBe(true);
   });
 
-  it("renders unavailable as null and surfaces Needs Attention with one Fix path", async () => {
+  it("renders unavailable metrics as null without reminding operators about missing coverage", async () => {
     const empty = snapshot();
     empty.coverage = empty.coverage.filter((item) => item.sourceKind !== "delivery");
     empty.coverage = empty.coverage.map((item) => item.sourceKind === "fc_event" ? { ...item, batchIds: [] } : item);
@@ -111,11 +111,10 @@ describe("Reorder Overview metrics", () => {
     });
     expect(result.metrics.find((metric) => metric.key === "md")).toMatchObject({ value: null, availability: "unavailable" });
     expect(result.metrics.find((metric) => metric.key === "msi")).toMatchObject({ availability: "partial" });
-    expect(result.needsAttention).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: "source_unavailable", fixPath: "/reorder/settings/data-sources", fixLabel: "Fix" }),
-      expect.objectContaining({ code: "source_partial", message: expect.stringContaining("S-2406") }),
+    expect(result.needsAttention).toEqual([
       expect.objectContaining({ code: "codes_low", fixPath: "/reorder/discounts/50000000-0000-4000-8000-000000000001" }),
-    ]));
+    ]);
+    expect(result.needsAttention.some((issue) => issue.code.startsWith("source_"))).toBe(false);
   });
 
   it("includes behavioral diagnostics and active configuration counts", async () => {

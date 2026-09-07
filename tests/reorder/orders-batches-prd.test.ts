@@ -41,20 +41,21 @@ describe("FC Order Batch Allocation PRD contract", () => {
       "Requested ship date",
       "Total Ordered",
       "Remaining",
-      "Minimum batch size",
-      "Maximum batches",
       "Available to allocate:",
       "Use remaining",
       "Allocation incomplete",
       "Allocation complete",
       "Ready for production",
-      "FC Batches",
+      "No Batches are linked to this Amazon Catalog Item Version.",
       "View analytics →",
       "Maximum ${maxCount} batches per FC Order.",
     ]) {
       expect(app).toContain(text);
     }
-    expect(app).toContain("Open an FC Order to view and define its Batches.");
+    expect(app).toContain("Open an FC Order to allocate magnets into Batches.");
+    expect(app).toContain("Open a Batch to preview the consumer page and activate it.");
+    expect(app).toContain("FC Orders");
+    expect(app).toContain('selectView("batches")');
     expect(app).toContain("activationVerb(status)");
     expect(app).toContain(">Preview</button>");
     expect(app).not.toContain("Pay Now");

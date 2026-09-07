@@ -46,7 +46,7 @@
   const batches = [batch(ids.batchA, "R-2408", products[0], 3360, "active", order), batch(ids.batchB, "S-2408", products[1], 2100, "draft", order)];
   function presentDiscount(row) {
     const unmatched = (row.eligible_asins || []).filter((asin) => !(row.products || []).some((product) => product.asin === asin));
-    const issue = unmatched.length ? { code: "product_mapping_required", label: "Product mapping required" } : (row.codePool?.status === "codes_low" || row.codePool?.status === "low" ? { code: "codes_low", label: "Codes low" } : (row.codePool?.status === "exhausted" ? { code: "codes_exhausted", label: "Codes exhausted" } : null));
+    const issue = unmatched.length ? { code: "product_mapping_required", label: "Amazon Catalog Item mapping required" } : (row.codePool?.status === "codes_low" || row.codePool?.status === "low" ? { code: "codes_low", label: "Codes low" } : (row.codePool?.status === "exhausted" ? { code: "codes_exhausted", label: "Codes exhausted" } : null));
     return {
       ...row,
       is_visible_on_fc: row.is_visible_on_fc !== false,
@@ -92,7 +92,7 @@
   function magnets(value) { return Number(value).toLocaleString("en-US"); }
   function validateBrandBatchQuantity(input) {
     if (input.isCreate && input.batchCount >= MAX_BATCH_COUNT) return `Maximum ${MAX_BATCH_COUNT} batches per FC Order.`;
-    if (!Number.isSafeInteger(input.quantity) || input.quantity <= 0) return "Every Batch must have a Product and a positive Quantity";
+    if (!Number.isSafeInteger(input.quantity) || input.quantity <= 0) return "Every Batch must have an Amazon Catalog Item and a positive Quantity";
     if (input.quantity < MIN_BATCH_QUANTITY) return `Minimum batch size is ${magnets(MIN_BATCH_QUANTITY)} magnets.`;
     const remainingBefore = input.totalOrdered - input.otherAllocated;
     if (input.quantity > remainingBefore) return `Quantity cannot exceed the remaining ${magnets(Math.max(0, remainingBefore))} magnets.`;
@@ -221,7 +221,7 @@
         return { key, short: current.short, label: current.label, value: current.value, availability: current.availability, fromPrior: prior && prior.value ? current.value / prior.value : null };
       }),
       orderDepth: { value: available ? totals.no : null, rate: rates.orderDepth, availability: available ? "available" : "unavailable" },
-      needsAttention: msiPartial ? [{ code: "source_partial", message: "FC Event coverage is partial for Batch S-2408. MSI excludes the uncovered scope.", fixPath: "/reorder/settings/data-sources", fixLabel: "Fix", sourceKind: "fc_event" }] : [],
+      needsAttention: [],
       diagnostics: {
         behavioral: [
           { key: "visits", label: "Landing visits", value: available ? facts.reduce((sum, row) => sum + row.visits, 0) : null },
@@ -231,7 +231,7 @@
           { key: "surveyCompleted", label: "Survey completions", value: available ? facts.reduce((sum, row) => sum + row.surveyCompleted, 0) : null },
         ],
         configuration: [
-          { key: "products", label: "Products", value: state.products.length },
+          { key: "products", label: "Amazon Catalog Items", value: state.products.length },
           { key: "batches", label: "Batches", value: state.batches.filter((item) => item.activation_status === "active").length },
           { key: "fcIds", label: "FC IDs", value: state.batches.reduce((sum, item) => sum + item.fc_id_count, 0) },
           { key: "discounts", label: "Discounts", value: state.discounts.filter((item) => item.status === "active").length },
@@ -259,11 +259,11 @@
         diagnostics: { taps: row.taps, visits: row.visits, pdp: row.pdp, discountAction: row.discountAction, surveyCompleted: row.surveyCompleted },
         sources: ["Consumer Fulfillment", "Delivery / Carrier", "FC Event Tracking", "Order Attribution"],
       })),
-      exportPrivacy: "Exports contain aggregate Product and Batch metrics only. No FC IDs, device IDs, anonymous order keys or Claim Codes are included.",
+      exportPrivacy: "Exports contain aggregate Amazon Catalog Item and Batch metrics only. No FC IDs, device IDs, anonymous order keys or Claim Codes are included.",
     };
     if (path === "/api/reorder/analytics/batches") return { filter: analytics.filter, batches: analytics.batches };
     if (path === "/api/reorder/analytics/export.csv") {
-      const columns = ["Batch", "Product", "MS", "MD", "MSI", "MGO", "NO", "Delivery rate", "Activation rate", "MGO / MD", "NO / MGO", "Coverage", "Sources"];
+      const columns = ["Batch", "Amazon Catalog Item", "MS", "MD", "MSI", "MGO", "NO", "Delivery rate", "Activation rate", "MGO / MD", "NO / MGO", "Coverage", "Sources"];
       const rows = analytics.batches.map((row) => [row.code, row.productName, row.values.ms, row.values.md, row.values.msi, row.values.mgo, row.values.no, "", "", "", "", row.availability, row.sources.join(" · ")]);
       return [`"Observation window: ${observationMonths} months"`, `"${analytics.exportPrivacy}"`, "", columns.map((item) => `"${item}"`).join(","), ...rows.map((row) => row.map((item) => `"${item}"`).join(","))].join("\n");
     }
@@ -289,20 +289,20 @@
     if (path === "/api/reorder/products" && method === "POST") {
       // TEMP: skip listing confirmation / required-field checks. Restore before launch.
       // if (!input.listingConfirmed) fail("Confirm this listing is correct");
-      // if (!input.productName || !/^[A-Z0-9]{10}$/.test(input.asin || "")) fail("Enter a Product title and valid 10-character ASIN");
+      // if (!input.productName || !/^[A-Z0-9]{10}$/.test(input.asin || "")) fail("Enter an Amazon Catalog Item title and valid 10-character ASIN");
       // if (!input.sku) fail("SKU is required");
       // if (!input.variantSize) fail("Variant / Size is required");
       const accountRow = state.accounts.find((item) => item.id === input.sellingAccountId)
         || state.accounts.find((item) => item.marketplace_code === input.marketplaceCode && item.seller_id === input.sellerId)
         || state.accounts[0];
       // if (!accountRow) fail("Select a Marketplace and Seller ID from Amazon setup");
-      const row = { id: uuid(), product_name: input.productName || "Untitled product", sku: input.sku || "", variant_size: input.variantSize || "", listing_confirmed: true, image_url: input.imageUrl, asin: input.asin, selling_account_id: accountRow?.id, amazon_seller_pdp_url: input.amazonSellerPdpUrl, attribution_url: input.amazonSellerPdpUrl, seller_offer_available: true, status: input.imageUrl && input.amazonSellerPdpUrl ? "ready" : "draft", updated_at: new Date().toISOString(), sellingAccount: accountRow }; state.products.unshift(row); persist(); return row;
+      const row = { id: uuid(), product_name: input.productName || "Untitled Amazon Catalog Item", sku: input.sku || "", variant_size: input.variantSize || "", listing_confirmed: true, image_url: input.imageUrl, asin: input.asin, selling_account_id: accountRow?.id, amazon_seller_pdp_url: input.amazonSellerPdpUrl, attribution_url: input.amazonSellerPdpUrl, seller_offer_available: true, status: input.imageUrl && input.amazonSellerPdpUrl ? "ready" : "draft", updated_at: new Date().toISOString(), sellingAccount: accountRow }; state.products.unshift(row); persist(); return row;
     }
     if (path === "/api/reorder/products/import" && method === "POST") return { imported: 0, rejected: Math.max(0, (input.csv || "").trim().split(/\r?\n/).length - 1), results: [] };
     const productMatch = path.match(/^\/api\/reorder\/products\/([^/]+)(\/batches)?$/);
     if (productMatch) {
       const row = findProduct(productMatch[1]);
-      if (!row) fail("Product not found");
+      if (!row) fail("Amazon Catalog Item not found");
       if (!productMatch[2]) return row;
       const related = state.batches.filter((item) => item.product_version_id === row.id).map((item) => ({ ...item, ...brandStatusFor(item) }));
       const orders = [...new Map(related.map((item) => {
@@ -319,7 +319,7 @@
       if (!row.batchCount) fail("Add at least one Batch before submitting");
       if (row.batchCount > MAX_BATCH_COUNT) fail(`Maximum ${MAX_BATCH_COUNT} batches per FC Order.`);
       if (state.batches.some((item) => item.orderNumber === row.orderNumber && Number(item.quantity) < MIN_BATCH_QUANTITY)) fail(`Minimum batch size is ${magnets(MIN_BATCH_QUANTITY)} magnets.`);
-      if (state.batches.some((item) => item.orderNumber === row.orderNumber && !item.product_version_id)) fail("Every Batch must have a Product and a positive Quantity");
+      if (state.batches.some((item) => item.orderNumber === row.orderNumber && !item.product_version_id)) fail("Every Batch must have an Amazon Catalog Item and a positive Quantity");
       if (row.remaining !== 0) fail("All magnets must be allocated before submission");
       state.batches.filter((item) => item.orderNumber === row.orderNumber).forEach((item) => { item.definition_status = "submitted"; item.submitted_at = new Date().toISOString(); Object.assign(item, brandStatusFor(item)); });
       row.allocationStatus = "submitted"; row.allocationReadiness = "Submitted"; row.status = "allocation_submitted"; row.submittedAt = new Date().toISOString(); row.batchAction = "Submitted"; row.allocationAction = "Submitted"; persist(); return row;
@@ -332,12 +332,12 @@
         if (current.definition_status === "submitted" || current.production_status !== "ordered") fail("Submitted batches cannot be deleted");
         state.batches = state.batches.filter((item) => item.id !== current.id); refreshOrder(row); persist(); return { ok: true };
       }
-      const productRow = findProduct(input.productVersionId); if (!productRow) fail("Select a current, production-ready Product Version");
+      const productRow = findProduct(input.productVersionId); if (!productRow) fail("Select a current, production-ready Amazon Catalog Item Version");
       const quantity = Number(input.quantity);
       const others = state.batches.filter((item) => item.orderNumber === row.orderNumber && item.id !== current.id);
       const invalid = validateBrandBatchQuantity({ quantity, totalOrdered: row.totalOrdered, otherAllocated: others.reduce((sum, item) => sum + Number(item.quantity || 0), 0), batchCount: others.length, isCreate: false });
       if (invalid) fail(invalid);
-      if (current.definition_status === "submitted" && (current.product_version_id !== input.productVersionId || current.quantity !== quantity)) fail("Product and Quantity are locked after the Batch is submitted");
+      if (current.definition_status === "submitted" && (current.product_version_id !== input.productVersionId || current.quantity !== quantity)) fail("Amazon Catalog Item and Quantity are locked after the Batch is submitted");
       Object.assign(current, { product_version_id: input.productVersionId, product: productRow, quantity, label: input.label || current.batch_code, ship_to: input.shipTo || null, requested_ship_date: input.requestedShipDate || null, notes: input.notes || null }, brandStatusFor(current));
       refreshOrder(row); persist(); return current;
     }
@@ -345,7 +345,7 @@
     if (orderBatchesMatch && method === "POST") {
       const row = state.orders.find((item) => item.orderNumber === decodeURIComponent(orderBatchesMatch[1])); if (!row) fail("FC Order not found");
       if (row.allocationStatus === "submitted") fail("Submitted batches are locked");
-      const productRow = findProduct(input.productVersionId); if (!productRow) fail("Select a current, production-ready Product Version");
+      const productRow = findProduct(input.productVersionId); if (!productRow) fail("Select a current, production-ready Amazon Catalog Item Version");
       const quantity = Number(input.quantity);
       refreshOrder(row);
       const invalid = validateBrandBatchQuantity({ quantity, totalOrdered: row.totalOrdered, otherAllocated: row.allocated, batchCount: row.batchCount, isCreate: true });
@@ -375,8 +375,8 @@
           ...row,
           ...brandStatusFor(row),
           performance: fact
-            ? { ms: fact.values.ms, md: fact.values.md, msi: fact.values.msi, mgo: fact.values.mgo, no: fact.values.no, coverage: fact.availability, coverageNote: fact.availability === "partial" ? "Partial coverage. Missing Product/Batch facts stay as — and are located in Data Sources." : null }
-            : { ms: null, md: null, msi: null, mgo: null, no: null, coverage: "unavailable", coverageNote: "Unavailable until the corresponding Data Sources cover this Batch." },
+            ? { ms: fact.values.ms, md: fact.values.md, msi: fact.values.msi, mgo: fact.values.mgo, no: fact.values.no, coverage: fact.availability, coverageNote: fact.availability === "partial" ? "Partial coverage. Missing Amazon Catalog Item/Batch facts stay as —." : null }
+            : { ms: null, md: null, msi: null, mgo: null, no: null, coverage: "unavailable", coverageNote: "Unavailable until coverage is complete for this Batch." },
         };
       }
       if (batchMatch[2] === "/activation") { row.activation_status = input.status; row.auditHistory.unshift({ id: uuid(), action: `activation_${input.status}`, created_at: new Date().toISOString() }); persist(); return row; }
@@ -388,7 +388,7 @@
       const rows = (input.productVersionIds || []).length
         ? state.products.filter((item) => input.productVersionIds.includes(item.id))
         : state.products.filter((item) => asins.includes(item.asin) && (!input.sellingAccountId || item.selling_account_id === input.sellingAccountId));
-      if (!input.title || !rows.length) fail("Record the Promotion facts and matched Product");
+      if (!input.title || !rows.length) fail("Record the Promotion facts and matched Amazon Catalog Item");
       const row = discount(uuid(), "amazon_promotion", input.title, rows, { benefit_summary: input.benefitSummary, claim_code_mode: input.claimCodeMode, group_claim_code: input.groupClaimCode, is_visible_on_fc: input.isVisibleOnFc === true, codePool: input.claimCodeMode === "single_use" ? { total: 0, available: 0, assigned: 0, displayed: 0, copied: 0, status: "exhausted" } : null });
       state.discounts.unshift(row);
       persist();
@@ -399,7 +399,7 @@
     const discountMatch = path.match(/^\/api\/reorder\/discounts\/([^/]+)(\/claim-codes\/import|\/featured|\/products)?$/);
     if (discountMatch) { const row = findDiscount(discountMatch[1]); if (!row) fail("Discount not found"); if (!discountMatch[2]) { if (method === "PUT") { if (input.couponType) row.coupon_type = input.couponType; if (typeof input.amazonConfirmed === "boolean") row.amazon_confirmed = input.amazonConfirmed; if (Number.isFinite(input.codeLowThreshold)) row.code_low_threshold = input.codeLowThreshold; if (typeof input.isVisibleOnFc === "boolean") row.is_visible_on_fc = input.isVisibleOnFc; persist(); } return presentDiscount(row); } if (discountMatch[2] === "/featured") { state.discounts.forEach((item) => item.products.forEach((productRow) => { if (productRow.id === input.productVersionId) productRow.isFeatured = item.id === row.id; })); persist(); return presentDiscount(row); } if (discountMatch[2] === "/products") { const mapped = state.products.filter((item) => (input.productVersionIds || []).includes(item.id)); mapped.forEach((productRow) => { if (!row.products.some((item) => item.id === productRow.id)) row.products.push({ ...productRow, isFeatured: false }); }); persist(); return presentDiscount(row); } const added = 3; row.codePool = row.codePool || { total: 0, available: 0, assigned: 0, displayed: 0, copied: 0, status: "exhausted" }; row.codePool.total += added; row.codePool.available += added; row.codePool.status = "low"; persist(); return { total: added, accepted: added, duplicates: 0, rejected: 0, duplicateRows: [], rejectedRows: [] }; }
     if (path === "/api/reorder/surveys" && method === "GET") return { surveys: state.surveys };
-    if (path === "/api/reorder/surveys" && method === "POST") { const issues = []; if (!input.title?.trim()) issues.push({ field: "title", message: "Title is required" }); if (!input.productIds?.length) issues.push({ field: "productIds", message: "Select at least one Product" }); if (issues.length) fail("Fix the highlighted Survey fields", issues); const row = { ...input, id: uuid(), version: 1, status: "draft", statusLabel: "Draft", lockedAt: null, starts: 0, completions: 0, completionRate: 0, updatedAt: new Date().toISOString(), questions: input.questions.map((item) => ({ ...item, id: uuid(), options: item.options.map((option) => ({ ...option, id: uuid() })) })) }; state.surveys.unshift(row); persist(); return row; }
+    if (path === "/api/reorder/surveys" && method === "POST") { const issues = []; if (!input.title?.trim()) issues.push({ field: "title", message: "Title is required" }); if (!input.productIds?.length) issues.push({ field: "productIds", message: "Select at least one Amazon Catalog Item" }); if (issues.length) fail("Fix the highlighted Survey fields", issues); const row = { ...input, id: uuid(), version: 1, status: "draft", statusLabel: "Draft", lockedAt: null, starts: 0, completions: 0, completionRate: 0, updatedAt: new Date().toISOString(), questions: input.questions.map((item) => ({ ...item, id: uuid(), options: item.options.map((option) => ({ ...option, id: uuid() })) })) }; state.surveys.unshift(row); persist(); return row; }
     const surveyMatch = path.match(/^\/api\/reorder\/surveys\/([^/]+)(\/results|\/schedule|\/open|\/close)?$/);
     if (surveyMatch) { const row = findSurvey(surveyMatch[1]); if (!row) fail("Survey not found"); if (surveyMatch[2] === "/results") return surveyResult(row); if (["/schedule", "/open", "/close"].includes(surveyMatch[2])) { const status = surveyMatch[2].slice(1); row.status = status === "close" ? "closed" : status === "open" ? "open" : "scheduled"; row.statusLabel = row.status === "open" ? "Active" : row.status === "closed" ? "Ended" : "Scheduled"; persist(); return row; } if (method === "PUT") { Object.assign(row, input, { updatedAt: new Date().toISOString() }); persist(); } return row; }
     if (path === "/api/reorder/data-sources") return { sources: state.sources };

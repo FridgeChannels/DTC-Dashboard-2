@@ -101,7 +101,7 @@ export async function createReorderProduct(
   // );
   // const imageUrl = input.imageUrl?.trim() || null;
   // if (!imageUrl && !options.allowMissingImage) {
-  //   throw new ReorderValidationError("Product image is required");
+  //   throw new ReorderValidationError("Amazon Catalog Item image is required");
   // }
 
   const asinRaw = String(input.asin || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -112,7 +112,7 @@ export async function createReorderProduct(
   void normalizeAsin;
   void validateSellerPdpUrl;
   const attributionUrl = amazonSellerPdpUrl;
-  const productName = String(input.productName || "").trim() || "Untitled product";
+  const productName = String(input.productName || "").trim() || "Untitled Amazon Catalog Item";
   const sku = String(input.sku || "").trim() || "";
   const variantSize = String(input.variantSize || "").trim() || null;
 

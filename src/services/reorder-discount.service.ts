@@ -183,7 +183,7 @@ async function buildCouponReview(customerId: number, sellingAccountId: unknown, 
       productVersionIds: matches.map((product) => product.id),
       matchedProducts: matches.map((product) => ({ id: product.id, name: product.product_name, asin: product.asin })),
       missingAsins,
-      mappingStatus: missingAsins.length ? "Product mapping required" : "Matched",
+      mappingStatus: missingAsins.length ? "Amazon Catalog Item mapping required" : "Matched",
       errors: [...row.errors],
     };
   });
@@ -269,21 +269,21 @@ export interface CreatePromotionInput {
 
 async function resolvePromotionProducts(customerId: number, sellingAccountId: string, input: CreatePromotionInput) {
   if (Array.isArray(input.productVersionIds) && input.productVersionIds.length) {
-    const productVersionIds = [...new Set(input.productVersionIds.map((value) => uuid(value, "Product Version")))];
+    const productVersionIds = [...new Set(input.productVersionIds.map((value) => uuid(value, "Amazon Catalog Item Version")))];
     const products = await productRepo.listProductVersionsByIds(customerId, productVersionIds);
     if (products.length !== productVersionIds.length || products.some((product) => product.selling_account_id !== sellingAccountId || !product.is_current)) {
-      throw new ReorderValidationError("Eligible Products must use the selected Selling Account");
+      throw new ReorderValidationError("Eligible Amazon Catalog Items must use the selected Selling Account");
     }
     return { productVersionIds, products };
   }
   const enteredAsins = parseEligibleAsins(input.eligibleAsins);
-  if (!enteredAsins.length) throw new ReorderValidationError("Enter Eligible ASINs to match Products");
+  if (!enteredAsins.length) throw new ReorderValidationError("Enter Eligible ASINs to match Amazon Catalog Items");
   const catalog = await productRepo.listCurrentProducts(customerId);
   const { matched } = matchProductsByAsins(
     catalog.filter((product) => product.selling_account_id === sellingAccountId),
     enteredAsins,
   );
-  if (!matched.length) throw new ReorderValidationError("No Products matched these Eligible ASINs");
+  if (!matched.length) throw new ReorderValidationError("No Amazon Catalog Items matched these Eligible ASINs");
   return { productVersionIds: matched.map((product) => product.id), products: matched };
 }
 
@@ -410,13 +410,13 @@ export async function mapReorderDiscountProducts(
   const discount = await discountRepo.findDiscount(customerId, discountId);
   if (!discount) return null;
   if (!Array.isArray(productVersionIds) || !productVersionIds.length) {
-    throw new ReorderValidationError("Select at least one Product to match");
+    throw new ReorderValidationError("Select at least one Amazon Catalog Item to match");
   }
-  const ids = [...new Set(productVersionIds.map((value) => uuid(value, "Product Version")))];
+  const ids = [...new Set(productVersionIds.map((value) => uuid(value, "Amazon Catalog Item Version")))];
   const products = await productRepo.listProductVersionsByIds(customerId, ids);
-  if (products.length !== ids.length) throw new ReorderValidationError("Product mapping is invalid");
+  if (products.length !== ids.length) throw new ReorderValidationError("Amazon Catalog Item mapping is invalid");
   if (products.some((product) => product.selling_account_id !== discount.selling_account_id || !discount.eligible_asins.includes(product.asin))) {
-    throw new ReorderValidationError("Mapped Products must use the same Selling Account and an Eligible ASIN");
+    throw new ReorderValidationError("Mapped Amazon Catalog Items must use the same Selling Account and an Eligible ASIN");
   }
   await discountRepo.bindDiscountProducts(
     customerId,
@@ -432,6 +432,6 @@ export async function mapReorderDiscountProducts(
 }
 
 export async function featureReorderDiscount(customerId: number, discountId: string, productVersionId: string) {
-  await discountRepo.setFeaturedDiscount(customerId, uuid(productVersionId, "Product Version"), discountId);
+  await discountRepo.setFeaturedDiscount(customerId, uuid(productVersionId, "Amazon Catalog Item Version"), discountId);
   return { featured: true };
 }

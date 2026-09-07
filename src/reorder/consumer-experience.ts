@@ -88,15 +88,15 @@ export function validateConsumerExperience(input: ConsumerExperienceInput): Cons
   if (!input.brand?.name.trim()) push(errors, "brand_missing", "amazon.brand", "Brand display name is required.");
   if (!account || account.status !== "active") push(errors, "account_missing", "amazon.sellingAccount", "An active Selling Account is required.");
   if (!product) {
-    push(errors, "product_missing", "product", "Product Version is required.");
+    push(errors, "product_missing", "product", "Amazon Catalog Item Version is required.");
     return errors;
   }
-  if (!product.imageUrl) push(errors, "image_missing", "product.imageUrl", "Product image is required.");
-  if (!["ready", "active"].includes(product.status)) push(errors, "product_not_ready", "product.status", "Product Version must be Ready before publishing.");
-  if (!/^[A-Z0-9]{10}$/.test(product.asin)) push(errors, "asin_invalid", "product.asin", "Product ASIN is invalid.");
+  if (!product.imageUrl) push(errors, "image_missing", "product.imageUrl", "Amazon Catalog Item image is required.");
+  if (!["ready", "active"].includes(product.status)) push(errors, "product_not_ready", "product.status", "Amazon Catalog Item Version must be Ready before publishing.");
+  if (!/^[A-Z0-9]{10}$/.test(product.asin)) push(errors, "asin_invalid", "product.asin", "Amazon Catalog Item ASIN is invalid.");
   if (!account) return errors;
   if (product.sellingAccountId !== account.id) {
-    push(errors, "seller_mismatch", "product.sellingAccount", "Product and Selling Account do not match.");
+    push(errors, "seller_mismatch", "product.sellingAccount", "Amazon Catalog Item and Selling Account do not match.");
   }
   try {
     validateSellerPdpUrl(product.sellerPdpUrl, "Amazon-generated Seller PDP URL", {
@@ -142,10 +142,10 @@ export function validateConsumerExperience(input: ConsumerExperienceInput): Cons
     }
   }
   if (input.discounts.length > 1 && input.discounts.filter((discount) => discount.isFeatured).length !== 1) {
-    push(errors, "featured_discount_required", "discounts.featured", "Choose exactly one Featured Discount for this Product.");
+    push(errors, "featured_discount_required", "discounts.featured", "Choose exactly one Featured Discount for this Amazon Catalog Item.");
   }
   if (input.surveyConflictCount > 1) {
-    push(errors, "survey_conflict", "survey", "Only one Survey can be active for this Product.");
+    push(errors, "survey_conflict", "survey", "Only one Survey can be active for this Amazon Catalog Item.");
   }
   if (input.survey) {
     if (input.survey.status !== "open") push(errors, "survey_not_open", "survey.status", "Survey must be Active before publishing.");

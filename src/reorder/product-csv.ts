@@ -23,12 +23,16 @@ const HEADER_ALIASES: Record<string, string> = {
   asin: "asin",
   "product title": "product title",
   "product name": "product title",
+  "amazon catalog item title": "product title",
+  "amazon catalog item name": "product title",
   "variant / size": "variant / size",
   "variant/size": "variant / size",
   "seller-specific amazon url": "seller-specific amazon url",
   "amazon-generated seller pdp url": "seller-specific amazon url",
   "product image url": "product image url",
   "product image": "product image url",
+  "amazon catalog item image url": "product image url",
+  "amazon catalog item image": "product image url",
 };
 
 const REQUIRED_HEADERS = [
@@ -86,7 +90,7 @@ export function parseReorderProductCsv(csv: unknown): ReorderProductCsvRow[] {
   }
   const rows = parseCells(csv.replace(/^\uFEFF/, ""));
   if (rows.length < 2) {
-    throw new ReorderValidationError("CSV must include a header and at least one product");
+    throw new ReorderValidationError("CSV must include a header and at least one Amazon Catalog Item");
   }
 
   const headers = rows[0].map((header) => HEADER_ALIASES[header.trim().toLowerCase()] || header.trim().toLowerCase());
@@ -96,7 +100,7 @@ export function parseReorderProductCsv(csv: unknown): ReorderProductCsvRow[] {
     throw new ReorderValidationError(`CSV is missing: ${missing.join(", ")}`);
   }
   if (rows.length > 501) {
-    throw new ReorderValidationError("CSV import is limited to 500 products at a time");
+    throw new ReorderValidationError("CSV import is limited to 500 Amazon Catalog Items at a time");
   }
 
   const get = (cells: string[], header: string) => cells[indexes.get(header) ?? -1] || "";

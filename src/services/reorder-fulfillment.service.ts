@@ -15,6 +15,8 @@ import type {
   ReorderBatchRow,
   ReorderProductionStatus,
 } from "../repositories/reorder-fulfillment.repo.js";
+import { ReorderValidationError } from "../reorder/amazon-url.js";
+import { catalogItemCopy } from "../reorder/catalog-item-copy.js";
 import {
   previewReorderConsumerExperience,
   publishReorderConsumerExperience,
@@ -52,7 +54,7 @@ function errorMessage(error: unknown, fallback: string): string {
 function asKnownError(error: unknown, fallback: string, known: string[]): never {
   const message = errorMessage(error, fallback);
   const matched = known.find((candidate) => message.includes(candidate));
-  if (matched) throw new ReorderValidationError(matched);
+  if (matched) throw new ReorderValidationError(catalogItemCopy(matched));
   throw error;
 }
 
@@ -92,7 +94,7 @@ function asBrandBatchError(error: unknown): never {
     "Maximum ",
   ];
   if (known.some((candidate) => message.includes(candidate))) {
-    throw new ReorderValidationError(message);
+    throw new ReorderValidationError(catalogItemCopy(message));
   }
   throw error;
 }
@@ -337,9 +339,9 @@ async function batchPerformance(customerId: number, batch: ReorderBatchRow) {
     missingProductIds: missingProducts,
     missingBatchIds: missingBatches,
     coverageNote: coverage === "unavailable"
-      ? "Unavailable until the corresponding Data Sources cover this Batch."
+      ? "Unavailable until coverage is complete for this Batch."
       : coverage === "partial"
-        ? "Partial coverage. Missing Product/Batch facts stay as — and are located in Data Sources."
+        ? "Partial coverage. Missing Amazon Catalog Item/Batch facts stay as —."
         : null,
   };
 }
@@ -503,7 +505,7 @@ function normalizeAllocations(value: unknown) {
     const productVersionId = String((item as { productVersionId?: unknown }).productVersionId ?? "");
     const quantity = Number((item as { quantity?: unknown }).quantity);
     if (!/^[0-9a-f-]{36}$/i.test(productVersionId) || !Number.isSafeInteger(quantity) || quantity <= 0) {
-      throw new ReorderValidationError("Each allocation requires a Product Version and positive quantity");
+      throw new ReorderValidationError("Each allocation requires an Amazon Catalog Item Version and positive quantity");
     }
     return { productVersionId, quantity };
   });
@@ -556,7 +558,7 @@ function normalizeBrandBatch(value: unknown) {
   const productVersionId = String(body.productVersionId ?? "");
   const quantity = Number(body.quantity);
   if (!/^[0-9a-f-]{36}$/i.test(productVersionId) || !Number.isSafeInteger(quantity) || quantity <= 0) {
-    throw new ReorderValidationError("Every Batch must have a Product and a positive Quantity");
+    throw new ReorderValidationError("Every Batch must have an Amazon Catalog Item and a positive Quantity");
   }
   const notes = optionalText(body.notes);
   if (notes && notes.length > 2000) {

@@ -21,7 +21,8 @@ const DASHBOARD_SECTION = {
   id: "dashboard",
   label: "Dashboard",
 };
-const ORDERS_DELIVERY_SECTION = { id: "orders-delivery", label: "Orders & Delivery" };
+const ORDERS_DELIVERY_SECTION = { id: "orders-delivery", label: "Orders" };
+const REORDER_SECTION = { id: "reorder", label: "Reorder", href: "/reorder" };
 
 // 旧版（mock 数据）Dashboard，保留为 dashboard_pre
 const DASHBOARD_PRE_SECTION = {
@@ -34,7 +35,7 @@ const PRODUCT_ADD_SECTION = { id: "product-add", label: "Add Product" };
 
 // 营销活动（对外投放）
 const COUPON_CAMPAIGNS_SECTION = { id: "discounts", label: "Coupons" };
-const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Surveys" };
+const SURVEY_CAMPAIGNS_SECTION = { id: "survey-campaigns", label: "Brand surveys" };
 
 // 受众与规则
 const SEGMENT_CONFIG_SECTION = { id: "segment-config", label: "Segment Coupons" };
@@ -45,7 +46,7 @@ const SHOPIFY_SECTION = { id: "shopify", label: "Shopify" };
 const KLAVIYO_SECTION = { id: "klaviyo", label: "Klaviyo" };
 
 // section 属于 Accounts 区时，底部 Accounts 保持展开/高亮
-const ACCOUNT_MATCH = [ACCOUNT_SECTION.id, SHOPIFY_SECTION.id, KLAVIYO_SECTION.id];
+const ACCOUNT_MATCH = [ACCOUNT_SECTION.id, SHOPIFY_SECTION.id, KLAVIYO_SECTION.id, BRAND_COLLECT_SECTION.id];
 
 const ALL_SECTIONS = [
   DASHBOARD_SECTION,
@@ -71,12 +72,12 @@ function buildNavGroups(conn, setupProgress) {
       items: [
         { ...DASHBOARD_SECTION, icon: I.navDashboard },
         { ...ORDERS_DELIVERY_SECTION, icon: I.navOrders },
-        { ...BRAND_COLLECT_SECTION, icon: I.navBrand },
       ],
     },
     {
-      label: "Campaign",
+      label: "Grow",
       items: [
+        { ...REORDER_SECTION, icon: I.navProduct },
         {
           ...COUPON_CAMPAIGNS_SECTION,
           label: "Coupons",
@@ -131,25 +132,40 @@ function pathForSection(section) {
 }
 
 function AdminNavItem({ item, active, onSelect }) {
-  return (
-    <button
-      type="button"
-      className={`admin-nav-item${active ? " active" : ""}${item.locked ? " locked" : ""}${item.blocker ? " blocker" : ""}${item.indent ? " indent" : ""}`}
-      title={item.locked ? item.lockHint : (item.statusLabel || undefined)}
-      aria-disabled={item.locked || undefined}
-      onClick={() => onSelect(item.id)}
-    >
+  const className = `admin-nav-item${active ? " active" : ""}${item.locked ? " locked" : ""}${item.blocker ? " blocker" : ""}${item.indent ? " indent" : ""}`;
+  const content = (
+    <>
       {item.icon && <span className="admin-nav-icon" aria-hidden="true">{item.icon()}</span>}
       <span className="admin-nav-label">{item.label}</span>
-
       {item.progress && <span className="admin-nav-progress">{item.progress}</span>}
-
       {item.status && (
         <span
           className={`admin-nav-status ${item.status}`}
           aria-label={item.statusLabel}
         />
       )}
+    </>
+  );
+  if (item.href) {
+    return (
+      <a
+        className={className}
+        href={item.href}
+        title={item.locked ? item.lockHint : (item.statusLabel || undefined)}
+      >
+        {content}
+      </a>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={className}
+      title={item.locked ? item.lockHint : (item.statusLabel || undefined)}
+      aria-disabled={item.locked || undefined}
+      onClick={() => onSelect(item.id)}
+    >
+      {content}
     </button>
   );
 }
@@ -208,7 +224,7 @@ function AdminSidebar({ section, onSectionChange, connections, setupProgress }) 
   );
 }
 
-function AccountsPage({ section, user, connections, onSubChange, onLogout, readOnly }) {
+function AccountsPage({ section, user, connections, onSubChange, onLogout, readOnly, brandInfoReadOnly }) {
   const subItem = (sec, label, status, icon = null) => (
     <button
       type="button"
@@ -224,6 +240,8 @@ function AccountsPage({ section, user, connections, onSubChange, onLogout, readO
   return (
     <div className="accounts-layout">
       <aside className="accounts-subnav" aria-label="Accounts navigation">
+        <div className="admin-nav-group-label">Setup</div>
+        {subItem(BRAND_COLLECT_SECTION.id, "Brand Info")}
         <div className="admin-nav-group-label">Accounts</div>
         {subItem(ACCOUNT_SECTION.id, "Account")}
         <div className="admin-nav-group-label">Integration</div>
@@ -241,7 +259,9 @@ function AccountsPage({ section, user, connections, onSubChange, onLogout, readO
         )}
       </aside>
       <main className="admin-content accounts-body">
-        {section === ACCOUNT_SECTION.id
+        {section === BRAND_COLLECT_SECTION.id
+          ? <BrandCollectPage readOnly={brandInfoReadOnly} />
+          : section === ACCOUNT_SECTION.id
           ? <FcAccountView user={user} onLogout={onLogout} />
           : <BrandConfigPage section={section} readOnly={readOnly} />}
       </main>
@@ -254,7 +274,7 @@ function FcAccountView({ user, onLogout }) {
   const email = user?.customer?.email || user?.authUser?.email || "—";
   return (
     <div className="cfg-page">
-      <CfgSection title="Account" desc="Your FridgeChannel sign-in.">
+      <CfgSection title="Account" desc="FridgeChannel sign-in. Amazon selling accounts are configured in Reorder → Amazon setup.">
         <div className="cfg-form grid grid-2">
           <label className="cfg-field">
             <span className="cfg-label">Name</span>
@@ -439,9 +459,7 @@ function AdminApp() {
           ? <OrdersDeliveryPage />
           : section === DASHBOARD_PRE_SECTION.id
           ? <DashboardPage />
-          : section === BRAND_COLLECT_SECTION.id
-            ? <BrandCollectPage readOnly={brandInfoReadOnly} />
-            : section === PRODUCT_ADD_SECTION.id
+          : section === PRODUCT_ADD_SECTION.id
               ? <ProductAddPage readOnly={configReadOnly} />
               : ACCOUNT_MATCH.includes(section)
             ? (
@@ -452,6 +470,7 @@ function AdminApp() {
                 onSubChange={handleSectionChange}
                 onLogout={handleLogout}
                 readOnly={configReadOnly}
+                brandInfoReadOnly={brandInfoReadOnly}
               />
             )
             : (

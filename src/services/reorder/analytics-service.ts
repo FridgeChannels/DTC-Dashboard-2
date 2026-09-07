@@ -140,12 +140,12 @@ export async function getReorderAnalytics(
       { label: "Completed", value: eventCount(["survey_completed"]) },
     ],
     batches,
-    exportPrivacy: "Exports contain aggregate Product and Batch metrics only. No FC IDs, device IDs, anonymous order keys or Claim Codes are included.",
+    exportPrivacy: "Exports contain aggregate Amazon Catalog Item and Batch metrics only. No FC IDs, device IDs, anonymous order keys or Claim Codes are included.",
   };
 }
 
 export function exportReorderAnalyticsCsv(analytics: Awaited<ReturnType<typeof getReorderAnalytics>>) {
-  const columns = ["Batch", "Product", "MS", "MD", "MSI", "MGO", "NO", "Delivery rate", "Activation rate", "MGO / MD", "NO / MGO", "Coverage", "Sources"];
+  const columns = ["Batch", "Amazon Catalog Item", "MS", "MD", "MSI", "MGO", "NO", "Delivery rate", "Activation rate", "MGO / MD", "NO / MGO", "Coverage", "Sources"];
   const rows = analytics.batches.map((batch) => [
     batch.code,
     batch.productName,

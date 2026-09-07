@@ -55,15 +55,15 @@ export function validateReorderSurveyDraft(input: ReorderSurveyDraft): ReorderSu
   }
 
   if (!Array.isArray(input.productIds) || input.productIds.length === 0) {
-    issues.push(issue("product_count", "productIds", "Choose at least one eligible Product."));
+    issues.push(issue("product_count", "productIds", "Choose at least one eligible Amazon Catalog Item."));
   } else {
     const seenProducts = new Set<string>();
     input.productIds.forEach((productId, index) => {
       const normalized = String(productId).toLowerCase();
       if (!UUID.test(productId)) {
-        issues.push(issue("invalid", `productIds[${index}]`, "Eligible Product ID is invalid."));
+        issues.push(issue("invalid", `productIds[${index}]`, "Eligible Amazon Catalog Item ID is invalid."));
       } else if (seenProducts.has(normalized)) {
-        issues.push(issue("duplicate", `productIds[${index}]`, "Eligible Products must be unique."));
+        issues.push(issue("duplicate", `productIds[${index}]`, "Eligible Amazon Catalog Items must be unique."));
       }
       seenProducts.add(normalized);
     });

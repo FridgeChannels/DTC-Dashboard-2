@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessSourceCoverage, buildNeedsAttention, type CoverageManifest, type MetricScope } from "../../src/services/reorder/coverage-engine.js";
+import { assessSourceCoverage, type CoverageManifest, type MetricScope } from "../../src/services/reorder/coverage-engine.js";
 
 const scope: MetricScope = { from: "2026-06-01", to: "2026-09-04", productIds: ["p1", "p2"], batchIds: ["b1", "b2"] };
 function manifest(overrides: Partial<CoverageManifest> = {}): CoverageManifest {
@@ -23,13 +23,5 @@ describe("Reorder coverage engine", () => {
 
   it("does not treat aggregate granularity as exact Batch coverage", () => {
     expect(assessSourceCoverage(manifest({ granularity: "aggregate", batchIds: [] }), scope)).toMatchObject({ availability: "partial", missingBatchIds: ["b1", "b2"] });
-  });
-
-  it("generates direct actionable source issues", () => {
-    const issues = buildNeedsAttention([assessSourceCoverage(manifest({ freshness: "stale" }), scope), assessSourceCoverage(null, scope, "order_attribution")]);
-    expect(issues).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: "source_stale", fixPath: "/reorder/settings/data-sources" }),
-      expect.objectContaining({ code: "source_unavailable", sourceKind: "order_attribution" }),
-    ]));
   });
 });

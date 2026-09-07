@@ -1856,6 +1856,7 @@ function SurveyCampaignsPage({ readOnly = false } = {}) {
       {view === "list" && (
         <ModuleHead
           title="Surveys"
+          sub="Shopify and Klaviyo challenge surveys. Amazon FC page surveys live in Reorder → Surveys."
           action={
             <div className="survey-head-actions">
               <label className="survey-filter">

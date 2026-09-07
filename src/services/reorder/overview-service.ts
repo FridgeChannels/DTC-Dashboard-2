@@ -35,7 +35,6 @@ export interface OverviewIssue {
   message: string;
   fixPath: string;
   fixLabel: string;
-  sourceKind?: string;
 }
 
 const BEHAVIORAL = [
@@ -71,27 +70,6 @@ function presentMetrics(metrics: MetricValue[], rates: ReturnType<typeof calcula
   });
 }
 
-function nameList(ids: string[], items: Array<{ id: string; name?: string; code?: string }>) {
-  return ids.map((id) => items.find((item) => item.id === id)?.name || items.find((item) => item.id === id)?.code || id);
-}
-
-function sourceIssues(result: ReturnType<typeof calculateReorderMetrics>, workspace: OverviewWorkspace): OverviewIssue[] {
-  return result.needsAttention.map((issue) => {
-    const coverage = result.coverage.find((item) => item.sourceKind === issue.sourceKind);
-    const missingProducts = nameList(coverage?.missingProductIds ?? [], workspace.products.map((product) => ({ id: product.id, name: product.name })));
-    const missingBatches = nameList(coverage?.missingBatchIds ?? [], workspace.batches.map((batch) => ({ id: batch.id, code: batch.code })));
-    const missing = [...missingProducts, ...missingBatches].filter(Boolean);
-    const detail = missing.length ? ` Missing ${missing.join(", ")}.` : "";
-    return {
-      code: issue.code,
-      sourceKind: issue.sourceKind,
-      message: `${issue.message}${detail}`,
-      fixPath: issue.fixPath,
-      fixLabel: "Fix",
-    };
-  });
-}
-
 function configurationIssues(workspace: OverviewWorkspace, filter: ParsedDashboardFilter): OverviewIssue[] {
   const scoped = scopedWorkspace(workspace, filter);
   const productIds = new Set(scoped.products.map((product) => product.id));
@@ -104,7 +82,7 @@ function configurationIssues(workspace: OverviewWorkspace, filter: ParsedDashboa
   for (const discount of workspace.discounts) {
     const ended = discount.endAt && Date.parse(discount.endAt) < Date.now();
     if (discount.isVisibleOnFc && ended) issues.push({ code: "discount_expired", message: `${discount.title} Amazon period has ended.`, fixPath: `/reorder/discounts/${discount.id}`, fixLabel: "Fix" });
-    if (discount.issueCode === "product_mapping_required") issues.push({ code: "product_mapping_required", message: `${discount.title} needs Product mapping.`, fixPath: `/reorder/discounts/${discount.id}`, fixLabel: "Fix" });
+    if (discount.issueCode === "product_mapping_required") issues.push({ code: "product_mapping_required", message: `${discount.title} needs Amazon Catalog Item mapping.`, fixPath: `/reorder/discounts/${discount.id}`, fixLabel: "Fix" });
     if (discount.claimCodeMode === "single_use" && discount.codePool?.status === "exhausted") issues.push({ code: "codes_exhausted", message: `${discount.title} Single-use Claim Code pool is exhausted.`, fixPath: `/reorder/discounts/${discount.id}`, fixLabel: "Fix" });
     else if (discount.claimCodeMode === "single_use" && (discount.codePool?.status === "codes_low" || discount.codePool?.status === "low")) issues.push({ code: "codes_low", message: `${discount.title} Single-use Claim Code pool is below the threshold.`, fixPath: `/reorder/discounts/${discount.id}`, fixLabel: "Fix" });
   }
@@ -118,7 +96,7 @@ function configurationIssues(workspace: OverviewWorkspace, filter: ParsedDashboa
   for (const [productId, surveyIds] of openByProduct) {
     if (surveyIds.length < 2) continue;
     const product = workspace.products.find((item) => item.id === productId);
-    issues.push({ code: "survey_conflict", message: `${product?.name || "A Product"} has more than one Active Survey.`, fixPath: `/reorder/surveys/${surveyIds[0]}`, fixLabel: "Fix" });
+    issues.push({ code: "survey_conflict", message: `${product?.name || "An Amazon Catalog Item"} has more than one Active Survey.`, fixPath: `/reorder/surveys/${surveyIds[0]}`, fixLabel: "Fix" });
   }
   return issues;
 }
@@ -211,11 +189,11 @@ export async function getReorderOverview(
     }),
     orderDepth: { value: byKey.no.value, rate: result.rates.orderDepth, availability: byKey.no.availability },
     coverage: result.coverage,
-    needsAttention: [...sourceIssues(result, workspace), ...configurationIssues(workspace, filter)],
+    needsAttention: configurationIssues(workspace, filter),
     diagnostics: {
       behavioral: behavioralDiagnostics(snapshot, scoped, byKey.msi),
       configuration: [
-        { key: "products", label: "Products", value: activeProducts.length },
+        { key: "products", label: "Amazon Catalog Items", value: activeProducts.length },
         { key: "batches", label: "Batches", value: activeBatches.length },
         { key: "fcIds", label: "FC IDs", value: activeBatches.reduce((sum, batch) => sum + batch.fcIdCount, 0) },
         { key: "discounts", label: "Discounts", value: workspace.discounts.filter((item) => item.isVisibleOnFc).length },

@@ -153,7 +153,7 @@ describe("Reorder isolation and accessibility contracts", () => {
     expect(app).toContain("function useFlashMessage");
     expect(app).toContain(">Edit</button>");
     expect(app).toContain('This workspace is view-only.');
-    expect(app).toContain("Product versions are view-only after they are created.");
+    expect(app).toContain("Amazon Catalog Item versions are view-only after they are created.");
     expect(app).not.toContain("Save Amazon setup");
     expect(app).not.toContain("Save settings");
     expect(app).not.toContain("Working…");

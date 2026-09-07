@@ -14,21 +14,21 @@ const ORDER_FILTERS = [
 ];
 
 const ORDER_STATUS_META = {
-  payment_pending: { label: "Payment pending", tone: "attention" },
-  order_confirmed: { label: "Order confirmed", tone: "progress" },
-  awaiting_brand_inputs: { label: "Action required", tone: "attention" },
-  design_in_progress: { label: "Design in progress", tone: "progress" },
-  awaiting_design_approval: { label: "Action required", tone: "attention" },
-  design_approved: { label: "Design approved", tone: "progress" },
+  payment_pending: { label: "Payment Pending", tone: "attention" },
+  order_confirmed: { label: "Order Confirmed", tone: "progress" },
+  awaiting_brand_inputs: { label: "Action Required", tone: "attention" },
+  design_in_progress: { label: "Design In Progress", tone: "progress" },
+  awaiting_design_approval: { label: "Action Required", tone: "attention" },
+  design_approved: { label: "Design Approved", tone: "progress" },
   production: { label: "Production", tone: "progress" },
-  quality_check: { label: "Quality check", tone: "progress" },
-  ready_to_ship: { label: "Ready to ship", tone: "progress" },
+  quality_check: { label: "Quality Check", tone: "progress" },
+  ready_to_ship: { label: "Ready To Ship", tone: "progress" },
   shipped: { label: "Shipped", tone: "shipped" },
   delivered: { label: "Delivered", tone: "success" },
   distribution_planning: { label: "Delivered", tone: "success" },
   distributing: { label: "Delivered", tone: "success" },
   completed: { label: "Delivered", tone: "success" },
-  on_hold: { label: "On hold", tone: "neutral" },
+  on_hold: { label: "On Hold", tone: "neutral" },
   cancelled: { label: "Cancelled", tone: "cancelled" },
 };
 
@@ -642,7 +642,7 @@ function OrdersDeliveryPage() {
           <header className="od-page-header">
             <div>
               <h1>Orders &amp; Delivery</h1>
-              <p>Track every order from payment through delivery.</p>
+              <p>Purchase and fulfillment for FridgeChannel orders. Allocate magnets into Batches in Reorder.</p>
             </div>
           </header>
 

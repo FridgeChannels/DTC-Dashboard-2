@@ -2455,6 +2455,7 @@ function BrandConfigPage({ section = "shopify", readOnly = false, onSkip = null,
           <>
             <ModuleHead
               title="Coupons"
+              sub="Shopify and Klaviyo coupons. Amazon Coupons for the FC page live in Reorder → Discounts."
               action={(
                 <>
                   <button

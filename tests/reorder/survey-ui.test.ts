@@ -16,7 +16,7 @@ describe("Reorder Survey Console", () => {
   });
 
   it("keeps Reorder Surveys limited to Product targeting and choice questions", () => {
-    expect(app).toContain("Eligible Products");
+    expect(app).toContain("Eligible Amazon Catalog Items");
     expect(app).toContain('value="single_choice"');
     expect(app).toContain('value="multiple_choice"');
     expect(app).toContain("form.questions.length >= 3");

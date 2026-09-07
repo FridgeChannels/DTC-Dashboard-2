@@ -70,6 +70,7 @@ function OnboardingPage({ progress, skipped, onSkipStep, onExit, onRefresh, bran
         <div className="onboarding-frame">
           <span>Setup complete</span>
           <h1>Your workspace is ready</h1>
+          <p>You’ll land on Dashboard, where revenue, coupons, and FC orders appear once connected.</p>
           <button type="button" className="btn primary" onClick={onExit}>Go to Dashboard</button>
         </div>
       </div>

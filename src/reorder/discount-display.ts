@@ -28,7 +28,7 @@ export interface DiscountDisplayInput {
 
 const ISSUE_LABELS: Record<DiscountIssueCode, string> = {
   expired: "Expired",
-  product_mapping_required: "Product mapping required",
+  product_mapping_required: "Amazon Catalog Item mapping required",
   invalid: "Invalid",
   codes_low: "Codes low",
   codes_exhausted: "Codes exhausted",

@@ -47,7 +47,7 @@ describe("Reorder Survey results", () => {
       }],
       responses,
     });
-    expect(csv).toContain('"Anonymous Response ID","Product","FC Batch","Survey Version","Answers","Submitted at"');
+    expect(csv).toContain('"Anonymous Response ID","Amazon Catalog Item","FC Batch","Survey Version","Answers","Submitted at"');
     expect(csv).toContain("'=unsafe-product");
     expect(csv).not.toMatch(/raw fc id|fc_id|email|phone|address|claim code/i);
   });

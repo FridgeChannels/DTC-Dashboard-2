@@ -17,12 +17,12 @@
   left: 50%;
   bottom: 28px;
   transform: translateX(-50%);
-  background: #111;
-  color: #fff;
+  background: var(--ink);
+  color: var(--bg-elev);
   padding: 10px 16px;
   border-radius: 999px;
   font-size: 14px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-2);
 }
 
 /* Brand collect page */
@@ -330,8 +330,8 @@
 
 
 .brand-collect-page .field input:focus {
-  border-color: #111;
-  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.06);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 
@@ -357,13 +357,11 @@
 }
 
 
-.btn-primary,
-.btn-secondary,
-.btn-ghost,
 .brand-collect-page .file-upload-btn {
   border: 0;
-  border-radius: 12px;
-  padding: 12px 18px;
+  border-radius: var(--radius-default, 8px);
+  padding: 8px 14px;
+  min-height: var(--control-md, 36px);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -372,50 +370,8 @@
   justify-content: center;
   gap: 8px;
   max-width: 100%;
-}
-
-
-.brand-collect-page .btn-primary {
-  background: #111;
-  color: #fff;
-}
-
-
-.brand-collect-page .btn-primary:disabled {
-  opacity: 0.7;
-  cursor: wait;
-}
-
-
-.brand-collect-page .btn-secondary {
-  background: #f3f3f3;
-  color: #111;
-}
-
-
-.brand-collect-page .btn-secondary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-
-.brand-collect-page .btn-secondary--compact {
-  padding: 6px 12px;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-
-.brand-collect-page .btn-ghost {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--border);
-}
-
-
-.brand-collect-page .file-upload-btn {
-  background: #111;
-  color: #fff;
+  background: var(--ink);
+  color: var(--bg-elev);
   position: relative;
 }
 
@@ -848,7 +804,7 @@
   width: 40px;
   height: 40px;
   border: 3px solid rgba(0, 0, 0, 0.08);
-  border-top-color: #111;
+  border-top-color: var(--ink);
   border-radius: 50%;
   animation: bc-spin 0.8s linear infinite;
 }
@@ -856,5 +812,5 @@
 
 @keyframes bc-spin { to { transform: rotate(360deg); } }
 .brand-collect-page .btn-spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff; border-radius: 50%; animation: bc-spin 0.8s linear infinite; display: inline-block; }
-.brand-collect-page .btn-secondary .btn-spinner { border-color: rgba(0,0,0,0.15); border-top-color: #111; }
+.brand-collect-page .btn-secondary .btn-spinner { border-color: rgba(0,0,0,0.15); border-top-color: var(--ink); }
 .brand-collect-page { --surface: #fff; --border: rgba(0,0,0,0.08); --shadow: 0 18px 50px rgba(24,24,24,0.08); --radius: 20px; --muted: #6b6b6b; --text: #1a1a1a; }

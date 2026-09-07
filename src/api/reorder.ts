@@ -318,7 +318,7 @@ export async function handleListReorderProducts(
     const customerId = await getRequestConfigCustomerId(req, res);
     json(res, 200, { products: await listReorderProducts(customerId) });
   } catch (error) {
-    handleError(res, error, "Failed to load products");
+    handleError(res, error, "Failed to load Amazon Catalog Items");
   }
 }
 
@@ -332,7 +332,7 @@ export async function handleCreateReorderProduct(
     const customerId = await getRequestCustomerId(req, res);
     json(res, 201, await createReorderProduct(customerId, input));
   } catch (error) {
-    handleError(res, error, "Failed to create product");
+    handleError(res, error, "Failed to create Amazon Catalog Item");
   }
 }
 
@@ -346,7 +346,7 @@ export async function handleImportReorderProducts(
     const customerId = await getRequestCustomerId(req, res);
     json(res, 200, await importReorderProducts(customerId, input.csv));
   } catch (error) {
-    handleError(res, error, "Failed to import products");
+    handleError(res, error, "Failed to import Amazon Catalog Items");
   }
 }
 
@@ -358,17 +358,17 @@ export async function handleGetReorderProduct(
   try {
     const id = decodeURIComponent(rawId);
     if (!/^[0-9a-f-]{36}$/i.test(id)) {
-      throw new ReorderValidationError("Invalid product ID");
+      throw new ReorderValidationError("Invalid Amazon Catalog Item ID");
     }
     const customerId = await getRequestConfigCustomerId(req, res);
     const product = await getReorderProduct(customerId, id);
     if (!product) {
-      errorJson(res, 404, "Product not found");
+      errorJson(res, 404, "Amazon Catalog Item not found");
       return;
     }
     json(res, 200, product);
   } catch (error) {
-    handleError(res, error, "Failed to load product");
+    handleError(res, error, "Failed to load Amazon Catalog Item");
   }
 }
 
@@ -450,7 +450,7 @@ export async function handleSaveReorderAllocations(
     if (!allocations) return errorJson(res, 404, "FC Order not found");
     json(res, 200, { allocations });
   } catch (error) {
-    handleError(res, error, "Failed to save Product Allocation");
+    handleError(res, error, "Failed to save Amazon Catalog Item Allocation");
   }
 }
 
@@ -466,7 +466,7 @@ export async function handleSubmitReorderAllocations(
     if (!state) return errorJson(res, 404, "FC Order not found");
     json(res, 200, state);
   } catch (error) {
-    handleError(res, error, "Failed to submit Product Allocation");
+    handleError(res, error, "Failed to submit Amazon Catalog Item Allocation");
   }
 }
 
@@ -594,10 +594,10 @@ export async function handleListReorderProductBatches(
 ): Promise<void> {
   try {
     const customerId = await getRequestConfigCustomerId(req, res);
-    const productId = decodeUuid(rawProductId, "Product ID");
+    const productId = decodeUuid(rawProductId, "Amazon Catalog Item ID");
     json(res, 200, await listReorderProductBatches(customerId, productId));
   } catch (error) {
-    handleError(res, error, "Failed to load Product Batches");
+    handleError(res, error, "Failed to load Amazon Catalog Item Batches");
   }
 }
 
@@ -716,7 +716,7 @@ export async function handleMapReorderDiscountProducts(
     if (!discount) return errorJson(res, 404, "Discount not found");
     json(res, 200, discount);
   } catch (error) {
-    handleError(res, error, "Failed to map Discount Products");
+    handleError(res, error, "Failed to map Discount Amazon Catalog Items");
   }
 }
 

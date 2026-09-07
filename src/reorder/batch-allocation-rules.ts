@@ -52,7 +52,7 @@ export function validateBrandBatchQuantity(input: {
     return `Maximum ${maxCount} batches per FC Order.`;
   }
   if (!Number.isSafeInteger(input.quantity) || input.quantity <= 0) {
-    return "Every Batch must have a Product and a positive Quantity";
+    return "Every Batch must have an Amazon Catalog Item and a positive Quantity";
   }
   if (input.quantity < minQuantity) {
     return `Minimum batch size is ${magnets(minQuantity)} magnets.`;

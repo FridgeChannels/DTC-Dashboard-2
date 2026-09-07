@@ -99,7 +99,7 @@ export async function saveReorderSurvey(customerId: number, campaignId: string |
   if (issues.length) throw new ReorderSurveyValidationError(issues);
   const products = await productRepo.listProductVersionsByIds(customerId, draft.productIds);
   if (products.length !== new Set(draft.productIds).size) {
-    throw new ReorderSurveyValidationError([{ code: "not_found", field: "productIds", message: "One or more eligible Products were not found." }]);
+    throw new ReorderSurveyValidationError([{ code: "not_found", field: "productIds", message: "One or more eligible Amazon Catalog Items were not found." }]);
   }
   const id = await surveyRepo.saveSurvey(customerId, campaignId, draft);
   return getReorderSurvey(customerId, id);
@@ -204,7 +204,7 @@ export function exportAnonymousSurveyResponses(input: {
   responses: ReorderSurveyResponseRow[];
 }) {
   const responseById = new Map(input.responses.map((response) => [response.id, response]));
-  const header = ["Anonymous Response ID", "Product", "FC Batch", "Survey Version", "Answers", "Submitted at"];
+  const header = ["Anonymous Response ID", "Amazon Catalog Item", "FC Batch", "Survey Version", "Answers", "Submitted at"];
   const rows = input.contexts.flatMap((context) => {
     const response = responseById.get(context.response_id);
     if (!response || response.completion_status !== "submitted") return [];

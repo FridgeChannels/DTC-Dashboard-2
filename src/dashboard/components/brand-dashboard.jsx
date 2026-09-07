@@ -688,9 +688,11 @@ function BrandDashboardPage() {
           <div className="survey-dashboard-head-context">
             <div>
               <h2 className="module-title survey-detail-title">Dashboard</h2>
+              <span className="module-sub">Brand operating overview. Magnet funnel and allocation live in Reorder.</span>
             </div>
           </div>
           <div className="survey-dashboard-head-actions">
+            <a className="btn" href="/reorder">Open Reorder</a>
             <select className="cfg-input" value={dateRange} onChange={(e) => setDateRange(e.target.value)} aria-label="Date range">
               {BD_DATE_RANGES.map((opt) => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
             </select>

@@ -411,8 +411,8 @@ function SegmentConfigPage({ readOnly = false } = {}) {
       <CfgSection
         title="Segment coupon configuration"
         desc={allOnlyMode
-          ? "Choose which coupons all users can receive. Your package uses a single All audience instead of Klaviyo segments."
-          : "Bind coupons to each Klaviyo segment. A user's available coupons are resolved from the segments they belong to."}
+          ? "Audience rules for Coupons. Your package uses a single All audience instead of Klaviyo segments. These are not Amazon Coupons."
+          : "Audience rules for Coupons. Bind coupons to each Klaviyo segment. These are not Amazon Coupons."}
       >
         <SegmentConfigTable
           rows={rows}

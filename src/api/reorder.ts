@@ -568,17 +568,13 @@ export async function handlePutReorderBatchActivation(
   rawBatchId: string,
 ): Promise<void> {
   try {
-    const input = await readJsonBody<{ status?: unknown; scheduledActivationAt?: unknown; selectedDiscountIds?: unknown }>(req);
+    const input = await readJsonBody<{ selectedDiscountIds?: unknown }>(req);
     await assertRequestCanWriteConfig(req, res);
     const customerId = await getRequestCustomerId(req, res);
     const batch = await transitionReorderBatchActivation(
       customerId,
       decodeUuid(rawBatchId, "Batch ID"),
-      {
-        status: input.status,
-        scheduledActivationAt: input.scheduledActivationAt,
-        selectedDiscountIds: input.selectedDiscountIds,
-      },
+      { selectedDiscountIds: input.selectedDiscountIds },
     );
     if (!batch) return errorJson(res, 404, "Batch not found");
     json(res, 200, batch);

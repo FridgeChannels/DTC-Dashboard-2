@@ -1,5 +1,125 @@
+(function createReorderPreviewAnalytics() {
+  function ratio(numerator, denominator) {
+    return denominator > 0 ? numerator / denominator : null;
+  }
+  function hasCoverage(data) {
+    return Boolean(data && (
+      (data.metrics || []).some((item) => item.value != null)
+      || (data.batches || []).some((row) => row?.values?.ms != null)
+    ));
+  }
+  const templates = [
+    { ms: 3360, md: 3124, msi: 1981, mgo: 714, no: 1246, taps: 3520, visits: 2610, pdp: 1402, discountAction: 812, surveyCompleted: 468 },
+    { ms: 2100, md: 1928, msi: 1104, mgo: 386, no: 671, taps: 2210, visits: 1644, pdp: 802, discountAction: 441, surveyCompleted: 251 },
+    { ms: 1480, md: 1361, msi: 742, mgo: 248, no: 419, taps: 1540, visits: 1112, pdp: 528, discountAction: 290, surveyCompleted: 168 },
+  ];
+  const metricMeta = [
+    { key: "ms", short: "MS", label: "Magnets Shipped", source: "Consumer Fulfillment", rate: null, rateFormat: null, rateKey: null },
+    { key: "md", short: "MD", label: "Magnets Delivered", source: "Delivery / Carrier", rate: "Delivery rate", rateFormat: "percent", rateKey: "delivery" },
+    { key: "msi", short: "MSI", label: "Scanned & Interacted", source: "FC Event Tracking", rate: "Activation rate", rateFormat: "percent", rateKey: "activation" },
+    { key: "mgo", short: "MGO", label: "Generating Orders", source: "Order Attribution", rate: "MGO / MD", rateFormat: "percent", rateKey: "orderGenerating" },
+    { key: "no", short: "NO", label: "Number of Orders", source: "Order Attribution", rate: "NO / MGO", rateFormat: "ratio", rateKey: "orderDepth" },
+  ];
+  function decorate(data) {
+    if (hasCoverage(data)) return data;
+    const sourceBatches = (data?.batches || []).filter((row) => row?.id);
+    const facts = (sourceBatches.length ? sourceBatches : [
+      { id: "preview-batch-a", code: "B001", productId: "preview-product-a", productName: "Daily Hydration" },
+      { id: "preview-batch-b", code: "B002", productId: "preview-product-b", productName: "Deep Sleep Blend" },
+    ]).map((row, index) => ({ ...row, ...templates[index % templates.length] }));
+    const totals = Object.fromEntries(["ms", "md", "msi", "mgo", "no"].map((key) => [key, facts.reduce((sum, row) => sum + row[key], 0)]));
+    const rates = {
+      delivery: ratio(totals.md, totals.ms),
+      activation: ratio(totals.msi, totals.md),
+      orderGenerating: ratio(totals.mgo, totals.md),
+      orderDepth: ratio(totals.no, totals.mgo),
+    };
+    const now = "2026-09-04T02:00:00.000Z";
+    const metrics = metricMeta.map((item) => ({
+      ...item,
+      value: totals[item.key],
+      availability: "available",
+      coveredFrom: "2026-06-01T00:00:00Z",
+      coveredTo: now,
+      missingProductIds: [],
+      missingBatchIds: [],
+      sourceKind: item.key === "ms" ? "fulfillment" : item.key === "md" ? "delivery" : item.key === "msi" ? "fc_event" : "order_attribution",
+      rateValue: item.rateKey ? rates[item.rateKey] : null,
+    }));
+    const funnelKeys = ["ms", "md", "msi", "mgo"];
+    const no = totals.no;
+    const products = data?.products?.length
+      ? data.products
+      : [...new Map(facts.map((row) => [row.productId, { id: row.productId, name: row.productName }])).values()];
+    return {
+      ...data,
+      previewSeeded: true,
+      filter: data?.filter || { from: "2026-06-01", to: "2026-09-04", productId: null, batchId: null, observationMonths: 3 },
+      metrics,
+      rates,
+      funnel: funnelKeys.map((key, index) => {
+        const current = metrics.find((item) => item.key === key);
+        const prior = index ? metrics.find((item) => item.key === funnelKeys[index - 1]) : null;
+        return { key, short: current.short, label: current.label, value: current.value, availability: "available", fromPrior: prior && prior.value ? current.value / prior.value : null };
+      }),
+      orderDepth: { value: no, rate: rates.orderDepth, availability: "available" },
+      orderTypes: [
+        { label: "One-time", value: Math.round(no * 0.55) },
+        { label: "New subscription first charge", value: Math.round(no * 0.2) },
+        { label: "Subscription renewal", value: Math.round(no * 0.18) },
+        { label: "Cross-sell", value: Math.max(0, no - Math.round(no * 0.93)) },
+      ],
+      orderStatuses: [
+        { label: "Final paid", value: no },
+        { label: "Refunded", value: Math.round(no * 0.05) },
+        { label: "Cancelled", value: Math.round(no * 0.03) },
+        { label: "Chargeback", value: Math.max(1, Math.round(no * 0.004)) },
+      ],
+      interactionFilter: {
+        validCount: totals.msi,
+        excludedCount: 84,
+        reasons: [
+          { reason: "bot", label: "Bot or automation", value: 22 },
+          { reason: "rapid_repeat", label: "Rapid repeat", value: 26 },
+          { reason: "staff_test", label: "Staff test", value: 10 },
+          { reason: "no_meaningful_interaction", label: "No meaningful interaction", value: 26 },
+        ],
+      },
+      discountDiagnostics: [
+        { label: "Displayed", value: facts.reduce((sum, row) => sum + row.discountAction, 0) + 240 },
+        { label: "Codes copied / viewed on Amazon", value: facts.reduce((sum, row) => sum + row.discountAction, 0) },
+        { label: "Codes redeemed", value: Math.round(facts.reduce((sum, row) => sum + row.discountAction, 0) * 0.42) },
+      ],
+      surveyDiagnostics: [
+        { label: "Magnets shown", value: Math.round(facts.reduce((sum, row) => sum + row.surveyCompleted, 0) * 2.1) },
+        { label: "Completed", value: facts.reduce((sum, row) => sum + row.surveyCompleted, 0) },
+      ],
+      products,
+      batches: facts.map((row) => ({
+        id: row.id,
+        code: row.code,
+        productId: row.productId,
+        productName: row.productName,
+        values: { ms: row.ms, md: row.md, msi: row.msi, mgo: row.mgo, no: row.no },
+        rates: {
+          delivery: ratio(row.md, row.ms),
+          activation: ratio(row.msi, row.md),
+          orderGenerating: ratio(row.mgo, row.md),
+          orderDepth: ratio(row.no, row.mgo),
+        },
+        availability: "available",
+        diagnostics: { taps: row.taps, visits: row.visits, pdp: row.pdp, discountAction: row.discountAction, surveyCompleted: row.surveyCompleted },
+        sources: ["Consumer Fulfillment", "Delivery / Carrier", "FC Event Tracking", "Order Attribution"],
+      })),
+      exportPrivacy: "Exports contain aggregate Amazon Catalog Item and Batch metrics only. No FC IDs, device IDs, anonymous order keys or Claim Codes are included.",
+    };
+  }
+  window.reorderPreviewAnalytics = { decorate };
+})();
+
 (function createReorderDemoRepository() {
-  const enabled = new URLSearchParams(window.location.search).get("localPreview") === "1"
+  const enabled = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)
+    || new URLSearchParams(window.location.search).get("localPreview") === "1"
     || window.localStorage.getItem("fc-reorder-local-preview") === "1";
   if (!enabled) return;
   const storageKey = "fc-reorder-local-preview-v5";
@@ -59,12 +179,12 @@
     };
   }
   function discount(id, kind, title, productRows, extra) {
-    return presentDiscount({ id, discount_kind: kind, title, selling_account_id: ids.account, sellingAccount: account, marketplace_code: "US", eligible_asins: productRows.map((row) => row.asin), products: productRows.map((row, index) => ({ ...row, isFeatured: index === 0 })), benefit_summary: extra.benefit_summary, start_at: extra.start_at || "2026-06-01T00:00:00Z", end_at: extra.end_at || "2026-12-31T23:59:59Z", status: "draft", is_visible_on_fc: extra.is_visible_on_fc !== false, amazon_confirmed: true, coupon_type: extra.coupon_type || null, coupon_budget: extra.coupon_budget || null, targeted_segment: extra.targeted_segment || null, stacking_configuration: extra.stacking_configuration || null, coupon_one_per_customer: extra.coupon_one_per_customer ?? null, promotion_type: extra.promotion_type || null, claim_code_mode: extra.claim_code_mode || "none", group_claim_code: extra.group_claim_code || null, code_low_threshold: 20, codePool: extra.codePool || null });
+    return presentDiscount({ id, discount_kind: kind, title, selling_account_id: ids.account, sellingAccount: account, marketplace_code: "US", eligible_asins: productRows.map((row) => row.asin), products: productRows.map((row) => ({ ...row })), benefit_summary: extra.benefit_summary, start_at: extra.start_at || "2026-06-01T00:00:00Z", end_at: extra.end_at || "2026-12-31T23:59:59Z", status: "draft", is_visible_on_fc: extra.is_visible_on_fc !== false, amazon_confirmed: true, coupon_type: extra.coupon_type || null, coupon_budget: extra.coupon_budget || null, targeted_segment: extra.targeted_segment || null, stacking_configuration: extra.stacking_configuration || null, coupon_one_per_customer: extra.coupon_one_per_customer ?? null, promotion_type: extra.promotion_type || null, claim_code_mode: extra.claim_code_mode || "none", group_claim_code: extra.group_claim_code || null, codePool: extra.codePool || null });
   }
   const discounts = [
     discount(ids.coupon, "amazon_coupon", "Reorder 15%", products, { benefit_summary: "15% off", coupon_type: "reorder" }),
     discount(ids.group, "amazon_promotion", "Hydration bundle", [products[0]], { benefit_summary: "Buy 2, save 20%", promotion_type: "percentage off", claim_code_mode: "group", group_claim_code: "HYDRATE20" }),
-    discount(ids.single, "amazon_promotion", "Sleep welcome saving", [products[1]], { benefit_summary: "$10 off", promotion_type: "money off", claim_code_mode: "single_use", codePool: { total: 500, available: 384, assigned: 116, displayed: 110, copied: 94, status: "healthy" } }),
+    discount(ids.single, "amazon_promotion", "Sleep welcome saving", [products[1]], { benefit_summary: "$10 off", promotion_type: "money off", claim_code_mode: "single_use", codePool: { total: 500, available: 384, assigned: 116, displayed: 110, copied: 94, redeemed: 61, status: "healthy" } }),
   ];
   function question(id, prompt, type, options) { return { id, prompt, type, required: true, options: options.map((label, index) => ({ id: `${id}-${index + 1}`, label })) }; }
   const surveys = [
@@ -107,6 +227,26 @@
   function findBatch(id) { return state.batches.find((item) => item.id === id); }
   function findDiscount(id) { return state.discounts.find((item) => item.id === id); }
   function findSurvey(id) { return state.surveys.find((item) => item.id === id); }
+
+  function claimCodeInventory(discountRow) {
+    const pool = discountRow.codePool || { total: 0, available: 0, assigned: 0, displayed: 0, copied: 0, redeemed: 0 };
+    const total = Number(pool.total || 0);
+    const available = Math.min(total, Number(pool.available || 0));
+    return Array.from({ length: total }, (_, index) => {
+      const issuedIndex = index - available;
+      const issued = index >= available;
+      const copied = issued && issuedIndex < Number(pool.copied || 0);
+      const redeemed = copied && issuedIndex < Number(pool.redeemed || 0);
+      return {
+        id: `${discountRow.id}-${index + 1}`,
+        code: `BERIL-${discountRow.id.slice(-4)}-${String(index + 1).padStart(4, "0")}`,
+        status: redeemed ? "Redeemed" : issued ? "Issued to shopper" : "Ready to issue",
+        displayed: issued && issuedIndex < Number(pool.displayed || 0),
+        copied,
+        redeemed,
+      };
+    });
+  }
 
   function surveyResult(survey) {
     return { survey, starts: survey.starts, completions: survey.completions, completionRate: survey.completionRate, questions: survey.questions.map((item) => ({ ...item, respondents: survey.completions, options: item.options.map((option, index) => { const shares = [52, 31, 17, 8, 4]; const percentage = shares[index] || 0; return { ...option, responses: Math.round(survey.completions * percentage / 100), percentage }; }) })) };
@@ -160,7 +300,6 @@
       allocations: [],
       batches: related,
       timeline: [
-        { id: "order-created", label: "FC Order established", state: "completed", completedAt: orderRow.orderedAt },
         ...(orderRow.submittedAt ? [{ id: "submitted", label: "Submitted for production", state: "completed", completedAt: orderRow.submittedAt }] : []),
         ...related.flatMap((item) => (item.timeline || []).map((event) => ({ id: event.id, label: event.title, state: "ops", completedAt: event.occurred_at }))),
       ],
@@ -171,8 +310,8 @@
     const eligible = state.discounts.filter((item) => item.is_visible_on_fc !== false && item.products.some((productRow) => productRow.id === batchRow.product_version_id));
     const selected = selectedIds || eligible.map((item) => item.id);
     const survey = state.surveys.find((item) => item.status === "open" && item.productIds.includes(batchRow.product_version_id));
-    const snapshotDiscounts = eligible.filter((item) => selected.includes(item.id)).map((item) => ({ id: item.id, kind: item.discount_kind, title: item.title, benefitSummary: item.benefit_summary, claimCodeMode: item.claim_code_mode, groupClaimCode: item.group_claim_code, isFeatured: item.products.find((productRow) => productRow.id === batchRow.product_version_id)?.isFeatured }));
-    return { batch: batchRow, availableDiscounts: eligible.map((item) => ({ id: item.id, title: item.title, benefitSummary: item.benefit_summary, kind: item.discount_kind, claimCodeMode: item.claim_code_mode, availableCodes: item.codePool?.available ?? null, isFeatured: item.products[0]?.isFeatured })), snapshot: { brand: { name: state.settings.brand_display_name, logoUrl: state.settings.brand_logo_url }, amazon: { sellerLabel: state.accounts[0].label }, product: { name: batchRow.product.product_name, imageUrl: batchRow.product.image_url, sellerOfferAvailable: batchRow.product.seller_offer_available, attributionUrl: batchRow.product.attribution_url }, discounts: snapshotDiscounts, survey, fallback: { url: state.accounts[0].storefront_url } }, errors: [] };
+    const snapshotDiscounts = eligible.filter((item) => selected.includes(item.id)).map((item) => ({ id: item.id, kind: item.discount_kind, title: item.title, benefitSummary: item.benefit_summary, claimCodeMode: item.claim_code_mode, groupClaimCode: item.group_claim_code }));
+    return { batch: batchRow, availableDiscounts: eligible.map((item) => ({ id: item.id, title: item.title, benefitSummary: item.benefit_summary, kind: item.discount_kind, claimCodeMode: item.claim_code_mode, availableCodes: item.codePool?.available ?? null })), snapshot: { brand: { name: state.settings.brand_display_name, logoUrl: state.settings.brand_logo_url }, amazon: { sellerLabel: state.accounts[0].label }, product: { name: batchRow.product.product_name, imageUrl: batchRow.product.image_url, sellerOfferAvailable: batchRow.product.seller_offer_available, attributionUrl: batchRow.product.attribution_url }, discounts: snapshotDiscounts, survey, fallback: { url: state.accounts[0].storefront_url } }, errors: [] };
   }
 
   function ratio(numerator, denominator) { return denominator > 0 ? numerator / denominator : null; }
@@ -232,7 +371,7 @@
         ],
         configuration: [
           { key: "products", label: "Amazon Catalog Items", value: state.products.length },
-          { key: "batches", label: "Batches", value: state.batches.filter((item) => item.activation_status === "active").length },
+          { key: "batches", label: "Batches", value: state.batches.length },
           { key: "fcIds", label: "FC IDs", value: state.batches.reduce((sum, item) => sum + item.fc_id_count, 0) },
           { key: "discounts", label: "Discounts", value: state.discounts.filter((item) => item.status === "active").length },
           { key: "surveys", label: "Surveys", value: state.surveys.filter((item) => item.status === "open").length },
@@ -249,8 +388,8 @@
       orderTypes: [{ label: "One-time", value: Math.round(no * 0.55) }, { label: "New subscription first charge", value: Math.round(no * 0.2) }, { label: "Subscription renewal", value: Math.round(no * 0.18) }, { label: "Cross-sell", value: Math.max(0, no - Math.round(no * 0.55) - Math.round(no * 0.2) - Math.round(no * 0.18)) }],
       orderStatuses: [{ label: "Final paid", value: no }, { label: "Refunded", value: Math.round(no * 0.05) }, { label: "Cancelled", value: Math.round(no * 0.03) }, { label: "Chargeback", value: Math.round(no * 0.004) }],
       interactionFilter: { validCount: available ? totals.msi : null, excludedCount: available ? 84 : null, reasons: [{ reason: "bot", label: "Bot or automation", value: 22 }, { reason: "rapid_repeat", label: "Rapid repeat", value: 26 }, { reason: "staff_test", label: "Staff test", value: 10 }, { reason: "no_meaningful_interaction", label: "No meaningful interaction", value: 26 }] },
-      discountDiagnostics: [{ label: "Displayed", value: available ? 1371 : null }, { label: "Copied / viewed on Amazon", value: available ? facts.reduce((sum, row) => sum + row.discountAction, 0) : null }],
-      surveyDiagnostics: [{ label: "Shown", value: available ? 946 : null }, { label: "Started", value: available ? 487 : null }, { label: "Completed", value: available ? facts.reduce((sum, row) => sum + row.surveyCompleted, 0) : null }],
+      discountDiagnostics: [{ label: "Displayed", value: available ? 1371 : null }, { label: "Codes copied / viewed on Amazon", value: available ? facts.reduce((sum, row) => sum + row.discountAction, 0) : null }, { label: "Codes redeemed", value: available ? Math.round(facts.reduce((sum, row) => sum + row.discountAction, 0) * 0.42) : null }],
+      surveyDiagnostics: [{ label: "Magnets shown", value: available ? 946 : null }, { label: "Completed", value: available ? facts.reduce((sum, row) => sum + row.surveyCompleted, 0) : null }],
       batches: facts.map((row) => ({
         id: row.id, code: row.code, productId: row.productId, productName: row.productName,
         values: { ms: row.ms, md: row.md, msi: row.msi, mgo: row.mgo, no: row.no },
@@ -277,6 +416,7 @@
     const method = (options.method || "GET").toUpperCase();
     const input = body(options);
     if (path === "/api/auth/me") return { customer: { nickname: "Beril", email: "preview@local" }, access: { canWriteConfig: true } };
+    if (path === "/api/auth/logout" && method === "POST") return { ok: true };
     if (path === "/api/upload-image" && method === "POST") return { url: input.image };
     if (path === "/api/reorder/amazon-setup") {
       if (method === "PUT") {
@@ -379,7 +519,7 @@
             : { ms: null, md: null, msi: null, mgo: null, no: null, coverage: "unavailable", coverageNote: "Unavailable until coverage is complete for this Batch." },
         };
       }
-      if (batchMatch[2] === "/activation") { row.activation_status = input.status; row.auditHistory.unshift({ id: uuid(), action: `activation_${input.status}`, created_at: new Date().toISOString() }); persist(); return row; }
+      if (batchMatch[2] === "/activation") { row.activation_status = "active"; row.scheduled_activation_at = null; row.auditHistory.unshift({ id: uuid(), action: "consumer_saved", created_at: new Date().toISOString() }); persist(); return row; }
       return consumerPreview(row, input.selectedDiscountIds);
     }
     if (path === "/api/reorder/discounts" && method === "GET") return { discounts: state.discounts.map(presentDiscount) };
@@ -389,15 +529,15 @@
         ? state.products.filter((item) => input.productVersionIds.includes(item.id))
         : state.products.filter((item) => asins.includes(item.asin) && (!input.sellingAccountId || item.selling_account_id === input.sellingAccountId));
       if (!input.title || !rows.length) fail("Record the Promotion facts and matched Amazon Catalog Item");
-      const row = discount(uuid(), "amazon_promotion", input.title, rows, { benefit_summary: input.benefitSummary, claim_code_mode: input.claimCodeMode, group_claim_code: input.groupClaimCode, is_visible_on_fc: input.isVisibleOnFc === true, codePool: input.claimCodeMode === "single_use" ? { total: 0, available: 0, assigned: 0, displayed: 0, copied: 0, status: "exhausted" } : null });
+      const row = discount(uuid(), "amazon_promotion", input.title, rows, { benefit_summary: input.benefitSummary, claim_code_mode: input.claimCodeMode, group_claim_code: input.groupClaimCode, is_visible_on_fc: input.isVisibleOnFc === true, codePool: input.claimCodeMode === "single_use" ? { total: 0, available: 0, assigned: 0, displayed: 0, copied: 0, redeemed: 0, status: "exhausted" } : null });
       state.discounts.unshift(row);
       persist();
       return presentDiscount(row);
     }
     if (path === "/api/reorder/discounts/coupons/preview") return { review: { couponsDetected: 1, productsMatched: 1, productMappingRequired: 0, rowsWithParsingIssues: 0, unmappedColumns: [], canImport: true }, rows: [{ rowNumber: 2, errors: [], mappingStatus: "Matched", matchedProducts: [{ id: ids.hydration, name: "Daily Hydration", asin: "B0DH4T156M" }], missingAsins: [] }] };
     if (path === "/api/reorder/discounts/coupons/import") { const row = discount(uuid(), "amazon_coupon", "Imported Coupon", [findProduct(input.sellingAccountId === ids.account ? ids.hydration : ids.hydration)].filter(Boolean), { benefit_summary: "15% off", coupon_type: "reorder", is_visible_on_fc: input.isVisibleOnFc === true }); state.discounts.unshift(row); persist(); return { imported: 1, discounts: [presentDiscount(row)] }; }
-    const discountMatch = path.match(/^\/api\/reorder\/discounts\/([^/]+)(\/claim-codes\/import|\/featured|\/products)?$/);
-    if (discountMatch) { const row = findDiscount(discountMatch[1]); if (!row) fail("Discount not found"); if (!discountMatch[2]) { if (method === "PUT") { if (input.couponType) row.coupon_type = input.couponType; if (typeof input.amazonConfirmed === "boolean") row.amazon_confirmed = input.amazonConfirmed; if (Number.isFinite(input.codeLowThreshold)) row.code_low_threshold = input.codeLowThreshold; if (typeof input.isVisibleOnFc === "boolean") row.is_visible_on_fc = input.isVisibleOnFc; persist(); } return presentDiscount(row); } if (discountMatch[2] === "/featured") { state.discounts.forEach((item) => item.products.forEach((productRow) => { if (productRow.id === input.productVersionId) productRow.isFeatured = item.id === row.id; })); persist(); return presentDiscount(row); } if (discountMatch[2] === "/products") { const mapped = state.products.filter((item) => (input.productVersionIds || []).includes(item.id)); mapped.forEach((productRow) => { if (!row.products.some((item) => item.id === productRow.id)) row.products.push({ ...productRow, isFeatured: false }); }); persist(); return presentDiscount(row); } const added = 3; row.codePool = row.codePool || { total: 0, available: 0, assigned: 0, displayed: 0, copied: 0, status: "exhausted" }; row.codePool.total += added; row.codePool.available += added; row.codePool.status = "low"; persist(); return { total: added, accepted: added, duplicates: 0, rejected: 0, duplicateRows: [], rejectedRows: [] }; }
+    const discountMatch = path.match(/^\/api\/reorder\/discounts\/([^/]+)(\/claim-codes\/import|\/claim-codes|\/products)?$/);
+    if (discountMatch) { const row = findDiscount(discountMatch[1]); if (!row) fail("Discount not found"); if (!discountMatch[2]) { if (method === "PUT") { if (input.couponType) row.coupon_type = input.couponType; if (typeof input.amazonConfirmed === "boolean") row.amazon_confirmed = input.amazonConfirmed; if (typeof input.isVisibleOnFc === "boolean") row.is_visible_on_fc = input.isVisibleOnFc; persist(); } return presentDiscount(row); } if (discountMatch[2] === "/claim-codes") return { codes: claimCodeInventory(row) }; if (discountMatch[2] === "/products") { const mapped = state.products.filter((item) => (input.productVersionIds || []).includes(item.id)); mapped.forEach((productRow) => { if (!row.products.some((item) => item.id === productRow.id)) row.products.push({ ...productRow }); }); persist(); return presentDiscount(row); } const added = 3; row.codePool = row.codePool || { total: 0, available: 0, assigned: 0, displayed: 0, copied: 0, status: "exhausted" }; row.codePool.total += added; row.codePool.available += added; row.codePool.status = "low"; persist(); return { total: added, accepted: added, duplicates: 0, rejected: 0, duplicateRows: [], rejectedRows: [] }; }
     if (path === "/api/reorder/surveys" && method === "GET") return { surveys: state.surveys };
     if (path === "/api/reorder/surveys" && method === "POST") { const issues = []; if (!input.title?.trim()) issues.push({ field: "title", message: "Title is required" }); if (!input.productIds?.length) issues.push({ field: "productIds", message: "Select at least one Amazon Catalog Item" }); if (issues.length) fail("Fix the highlighted Survey fields", issues); const row = { ...input, id: uuid(), version: 1, status: "draft", statusLabel: "Draft", lockedAt: null, starts: 0, completions: 0, completionRate: 0, updatedAt: new Date().toISOString(), questions: input.questions.map((item) => ({ ...item, id: uuid(), options: item.options.map((option) => ({ ...option, id: uuid() })) })) }; state.surveys.unshift(row); persist(); return row; }
     const surveyMatch = path.match(/^\/api\/reorder\/surveys\/([^/]+)(\/results|\/schedule|\/open|\/close)?$/);

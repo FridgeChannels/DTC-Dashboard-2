@@ -115,6 +115,7 @@ describe("Reorder Analytics metrics", () => {
     expect(result.metrics.find((metric) => metric.key === "mgo")?.source).toBe("Order Attribution");
     expect(result.discountDiagnostics[0]).toMatchObject({ label: "Displayed", value: 1 });
     expect(result.surveyDiagnostics.find((row) => row.label === "Completed")?.value).toBe(1);
+    expect(result.surveyDiagnostics.some((row) => row.label === "Started")).toBe(false);
     expect(result.exportPrivacy).toContain("No FC IDs, device IDs, anonymous order keys or Claim Codes are included");
   });
 });

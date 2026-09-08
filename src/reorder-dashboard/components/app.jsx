@@ -1,7 +1,43 @@
-const { useCallback, useEffect, useMemo, useState } = React;
+const { useCallback, useEffect, useMemo, useRef, useState } = React;
 
 const apiGetCache = new Map();
 const apiInflight = new Map();
+const pageLocations = new Map();
+const flowDrafts = new Map();
+
+function localReturnPath(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value, window.location.origin);
+    return url.origin === window.location.origin && url.pathname.startsWith("/reorder/")
+      ? `${url.pathname}${url.search}` : "";
+  } catch { return ""; }
+}
+
+function returnPath() {
+  return localReturnPath(new URLSearchParams(window.location.search).get("return_to"));
+}
+
+function openRelated(path) {
+  const target = new URL(path, window.location.origin);
+  target.searchParams.set("return_to", `${window.location.pathname}${window.location.search}`);
+  navigate(`${target.pathname}${target.search}`);
+}
+
+function useFlowDraft(initial) {
+  const key = `${window.location.pathname}${window.location.search}`;
+  const [value, update] = useState(() => flowDrafts.get(key) ?? initial);
+  const setValue = (next) => update((previous) => {
+    const value = typeof next === "function" ? next(previous) : next;
+    flowDrafts.set(key, value);
+    return value;
+  });
+  return [value, setValue];
+}
+
+function clearFlowDraft() {
+  flowDrafts.delete(`${window.location.pathname}${window.location.search}`);
+}
 const KEEP_ALIVE_PATHS = new Set([
   "/reorder/analytics",
   "/reorder/products",
@@ -23,7 +59,7 @@ const navGroups = [
     label: "Operate",
     items: [
       { id: "products", label: "Amazon Catalog Items", path: "/reorder/products", match: "/reorder/products", exclude: "/reorder/products/orders-batches", dock: true },
-      { id: "batches", label: "Batches", path: "/reorder/orders", match: ["/reorder/orders", "/reorder/products/orders-batches", "/reorder/batches/", "/reorder/preview"], dock: true },
+      { id: "batches", label: "Orders & Batches", path: "/reorder/orders", match: ["/reorder/orders", "/reorder/products/orders-batches", "/reorder/batches/", "/reorder/preview"], dock: true },
       { id: "discounts", label: "Discounts", path: "/reorder/discounts", match: "/reorder/discounts" },
     ],
   },
@@ -71,8 +107,12 @@ async function api(path, options = {}) {
       error.details = data.errors || [];
       throw error;
     }
-    if (method === "GET") apiGetCache.set(path, data);
-    return data;
+    let payload = data;
+    if (method === "GET" && String(path).includes("/api/reorder/analytics") && window.reorderPreviewAnalytics) {
+      payload = window.reorderPreviewAnalytics.decorate(data);
+    }
+    if (method === "GET") apiGetCache.set(path, payload);
+    return payload;
   })();
   if (method === "GET") apiInflight.set(path, pending);
   try {
@@ -116,7 +156,9 @@ async function uploadAsset(file, folder) {
 }
 
 function navigate(path) {
-  if (window.location.pathname === path) return;
+  pageLocations.set(window.location.pathname, `${window.location.pathname}${window.location.search}`);
+  if (KEEP_ALIVE_PATHS.has(path)) path = pageLocations.get(path) || path;
+  if (`${window.location.pathname}${window.location.search}` === path) return;
   window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
@@ -345,32 +387,12 @@ function amazonSetupPersisted(form) {
   );
 }
 
-function activationVerb(status) {
-  if (status === "active") return "Activate";
-  if (status === "paused") return "Pause";
-  if (status === "retired") return "Retire";
-  if (status === "scheduled") return "Schedule";
-  return humanize(status);
-}
-
-function activationBusy(status) {
-  if (status === "active") return "Activating…";
-  if (status === "paused") return "Pausing…";
-  if (status === "retired") return "Retiring…";
-  if (status === "scheduled") return "Scheduling…";
-  return "Saving…";
-}
-
-function toDatetimeLocal(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
-  const pad = (part) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 function analyticsHref(productId, batchId) {
-  const params = new URLSearchParams();
+  const previous = pageLocations.get("/reorder/analytics") || "/reorder/analytics";
+  const params = new URL(previous, window.location.origin).searchParams;
+  params.delete("product_id");
+  params.delete("batch_id");
+  params.delete("return_to");
   if (productId) params.set("product_id", productId);
   if (batchId) params.set("batch_id", batchId);
   return `/reorder/analytics?${params.toString()}`;
@@ -396,6 +418,16 @@ function canEditOrderBatches(order) {
 
 function orderNeedsAllocation(order) {
   return canEditOrderBatches(order) && Number(order.remaining ?? order.unallocated ?? 0) > 0;
+}
+
+function OrderFulfillmentStage({ order }) {
+  let stage = { value: "draft", label: "Ready to allocate", note: "Create batches to allocate this order." };
+  if (order?.status === "cancelled") stage = { value: "cancelled", label: "Cancelled", note: "This order will not proceed to fulfillment." };
+  else if (order?.status === "completed") stage = { value: "completed", label: "Fulfilled", note: "Production and delivery are complete." };
+  else if (order?.allocationStatus === "submitted") stage = { value: "in_progress", label: "Submitted for production", note: "Awaiting production and fulfillment updates." };
+  else if (order?.allocationStatus === "ready") stage = { value: "scheduled", label: "Ready for production", note: "All quantities are allocated." };
+  else if (order?.batchCount) stage = { value: "draft", label: "Allocation in progress", note: "Batches can still be edited." };
+  return <span className="reorder-order-status"><StatusPill value={stage.value} label={stage.label} /><small>{stage.note}</small></span>;
 }
 
 function batchStatusLabel(batch) {
@@ -564,11 +596,7 @@ function productDiscountCount(productId, discounts) {
 
 function batchTabFromSearch() {
   const tab = new URLSearchParams(window.location.search).get("tab");
-  return ["production", "consumer", "performance"].includes(tab) ? tab : "overview";
-}
-
-function surveyTabFromSearch() {
-  return new URLSearchParams(window.location.search).get("tab") === "results" ? "results" : "setup";
+  return ["performance"].includes(tab) ? tab : "overview";
 }
 
 function selectSearchTab(next, defaultTab) {
@@ -579,7 +607,7 @@ function selectSearchTab(next, defaultTab) {
   window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
 }
 
-function useNavSignals() {
+function useNavSignals(currentPath) {
   const [signals, setSignals] = useState({ pendingBatches: 0, amazonIncomplete: false });
   useEffect(() => {
     let active = true;
@@ -594,7 +622,7 @@ function useNavSignals() {
       });
     });
     return () => { active = false; };
-  }, []);
+  }, [currentPath]);
   return signals;
 }
 
@@ -636,24 +664,52 @@ function NavItem({ item, currentPath, onNavigate }) {
   );
 }
 
+function accountInitials(user) {
+  const name = user?.customer?.nickname || user?.customer?.email || user?.authUser?.email || "User";
+  return name.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+}
+
 function AppShell({ currentPath, user, children }) {
   const displayName = user?.customer?.nickname || user?.customer?.email || "Brand workspace";
+  const accountEmail = user?.customer?.email || user?.authUser?.email || "";
+  const accountAvatar = user?.customer?.avatar_url || "";
   const [moreOpen, setMoreOpen] = useState(false);
-  const signals = useNavSignals();
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const signals = useNavSignals(currentPath);
   const moreActive = overflowNavigation.some((item) => isNavActive(item, currentPath));
-  const closeMore = () => setMoreOpen(false);
+  const closeMenus = () => { setMoreOpen(false); setAccountOpen(false); };
+  const signOut = async () => {
+    if (signingOut || !window.confirm("Sign out of FC Reorder?")) return;
+    setSigningOut(true);
+    try {
+      await api("/api/auth/logout", { method: "POST" });
+      window.location.assign("/login");
+    } catch {
+      setSigningOut(false);
+    }
+  };
   const renderNavItem = (item, extra = {}) => (
     <NavItem
       key={item.path}
       item={withNavSignals({ ...item, ...extra }, signals)}
       currentPath={currentPath}
-      onNavigate={closeMore}
+      onNavigate={closeMenus}
     />
   );
+  const renderAccountSummary = () => <div className="reorder-account-summary">
+    {accountAvatar ? <img src={accountAvatar} alt="" /> : <span className="reorder-account-avatar" aria-hidden="true">{accountInitials(user)}</span>}
+    <span><strong>{displayName}</strong>{accountEmail && <small>{accountEmail}</small>}</span>
+  </div>;
+  const renderAccountActions = () => <>
+    {renderAccountSummary()}
+    <button type="button" className="reorder-sign-out" onClick={signOut} disabled={signingOut}>{signingOut ? "Signing out…" : "Sign out"}</button>
+  </>;
   const renderMoreMenu = () => (
     <>
       {overflowNavigation.map((item) => renderNavItem(item))}
       {window.reorderDemoApi && <button className="reorder-reset-demo" onClick={() => { window.reorderDemoApi.reset(); window.location.reload(); }}>Reset preview data</button>}
+      <div className="reorder-mobile-account-actions">{renderAccountActions()}</div>
     </>
   );
   return (
@@ -694,6 +750,13 @@ function AppShell({ currentPath, user, children }) {
           {settingsNavigation.map((item) => renderNavItem(item))}
           {window.reorderDemoApi && <button className="reorder-reset-demo" onClick={() => { window.reorderDemoApi.reset(); window.location.reload(); }}>Reset preview data</button>}
         </div>
+        <div className="reorder-account">
+          <button type="button" className="reorder-account-trigger" aria-expanded={accountOpen} aria-controls="reorder-account-menu" onClick={() => setAccountOpen((open) => !open)}>
+            {renderAccountSummary()}
+            <span className="reorder-account-chevron" aria-hidden="true">⌃</span>
+          </button>
+          {accountOpen && <div className="reorder-account-menu" id="reorder-account-menu">{renderAccountActions()}</div>}
+        </div>
       </aside>
       <main className="reorder-main">{children}</main>
     </div>
@@ -705,7 +768,8 @@ function PageState({ children, tone = "neutral" }) {
 }
 
 function PageHeader({ title, action, backTo, backLabel = "Back", crumbs }) {
-  const trail = crumbs?.length ? crumbs : backTo ? [{ label: backLabel, path: backTo }] : [];
+  const destination = returnPath();
+  const trail = destination ? [{ label: "Previous page", path: destination }] : crumbs?.length ? crumbs : backTo ? [{ label: backLabel, path: backTo }] : [];
   return (
     <header className="reorder-page-header">
       <div className="reorder-page-heading">
@@ -741,7 +805,7 @@ function defaultDashboardFilters() {
     to: params.get("to") || "2026-09-04",
     productId: params.get("product_id") || "",
     batchId: params.get("batch_id") || "",
-    observationMonths: params.get("observation_months") || "3",
+    observationMonths: ["1", "3", "6", "12"].includes(params.get("observation_months")) ? params.get("observation_months") : "3",
   };
 }
 
@@ -769,7 +833,9 @@ function useDashboardData(path, filters, includeWindow = false) {
       .then((result) => { if (active) setData(result); })
       .catch((err) => { if (active) setError(err.message); })
       .finally(() => { if (active) setLoading(false); });
-    const next = `${window.location.pathname}?${query}`;
+    const nextParams = new URLSearchParams(query);
+    if (returnPath()) nextParams.set("return_to", returnPath());
+    const next = `${window.location.pathname}?${nextParams}`;
     if (`${window.location.pathname}${window.location.search}` !== `?${query}` && `${window.location.pathname}${window.location.search}` !== next) {
       window.history.replaceState({}, "", next);
     }
@@ -778,15 +844,14 @@ function useDashboardData(path, filters, includeWindow = false) {
   return { data, loading, error };
 }
 
-function DashboardFilters({ filters, onChange, products = [], batches = [], includeWindow = false }) {
-  const visibleBatches = batches.filter((batch) => !filters.productId || batch.productId === filters.productId);
+function DashboardFilters({ filters, onChange, products = [], batches = [] }) {
+  const visibleBatches = batches.filter((batch) => batch.productId === filters.productId);
   const update = (key, value) => onChange({ ...filters, [key]: value, ...(key === "productId" ? { batchId: "" } : {}) });
-  return <div className="reorder-dashboard-filters" aria-label="Analytics filters">
+  return <div className={`reorder-dashboard-filters${filters.productId ? " has-batch-filter" : ""}`} aria-label="Analytics filters">
     <label><span>Date from</span><input className="cfg-input" type="date" lang="en" value={filters.from} onChange={(event) => update("from", event.target.value)} /></label>
     <label><span>Date to</span><input className="cfg-input" type="date" lang="en" value={filters.to} onChange={(event) => update("to", event.target.value)} /></label>
-    <label><span>Amazon Catalog Item</span><select className="cfg-input" value={filters.productId} onChange={(event) => update("productId", event.target.value)}><option value="">All Amazon Catalog Items</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
-    <label><span>Batch</span><select className="cfg-input" value={filters.batchId} onChange={(event) => update("batchId", event.target.value)}><option value="">All batches</option>{visibleBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.code}</option>)}</select></label>
-    {includeWindow && <label><span>Observation window</span><select className="cfg-input" value={filters.observationMonths} onChange={(event) => update("observationMonths", event.target.value)}>{[1, 3, 6, 12].map((month) => <option key={month} value={month}>{month} {month === 1 ? "month" : "months"}</option>)}</select></label>}
+    <label><span>Amazon Catalog Item</span><select className="cfg-input" value={filters.productId} onChange={(event) => update("productId", event.target.value)}><option value="">All</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
+    {filters.productId && <label><span>Batch within this Catalog Item</span><select className="cfg-input" value={filters.batchId} onChange={(event) => update("batchId", event.target.value)}><option value="">All batches</option>{visibleBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.code}</option>)}</select></label>}
   </div>;
 }
 
@@ -797,12 +862,19 @@ const ANALYTICS_METRIC_HELP = {
   msi: "Scanned & Interacted (MSI) counts unique magnets that passed the Valid Interaction Filter. Opening the page alone never qualifies.",
   mgo: "Generating Orders (MGO) counts unique magnets with at least one final paid attributed order inside the observation window.",
   no: "Number of Orders (NO) counts final paid attributed orders in the same observation window. Refunded, cancelled, and chargeback orders are excluded. Order Depth is NO / MGO.",
+  pdp: "Amazon PDP clicks counts clicks from FridgeChannel to the seller-specific Amazon Product Detail Page for the selected filters and date range.",
 };
 
 function MetricHelp({ label, children }) {
   return (
     <span className="reorder-metric-help">
-      <button type="button" className="reorder-metric-help-mark" aria-label={`About ${label}`}>i</button>
+      <button type="button" className="reorder-metric-help-mark" aria-label={`About ${label}`}>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.75" />
+          <circle cx="12" cy="8.15" r="1.15" fill="currentColor" />
+          <path d="M12 11.15v6.1" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+        </svg>
+      </button>
       <span className="reorder-metric-help-tip" role="tooltip">{children}</span>
     </span>
   );
@@ -812,7 +884,11 @@ function AnalyticsFunnel({ data, products = [], batches = [], observationMonths 
   const funnelKeys = ["ms", "md", "msi", "mgo"];
   const metricsByKey = Object.fromEntries((data?.metrics || []).map((item) => [item.key, item]));
   const stages = (data?.funnel || []).filter((stage) => funnelKeys.includes(stage.key));
+  const pdpClicks = data?.diagnostics?.behavioral?.find((item) => item.key === "pdp")?.value;
   const ms = metricsByKey.ms?.value;
+  const coverageNotes = stages
+    .map((stage) => ({ label: stage.label, gap: coverageGapLabel(metricsByKey[stage.key] || {}, products, batches) }))
+    .filter((note) => note.gap);
   return (
     <section className="reorder-dashboard-split">
       <div className="reorder-funnel" data-testid="unique-magnet-funnel">
@@ -822,31 +898,42 @@ function AnalyticsFunnel({ data, products = [], batches = [], observationMonths 
         </div>
         <div>
           {stages.map((stage, index) => {
-            const metric = metricsByKey[stage.key];
-            const gap = coverageGapLabel(metric || {}, products, batches);
             const width = ms && stage.value !== null ? Math.max(14, (stage.value / ms) * 100) : 0;
             return (
-              <div key={stage.key} className={`reorder-funnel-stage${stage.availability === "partial" ? " is-partial" : ""}`}>
+              <div key={stage.key} className={`reorder-funnel-stage reorder-funnel-stage-${stage.key}${stage.availability === "partial" ? " is-partial" : ""}`}>
                 <span className="reorder-funnel-fill" style={{ width: `${width}%` }} />
                 <MetricHelp label={stage.label}>{ANALYTICS_METRIC_HELP[stage.key]}</MetricHelp>
                 <span className="reorder-funnel-label"><b>{stage.short}</b>{stage.label}</span>
                 <strong>{stage.value === null ? "—" : formatNumber(stage.value)}</strong>
                 {index > 0 && <small>{formatRate(stage.fromPrior)} from prior stage</small>}
-                {gap ? <em className="reorder-metric-missing">{gap}</em> : null}
               </div>
             );
           })}
         </div>
+        {coverageNotes.length > 0 && <details className="reorder-funnel-data-notes">
+          <summary>Data notes</summary>
+          <ul>{coverageNotes.map((note) => <li key={note.label}><strong>{note.label}:</strong> {note.gap}. This metric is partial.</li>)}</ul>
+        </details>}
       </div>
-      <div className="reorder-order-depth" data-testid="order-depth">
-        <div className="reorder-funnel-head">
-          <h2>Order Depth</h2>
-          <MetricHelp label="Order Depth">{ANALYTICS_METRIC_HELP.no}</MetricHelp>
+      <div className="reorder-top-kpis">
+        <div className="reorder-order-depth reorder-analytics-tone-depth" data-testid="order-depth">
+          <div className="reorder-funnel-head">
+            <h2>Order Depth</h2>
+            <MetricHelp label="Order Depth">{ANALYTICS_METRIC_HELP.no}</MetricHelp>
+          </div>
+          <strong>{data?.orderDepth?.value == null ? "—" : formatNumber(data.orderDepth.value)}</strong>
+          <span>Number of Orders</span>
+          <p><b>{data?.orderDepth?.rate == null ? "—" : Number(data.orderDepth.rate).toFixed(2)}</b> orders per ordering Magnet</p>
+          <small>{observationMonths || 3}-month observation · Order Attribution</small>
         </div>
-        <strong>{data?.orderDepth?.value == null ? "—" : formatNumber(data.orderDepth.value)}</strong>
-        <span>Number of Orders</span>
-        <p><b>{data?.orderDepth?.rate == null ? "—" : Number(data.orderDepth.rate).toFixed(2)}</b> orders per ordering Magnet</p>
-        <small>{observationMonths || 3}-month observation · Order Attribution</small>
+        <div className="reorder-pdp-summary reorder-analytics-tone-activation" data-testid="pdp-clicks-summary">
+          <div className="reorder-funnel-head">
+            <h2>Amazon PDP clicks</h2>
+            <MetricHelp label="Amazon PDP clicks">{ANALYTICS_METRIC_HELP.pdp}</MetricHelp>
+          </div>
+          <strong>{pdpClicks == null ? "—" : formatNumber(pdpClicks)}</strong>
+          <span>Clicks to Amazon product pages</span>
+        </div>
       </div>
     </section>
   );
@@ -1006,7 +1093,7 @@ function AmazonSetupPage({ readOnly }) {
   if (loading) return <div className="reorder-page"><PageHeader title="Amazon setup" /><PageSkeleton label="Loading Amazon setup" /></div>;
 
   return (
-    <div className="reorder-page">
+    <div className="reorder-page reorder-form-page">
       <PageHeader title="Amazon setup" action={setupAction} />
       {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
@@ -1139,6 +1226,7 @@ function ProductListPage({ readOnly }) {
   const [setupReady, setSetupReady] = useState(() => (cachedSetup?.sellingAccounts || []).some((account) => account.status === "active"));
   const [loading, setLoading] = useState(() => !cachedProducts);
   const [importing, setImporting] = useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [error, setError] = useState("");
 
@@ -1167,7 +1255,7 @@ function ProductListPage({ readOnly }) {
   }, []);
 
   const importCsv = async (file) => {
-    if (!file || readOnly) return;
+    if (!file) return;
     setImporting(true);
     setImportResult(null);
     setError("");
@@ -1190,9 +1278,12 @@ function ProductListPage({ readOnly }) {
     <div className="reorder-page">
       <PageHeader title="Amazon Catalog Items" action={(
         <div className="reorder-header-actions">
-          <input id="reorder-product-csv" className="reorder-file-input" type="file" accept=".csv,text/csv" disabled={readOnly || importing} onChange={(event) => importCsv(event.target.files?.[0])} />
-          <label className={`btn${readOnly || importing ? " is-disabled" : ""}`} htmlFor="reorder-product-csv">{importing ? "Importing…" : "Import CSV"}</label>
-          <button className="btn primary" disabled={readOnly} onClick={() => navigate("/reorder/products/new")}>Add Amazon Catalog Item</button>
+          <input id="reorder-product-csv" className="reorder-file-input" type="file" accept=".csv,text/csv" disabled={importing} onChange={(event) => { importCsv(event.target.files?.[0]); event.target.value = ""; }} />
+          <div className="reorder-create-menu">
+            <button className="btn primary" onClick={() => navigate("/reorder/products/new")}>Add Amazon Catalog Item</button>
+            <button type="button" className="btn primary reorder-create-menu-trigger" aria-label="More creation options" aria-expanded={createMenuOpen} aria-haspopup="menu" onClick={() => setCreateMenuOpen((open) => !open)}>⌄</button>
+            {createMenuOpen && <div className="reorder-create-menu-popover" role="menu"><label className={`reorder-create-menu-item${importing ? " is-disabled" : ""}`} role="menuitem" htmlFor="reorder-product-csv">{importing ? "Importing…" : "Import CSV"}</label></div>}
+          </div>
         </div>
       )} />
       {loading && products.length === 0 && <PageSkeleton label="Loading Amazon Catalog Items" />}
@@ -1211,7 +1302,7 @@ function ProductListPage({ readOnly }) {
       )}
       {!loading && !error && products.length === 0 && (
         <EmptyState action={setupReady
-          ? <button className="btn primary" disabled={readOnly} onClick={() => navigate("/reorder/products/new")}>Add Amazon Catalog Item</button>
+          ? <button className="btn primary" onClick={() => navigate("/reorder/products/new")}>Add Amazon Catalog Item</button>
           : <button className="btn primary" onClick={() => navigate("/reorder/settings/amazon")}>Open Amazon setup</button>}
         >
           {setupReady
@@ -1297,12 +1388,11 @@ function OrdersBatchesPage() {
 
   const openOrder = (order) => navigate(`/reorder/orders/${encodeURIComponent(order.orderNumber)}`);
   const openBatch = (batch) => navigate(`/reorder/batches/${batch.id}`);
-  const batchAction = (batch) => (batch.activation_status === "draft" ? "Activate" : batch.activation_status === "paused" ? "Resume" : "Open");
 
   return (
     <div className="reorder-page">
-      <PageHeader title="Batches" />
-      <div className="reorder-view-switch" role="tablist" aria-label="Batches views">
+      <PageHeader title="Orders & Batches" />
+      <div className="reorder-view-switch" role="tablist" aria-label="Orders and Batches views">
         <button type="button" role="tab" aria-selected={view === "orders"} className={view === "orders" ? "is-active" : ""} onClick={() => selectView("orders")}>FC Orders</button>
         <button type="button" role="tab" aria-selected={view === "batches"} className={view === "batches" ? "is-active" : ""} onClick={() => selectView("batches")}>Batches</button>
       </div>
@@ -1324,7 +1414,7 @@ function OrdersBatchesPage() {
                   >
                     <header>
                       <strong>{order.orderNumber}</strong>
-                      <StatusPill value={order.status} />
+                      <OrderFulfillmentStage order={order} />
                     </header>
                     <dl>
                       <div><dt>Ordered at</dt><dd>{formatDate(order.orderedAt)}</dd></div>
@@ -1339,14 +1429,14 @@ function OrdersBatchesPage() {
               </div>
               <div className="reorder-table-wrap reorder-table-desktop">
                 <table className="reorder-table">
-                  <thead><tr><th>FC Order</th><th>Ordered at</th><th>Total ordered</th><th>Batches</th><th>Status</th><th>Action</th></tr></thead>
+                  <thead><tr><th>FC Order</th><th>Ordered at</th><th>Total ordered</th><th>Batches</th><th>Fulfillment stage</th><th>Action</th></tr></thead>
                   <tbody>{data.orders.map((order) => (
                     <tr key={order.id} tabIndex="0" onClick={() => openOrder(order)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openOrder(order); } }}>
                       <td><strong>{order.orderNumber}</strong></td>
                       <td>{formatDate(order.orderedAt)}</td>
                       <td>{formatNumber(order.totalOrdered)}</td>
                       <td>{formatNumber(order.batchCount)}</td>
-                      <td><StatusPill value={order.status} /></td>
+                      <td><OrderFulfillmentStage order={order} /></td>
                       <td className="reorder-actions-cell">
                         {orderNeedsAllocation(order) && (
                           <button type="button" className="btn" onClick={(event) => { event.stopPropagation(); openOrder(order); }}>Allocate</button>
@@ -1364,7 +1454,7 @@ function OrdersBatchesPage() {
         <section className="reorder-flat-section">
           {!data.batches.length ? <EmptyState>No Batches yet. Allocate an FC Order to create the first Batch.</EmptyState> : (
             <>
-              <p className="reorder-guidance">Open a Batch to preview the consumer page and activate it.</p>
+              <p className="reorder-guidance">Open a Batch to review its details.</p>
               <div className="reorder-order-cards">
                 {data.batches.map((batch) => (
                   <article
@@ -1376,7 +1466,6 @@ function OrdersBatchesPage() {
                   >
                     <header>
                       <strong>{batch.batch_code}</strong>
-                      <StatusPill value={batch.activation_status} />
                     </header>
                     <small>
                       {productReturnPath(batch.product?.id || batch.product_version_id)
@@ -1391,30 +1480,29 @@ function OrdersBatchesPage() {
                       }</dd></div>
                       <div><dt>Quantity</dt><dd>{formatNumber(batch.quantity)}</dd></div>
                     </dl>
-                    <button type="button" className="btn" onClick={(event) => { event.stopPropagation(); openBatch(batch); }}>{batchAction(batch)}</button>
+                    <button type="button" className="btn" onClick={(event) => { event.stopPropagation(); openBatch(batch); }}>Open</button>
                   </article>
                 ))}
               </div>
               <div className="reorder-table-wrap reorder-table-desktop">
                 <table className="reorder-table">
-                  <thead><tr><th>Batch</th><th>Amazon Catalog Item</th><th>FC Order</th><th>Quantity</th><th>Production</th><th>Activation</th><th>Action</th></tr></thead>
-                  <tbody>{data.batches.map((batch) => (
-                    <tr key={batch.id} tabIndex="0" onClick={() => openBatch(batch)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openBatch(batch); } }}>
-                      <td><strong>{batch.batch_code}</strong></td>
-                      <td>{productReturnPath(batch.product?.id || batch.product_version_id)
-                        ? <button type="button" className="reorder-inline-link" onClick={(event) => stopNavigate(event, productReturnPath(batch.product?.id || batch.product_version_id))}>{batch.product?.product_name || "Amazon Catalog Item"}</button>
-                        : (batch.product?.product_name || "—")}</td>
-                      <td>{batch.orderNumber || batch.order?.order_no
-                        ? <button type="button" className="reorder-inline-link" onClick={(event) => stopNavigate(event, `/reorder/orders/${encodeURIComponent(batch.orderNumber || batch.order.order_no)}`)}>{batch.orderNumber || batch.order.order_no}</button>
-                        : "—"}</td>
-                      <td>{formatNumber(batch.quantity)}</td>
-                      <td>{batchStatusLabel(batch)}</td>
-                      <td><StatusPill value={batch.activation_status} /></td>
-                      <td className="reorder-actions-cell">
-                        <button type="button" className="btn" onClick={(event) => { event.stopPropagation(); openBatch(batch); }}>{batchAction(batch)}</button>
-                      </td>
-                    </tr>
-                  ))}</tbody>
+                    <thead><tr><th>Batch</th><th>Amazon Catalog Item</th><th>FC Order</th><th>Quantity</th><th>Production</th><th>Action</th></tr></thead>
+                    <tbody>{data.batches.map((batch) => (
+                      <tr key={batch.id} tabIndex="0" onClick={() => openBatch(batch)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openBatch(batch); } }}>
+                        <td><strong>{batch.batch_code}</strong></td>
+                        <td>{productReturnPath(batch.product?.id || batch.product_version_id)
+                          ? <button type="button" className="reorder-inline-link" onClick={(event) => stopNavigate(event, productReturnPath(batch.product?.id || batch.product_version_id))}>{batch.product?.product_name || "Amazon Catalog Item"}</button>
+                          : (batch.product?.product_name || "—")}</td>
+                        <td>{batch.orderNumber || batch.order?.order_no
+                          ? <button type="button" className="reorder-inline-link" onClick={(event) => stopNavigate(event, `/reorder/orders/${encodeURIComponent(batch.orderNumber || batch.order.order_no)}`)}>{batch.orderNumber || batch.order.order_no}</button>
+                          : "—"}</td>
+                        <td>{formatNumber(batch.quantity)}</td>
+                        <td>{batchStatusLabel(batch)}</td>
+                        <td className="reorder-actions-cell">
+                          <button type="button" className="btn" onClick={(event) => { event.stopPropagation(); openBatch(batch); }}>Open</button>
+                        </td>
+                      </tr>
+                    ))}</tbody>
                 </table>
               </div>
             </>
@@ -1501,6 +1589,16 @@ function OrderDetailPage({ orderNumber, readOnly }) {
     && totals.batchCount <= totals.maxBatchCount;
   const canSubmit = canEdit && totals.remaining === 0 && allBatchesValid;
   const leftoverStuck = canEdit && Boolean(strandedRemainingMessage(totals.remaining, minQuantity));
+  const fulfillmentTimeline = (() => {
+    const seen = new Set();
+    return (detail?.timeline || []).filter((event) => {
+      if (event.label === "Batch created" || event.label === "FC Order established") return false;
+      const key = [event.label, event.state, event.completedAt || ""].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  })();
   const otherAllocated = batches
     .filter((batch) => editor?.mode !== "edit" || batch.id !== editor.batch.id)
     .reduce((total, batch) => total + Number(batch.quantity || 0), 0);
@@ -1614,15 +1712,20 @@ function OrderDetailPage({ orderNumber, readOnly }) {
     <div className="reorder-page">
       <PageHeader
         title={detail.order.orderNumber}
-        crumbs={[{ label: "Batches", path: "/reorder/orders" }]}
-        action={<span className="reorder-header-status">{submitted ? "Submitted" : canEdit ? "Draft" : "View-only"}</span>}
+        crumbs={[{ label: "Orders & Batches", path: "/reorder/orders" }]}
+        action={(submitted || canEdit) ? <span className="reorder-header-status">{submitted ? "Submitted" : "Draft"}</span> : null}
       />
       {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
       <AllocationSummary order={totals} />
 
       <section className="reorder-flat-section">
-        <div className="reorder-section-label">Batches</div>
+        <div className="reorder-section-toolbar">
+          <div className="reorder-section-label">Batches</div>
+          {canEdit && !editor && (
+            <button className="btn" onClick={openCreate} disabled={!canAddBatch} aria-disabled={!canAddBatch}>Add batch</button>
+          )}
+        </div>
         {!detail.batches.length ? <PageState>No Batches have been created.</PageState> : (
           <div className="reorder-table-wrap">
             <table className="reorder-table">
@@ -1637,17 +1740,15 @@ function OrderDetailPage({ orderNumber, readOnly }) {
                       {batch.label && batch.label !== batch.batch_code ? <small className="reorder-cell-note">{batch.label}</small> : null}
                     </td>
                     <td>
-                      {productReturnPath(batch.product_version_id)
-                        ? <button type="button" className="reorder-inline-link" onClick={() => navigate(productReturnPath(batch.product_version_id))}>{batch.product?.product_name || "Amazon Catalog Item"}</button>
-                        : (batch.product?.product_name || "—")}
+                      {batch.product?.product_name || "—"}
                       <small className="reorder-cell-note">{batch.product?.asin || ""}</small>
                     </td>
                     <td>{formatNumber(batch.quantity)}</td>
                     <td>{batchStatusLabel(batch)}</td>
                     {canEdit ? (
                       <td className="reorder-actions-cell">
-                        {!batch.locked && <button type="button" className="reorder-text-button" onClick={() => openEdit(batch)}>Edit</button>}
-                        {!batch.locked && <button type="button" className="reorder-text-button" disabled={Boolean(busyAction)} onClick={() => deleteBatch(batch)}>{busyAction === `delete-${batch.id}` ? "Deleting…" : "Delete"}</button>}
+                        {!batch.locked && <button type="button" className="btn" onClick={() => openEdit(batch)}>Edit</button>}
+                        {!batch.locked && <button type="button" className="btn" disabled={Boolean(busyAction)} onClick={() => deleteBatch(batch)}>{busyAction === `delete-${batch.id}` ? "Deleting…" : "Delete"}</button>}
                         {batch.locked && <span className="reorder-cell-note">Locked</span>}
                       </td>
                     ) : null}
@@ -1658,11 +1759,10 @@ function OrderDetailPage({ orderNumber, readOnly }) {
           </div>
         )}
         {canEdit && !editor && (
-          <div className="reorder-editor-actions">
-            <button className="btn" onClick={openCreate} disabled={!canAddBatch} aria-disabled={!canAddBatch}>Add batch</button>
-            {!products.length && <span className="reorder-cell-note">Create a production-ready Amazon Catalog Item before adding a Batch.</span>}
+          <>
+            {!products.length && <span className="reorder-cell-note">Create a production-ready Amazon Catalog Item before adding a Batch. <button className="btn" onClick={() => openRelated("/reorder/products/new")}>Add Amazon Catalog Item</button></span>}
             {products.length > 0 && addBatchState.reason && <span className="reorder-field-error">{addBatchState.reason}</span>}
-          </div>
+          </>
         )}
         {canEdit && editor && (
           <form className="reorder-batch-form" onSubmit={(event) => { event.preventDefault(); saveBatch(); }}>
@@ -1695,7 +1795,7 @@ function OrderDetailPage({ orderNumber, readOnly }) {
               {availableToAllocate >= minQuantity && (
                 <button
                   type="button"
-                  className="reorder-text-button"
+                  className="btn"
                   onClick={() => updateForm("quantity", String(availableToAllocate))}
                 >
                   Use remaining {formatNumber(availableToAllocate)}
@@ -1716,14 +1816,10 @@ function OrderDetailPage({ orderNumber, readOnly }) {
           {canSubmit ? (
             <>
               <p className="reorder-allocation-status">✓ Allocation complete</p>
-              <p className="reorder-guidance">{formatNumber(totals.allocated)} of {formatNumber(totals.totalOrdered)} magnets allocated</p>
-              <p className="reorder-guidance">{formatNumber(totals.batchCount)} batches</p>
             </>
           ) : (
             <>
-              <p className="reorder-allocation-status">Allocation incomplete</p>
-              <p className="reorder-guidance">{formatNumber(totals.allocated)} of {formatNumber(totals.totalOrdered)} magnets allocated</p>
-              <p className="reorder-guidance">{formatNumber(totals.remaining)} remaining</p>
+              <p className="reorder-allocation-status">We can't start production until every magnet is allocated — finish the allocation to continue.</p>
               {leftoverStuck && <p className="reorder-field-error">{strandedRemainingMessage(totals.remaining, minQuantity)}</p>}
             </>
           )}
@@ -1743,8 +1839,8 @@ function OrderDetailPage({ orderNumber, readOnly }) {
             <div><dt>Ship-to / Fulfillment destination</dt><dd>{detail.order.shipTo || "—"}</dd></div>
             <div><dt>Requested ship date</dt><dd>{formatDate(detail.order.requestedShipDate)}</dd></div>
           </dl>
-          {detail.timeline.length > 0 && (
-            <div className="reorder-timeline">{detail.timeline.map((event) => (
+          {fulfillmentTimeline.length > 0 && (
+            <div className="reorder-timeline">{fulfillmentTimeline.map((event) => (
               <div key={event.id}><strong>{event.label}</strong><span>{humanize(event.state)}{event.completedAt ? ` · ${formatDate(event.completedAt)}` : ""}</span></div>
             ))}</div>
           )}
@@ -1756,7 +1852,7 @@ function OrderDetailPage({ orderNumber, readOnly }) {
 
 function ProductFormPage({ readOnly }) {
   const [accounts, setAccounts] = useState([]);
-  const [form, setForm] = useState({
+  const [form, setForm] = useFlowDraft({
     marketplaceCode: "",
     sellerId: "",
     sku: "",
@@ -1838,7 +1934,8 @@ function ProductFormPage({ readOnly }) {
           sellerOfferAvailable: true,
         }),
       });
-      navigate(`/reorder/products/${product.id}`);
+      clearFlowDraft();
+      navigate(returnPath() || `/reorder/products/${product.id}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1882,7 +1979,7 @@ function ProductFormPage({ readOnly }) {
   const productCreateCrumbs = [{ label: "Amazon Catalog Items", path: "/reorder/products" }];
 
   if (loading) return <div className="reorder-page"><PageHeader title="Add Amazon Catalog Item" crumbs={productCreateCrumbs} /><PageSkeleton label="Loading Amazon Catalog Item form" /></div>;
-  if (!accounts.length) return <div className="reorder-page"><PageHeader title="Add Amazon Catalog Item" crumbs={productCreateCrumbs} /><PageState tone="error">Complete Amazon setup before adding an Amazon Catalog Item.</PageState><button className="btn primary" onClick={() => navigate("/reorder/settings/amazon")}>Open Amazon setup</button></div>;
+  if (!accounts.length) return <div className="reorder-page"><PageHeader title="Add Amazon Catalog Item" crumbs={productCreateCrumbs} /><PageState tone="error">{error || "Complete Amazon setup before adding an Amazon Catalog Item."}</PageState><button className="btn primary" onClick={() => openRelated("/reorder/settings/amazon")}>Open Amazon setup</button></div>;
 
   const requiredMark = (label) => (
     <>
@@ -1900,7 +1997,7 @@ function ProductFormPage({ readOnly }) {
   );
 
   return (
-    <div className="reorder-page">
+    <div className="reorder-page reorder-form-page">
       <PageHeader title="Add Amazon Catalog Item" crumbs={productCreateCrumbs} action={<button className="btn primary" disabled={!canSave || saving} onClick={save}>{saving ? "Saving…" : "Save Amazon Catalog Item"}</button>} />
       {error && <PageState tone="error">{error}</PageState>}
       <section className="cfg-section">
@@ -1962,12 +2059,8 @@ function ProductFormPage({ readOnly }) {
 function ProductDetailPage({ productId, readOnly }) {
   const [product, setProduct] = useState(null);
   const [batches, setBatches] = useState([]);
-  const [orders, setOrders] = useState([]);
   const [discounts, setDiscounts] = useState([]);
-  const [busyId, setBusyId] = useState("");
-  const [displayPrompt, setDisplayPrompt] = useState(null);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState(productTabFromSearch);
   const load = () => Promise.all([
     api(`/api/reorder/products/${encodeURIComponent(productId)}`),
     api(`/api/reorder/products/${encodeURIComponent(productId)}/batches`),
@@ -1975,139 +2068,36 @@ function ProductDetailPage({ productId, readOnly }) {
   ]).then(([productData, batchData, discountData]) => {
     setProduct(productData);
     setBatches(batchData.batches || []);
-    setOrders(batchData.orders || []);
     setDiscounts((discountData.discounts || []).filter((discount) => (discount.products || []).some((row) => row.id === productId)));
   });
   useEffect(() => { load().catch((err) => setError(err.message)); }, [productId]);
-  useEffect(() => {
-    const sync = () => setTab(productTabFromSearch());
-    window.addEventListener("popstate", sync);
-    return () => window.removeEventListener("popstate", sync);
-  }, []);
-  const selectTab = (next) => {
-    setTab(next);
-    const params = new URLSearchParams(window.location.search);
-    if (next === "overview") params.delete("tab");
-    else params.set("tab", next);
-    const query = params.toString();
-    window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
-  };
-  const openBatch = (batch) => navigate(withProductContext(`/reorder/batches/${batch.id}`, productId));
-  const openDiscount = (discount) => navigate(withProductContext(`/reorder/discounts/${discount.id}`, productId));
-  const addDiscount = () => navigate(`/reorder/discounts/new?product=${encodeURIComponent(productId)}`);
-  const setVisible = async (discount, visible) => {
-    setBusyId(discount.id); setError("");
-    try {
-      await api(`/api/reorder/discounts/${discount.id}`, { method: "PUT", body: JSON.stringify({ isVisibleOnFc: visible }) });
-      await load();
-    } catch (err) { setError(err.message); } finally { setBusyId(""); }
-  };
-  const headerAction = !readOnly && tab === "discounts" ? (
-    <button type="button" className="btn primary" onClick={addDiscount}>Add existing Amazon discount</button>
-  ) : null;
+  const displayedDiscounts = discounts.filter((discount) => discount.is_visible_on_fc);
   return (
     <div className="reorder-page">
       <PageHeader
         title={product?.product_name || "Amazon Catalog Item detail"}
         backTo="/reorder/products"
         backLabel="Amazon Catalog Items"
-        action={headerAction}
       />
       {error && <PageState tone="error">{error}</PageState>}
       {!error && !product && <PageSkeleton label="Loading Amazon Catalog Item" />}
       {product && (
-        <div className="reorder-view-switch" role="tablist" aria-label="Amazon Catalog Item views">
-          <button type="button" role="tab" id="product-tab-overview" aria-selected={tab === "overview"} aria-controls="product-panel-overview" className={tab === "overview" ? "is-active" : ""} onClick={() => selectTab("overview")}>Overview</button>
-          <button type="button" role="tab" id="product-tab-batches" aria-selected={tab === "batches"} aria-controls="product-panel-batches" className={tab === "batches" ? "is-active" : ""} onClick={() => selectTab("batches")}>Batches</button>
-          <button type="button" role="tab" id="product-tab-discounts" aria-selected={tab === "discounts"} aria-controls="product-panel-discounts" className={tab === "discounts" ? "is-active" : ""} onClick={() => selectTab("discounts")}>Discounts</button>
-        </div>
-      )}
-      {product && tab === "overview" && (
-        <div id="product-panel-overview" role="tabpanel" aria-labelledby="product-tab-overview">
+        <div>
           <p className="reorder-guidance">Amazon Catalog Item versions are view-only after they are created.</p>
           <dl className="reorder-detail-grid">
-            <div><dt>Marketplace</dt><dd>{product.sellingAccount?.marketplace_code || "—"}</dd></div>
-            <div><dt>Seller ID</dt><dd className="reorder-mono">{product.sellingAccount?.seller_id || "—"}</dd></div>
+            <div><dt>Selling account</dt><dd>{product.sellingAccount?.label || "—"}</dd></div>
+            <div><dt>Marketplace</dt><dd>{[product.sellingAccount?.marketplace_code, product.sellingAccount?.marketplace_domain].filter(Boolean).join(" · ") || "—"}</dd></div>
             <div><dt>SKU</dt><dd className="reorder-mono">{product.sku || "—"}</dd></div>
             <div><dt>ASIN</dt><dd className="reorder-mono">{product.asin}</dd></div>
             <div><dt>Variant / Size</dt><dd>{product.variant_size || "—"}</dd></div>
-            <div className="is-wide"><dt>Amazon Catalog Item image</dt><dd>{product.image_url ? <a href={product.image_url} target="_blank" rel="noreferrer">Open image ↗</a> : "—"}</dd></div>
+            <div className="is-wide"><dt>Amazon Catalog Item image</dt><dd>{product.image_url ? <a className="reorder-product-detail-image" href={product.image_url} target="_blank" rel="noreferrer" aria-label={`Open full image for ${product.product_name}`}><img src={product.image_url} alt={product.product_name} /></a> : "—"}</dd></div>
             <div className="is-wide"><dt>Seller-specific Amazon URL</dt><dd><a href={product.amazon_seller_pdp_url} target="_blank" rel="noreferrer">Open on Amazon ↗</a></dd></div>
             <div><dt>Listing confirmed</dt><dd>{product.listing_confirmed ? "Yes" : "No"}</dd></div>
             <div><dt>Status</dt><dd><StatusPill value={product.status} /></dd></div>
+            <div><dt>Related Batches</dt><dd>{batches.length}</dd></div>
+            <div><dt>Related Discounts</dt><dd>{discounts.length}</dd></div>
           </dl>
         </div>
-      )}
-      {product && tab === "batches" && (
-        <section className="reorder-flat-section" id="product-panel-batches" role="tabpanel" aria-labelledby="product-tab-batches">
-          {orders.length > 0 && (
-            <p className="reorder-guidance">FC Orders: {orders.map((order, index) => (
-              <span key={order.id}>{index ? ", " : ""}<button type="button" className="reorder-inline-link" onClick={() => navigate(`/reorder/orders/${encodeURIComponent(order.orderNumber)}`)}>{order.orderNumber}</button></span>
-            ))}</p>
-          )}
-          {!batches.length ? <PageState>No Batches are linked to this Amazon Catalog Item Version.</PageState> : (
-            <div className="reorder-table-wrap">
-              <table className="reorder-table">
-                <thead><tr><th>Batch</th><th>Quantity</th><th>Production</th><th>Shipment</th><th>Activation</th></tr></thead>
-                <tbody>
-                  {batches.map((batch) => (
-                    <tr key={batch.id} tabIndex="0" onClick={() => openBatch(batch)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openBatch(batch); } }}>
-                      <td><strong>{batch.batch_code}</strong></td>
-                      <td>{formatNumber(batch.quantity)}</td>
-                      <td>{batchStatusLabel(batch)}</td>
-                      <td>{batch.quantity_shipped > 0 ? humanize(batch.shipment_status) : "—"}</td>
-                      <td><StatusPill value={batch.activation_status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
-      {product && tab === "discounts" && (
-        <section className="reorder-flat-section" id="product-panel-discounts" role="tabpanel" aria-labelledby="product-tab-discounts">
-          {!discounts.length ? (
-            <PageState>No Amazon Coupon or Promotion is matched to this Amazon Catalog Item.</PageState>
-          ) : (
-            <div className="reorder-table-wrap">
-              <table className="reorder-table">
-                <thead><tr><th>Discount</th><th>Type</th><th>Amazon Period</th><th>Claim Code</th><th>FC Display</th><th>Issue</th></tr></thead>
-                <tbody>
-                  {discounts.map((discount) => (
-                    <tr key={discount.id} tabIndex="0" onClick={() => openDiscount(discount)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openDiscount(discount); } }}>
-                      <td><strong>{discount.title}</strong></td>
-                      <td>{discount.discount_kind === "amazon_coupon" ? "Coupon" : "Promotion"}</td>
-                      <td>{discount.amazon_period || `${formatDate(discount.start_at)}–${formatDate(discount.end_at)}`}</td>
-                      <td>{discount.claim_code_label || (discount.discount_kind === "amazon_coupon" ? "—" : humanize(discount.claim_code_mode))}</td>
-                      <td>
-                        <FcDisplayStatusButton
-                          discount={discount}
-                          disabled={readOnly || busyId === discount.id}
-                          busy={busyId === discount.id}
-                          onAsk={(item, nextVisible) => setDisplayPrompt({ discount: item, nextVisible })}
-                        />
-                      </td>
-                      <td>{discountIssueText(discount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
-      {displayPrompt && (
-        <FcDisplayConfirmDialog
-          discount={displayPrompt.discount}
-          nextVisible={displayPrompt.nextVisible}
-          busy={busyId === displayPrompt.discount.id}
-          onCancel={() => { if (!busyId) setDisplayPrompt(null); }}
-          onConfirm={async () => {
-            await setVisible(displayPrompt.discount, displayPrompt.nextVisible);
-            setDisplayPrompt(null);
-          }}
-        />
       )}
     </div>
   );
@@ -2115,52 +2105,15 @@ function ProductDetailPage({ productId, readOnly }) {
 
 function BatchDetailPage({ batchId, readOnly }) {
   const [batch, setBatch] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [pendingStatus, setPendingStatus] = useState("");
-  const [scheduleAt, setScheduleAt] = useState("");
-  const [tab, setTab] = useState(batchTabFromSearch);
-  const [message, setMessage] = useFlashMessage();
   const [error, setError] = useState("");
 
   const load = () => api(`/api/reorder/batches/${batchId}`).then((data) => {
     setBatch(data);
-    setScheduleAt((current) => current || toDatetimeLocal(data.scheduled_activation_at));
   });
 
   useEffect(() => { load().catch((err) => setError(err.message)); }, [batchId]);
-  useEffect(() => {
-    const sync = () => setTab(batchTabFromSearch());
-    window.addEventListener("popstate", sync);
-    return () => window.removeEventListener("popstate", sync);
-  }, []);
-  const selectTab = (next) => {
-    setTab(next);
-    selectSearchTab(next, "overview");
-  };
-
-  const transition = async (status) => {
-    setSaving(true); setPendingStatus(status); setError(""); setMessage("");
-    try {
-      await api(`/api/reorder/batches/${batchId}/activation`, {
-        method: "PUT",
-        body: JSON.stringify({ status, scheduledActivationAt: status === "scheduled" ? new Date(scheduleAt).toISOString() : null }),
-      });
-      await load();
-      setMessage(`Activation changed to ${humanize(status)}.`);
-    } catch (err) { setError(err.message); } finally { setSaving(false); setPendingStatus(""); }
-  };
-
   if (error && !batch) return <div className="reorder-page"><PageHeader title="Batch" /><PageState tone="error">{error}</PageState></div>;
   if (!batch) return <div className="reorder-page"><PageHeader title="Batch" /><PageSkeleton label="Loading Batch" /></div>;
-
-  const actions = {
-    draft: ["scheduled", "active", "retired"],
-    scheduled: ["active", "paused", "retired"],
-    active: ["paused", "retired"],
-    paused: ["scheduled", "active", "retired"],
-    retired: [],
-  }[batch.activation_status] || [];
-  const performance = batch.performance || {};
 
   const productQueryId = searchProductId();
   const fromProduct = productQueryId && productQueryId === batch.product_version_id;
@@ -2170,120 +2123,28 @@ function BatchDetailPage({ batchId, readOnly }) {
         { label: batch.product?.product_name || "Amazon Catalog Item", path: productTabPath(productQueryId, "batches") },
       ]
     : [
-        { label: "Batches", path: "/reorder/orders?view=batches" },
+        { label: "Orders & Batches", path: "/reorder/orders?view=batches" },
         ...(batch.order?.order_no ? [{ label: batch.order.order_no, path: `/reorder/orders/${encodeURIComponent(batch.order.order_no)}` }] : []),
       ];
 
   return (
-    <div className="reorder-page reorder-batch-detail">
+    <div className="reorder-page reorder-batch-page">
       <PageHeader
         title={batch.batch_code}
         crumbs={crumbs}
-        action={(
-          <div className="reorder-header-actions">
-            <span className="reorder-header-status">{humanize(batch.activation_status)}</span>
-            <button className="btn" onClick={() => navigate(analyticsHref(batch.product_version_id, batch.id))}>View analytics →</button>
-          </div>
-        )}
+        action={<button className="btn" onClick={() => openRelated(analyticsHref(batch.product_version_id, batch.id))}>View analytics →</button>}
       />
-      {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
-      <div className="reorder-view-switch" role="tablist" aria-label="Batch views">
-        <button type="button" role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "is-active" : ""} onClick={() => selectTab("overview")}>Overview</button>
-        <button type="button" role="tab" aria-selected={tab === "production"} className={tab === "production" ? "is-active" : ""} onClick={() => selectTab("production")}>Production</button>
-        <button type="button" role="tab" aria-selected={tab === "consumer"} className={tab === "consumer" ? "is-active" : ""} onClick={() => selectTab("consumer")}>Consumer</button>
-        <button type="button" role="tab" aria-selected={tab === "performance"} className={tab === "performance" ? "is-active" : ""} onClick={() => selectTab("performance")}>Performance</button>
-      </div>
-
-      {tab === "overview" && (
-        <section className="reorder-flat-section">
-          <div className="reorder-section-label">Batch</div>
-          <dl className="reorder-detail-grid">
-            <div><dt>Batch label</dt><dd>{batch.label || "—"}</dd></div>
+      <section className="reorder-flat-section">
+        <dl className="reorder-detail-grid">
+            {batch.label && batch.label !== batch.batch_code && <div><dt>Batch label</dt><dd>{batch.label}</dd></div>}
             <div><dt>Parent FC Order</dt><dd><button className="reorder-inline-link" onClick={() => navigate(`/reorder/orders/${encodeURIComponent(batch.order?.order_no || "")}`)}>{batch.order?.order_no || "—"}</button></dd></div>
-            <div><dt>Amazon Catalog Item</dt><dd>{productReturnPath(batch.product_version_id) ? <button type="button" className="reorder-inline-link" onClick={() => navigate(productReturnPath(batch.product_version_id))}>{batch.product?.product_name || "Amazon Catalog Item"}</button> : (batch.product?.product_name || "—")}</dd></div>
-            <div><dt>Amazon Catalog Item ID</dt><dd className="reorder-mono">{batch.product_version_id}</dd></div>
+            <div><dt>Amazon Catalog Item</dt><dd>{batch.product?.product_name || "—"}</dd></div>
             <div><dt>ASIN</dt><dd className="reorder-mono">{batch.product?.asin || "—"}</dd></div>
-            <div><dt>Marketplace</dt><dd>{batch.product?.sellingAccount?.marketplace_code || "—"}</dd></div>
-            <div className="is-wide"><dt>Seller Listing</dt><dd>{batch.product?.amazon_seller_pdp_url ? <a href={batch.product.amazon_seller_pdp_url} target="_blank" rel="noreferrer">Open listing ↗</a> : "—"}</dd></div>
             <div><dt>Quantity</dt><dd>{formatNumber(batch.quantity)}</dd></div>
             <div><dt>Created at</dt><dd>{formatDate(batch.created_at)}</dd></div>
-          </dl>
-        </section>
-      )}
-
-      {tab === "production" && (
-        <>
-          <section className="reorder-flat-section">
-            <div className="reorder-section-label">Production</div>
-            <dl className="reorder-detail-grid">
-              <div><dt>Submitted at</dt><dd>{formatDate(batch.submitted_at)}</dd></div>
-              <div><dt>Production status</dt><dd>{batchStatusLabel(batch)}</dd></div>
-              <div><dt>FC ID count</dt><dd>{formatNumber(batch.fc_id_count)}{batch.fc_id_start ? ` · ${batch.fc_id_start}–${batch.fc_id_end || "…"}` : ""}</dd></div>
-              <div><dt>NFC written status</dt><dd>{batch.nfc_write_status || "—"}</dd></div>
-              <div><dt>QA status</dt><dd>{batch.qa_status || "—"}</dd></div>
-            </dl>
-            {batch.timeline.length > 0 && (
-              <div className="reorder-timeline">{batch.timeline.map((event) => (
-                <div key={event.id}><strong>{event.title}</strong><span>{formatDate(event.occurred_at)}{event.description ? ` · ${event.description}` : ""}</span></div>
-              ))}</div>
-            )}
-          </section>
-          <section className="reorder-flat-section">
-            <div className="reorder-section-label">Shipment</div>
-            <dl className="reorder-detail-grid">
-              <div><dt>Ship-to</dt><dd>{batch.ship_to || "—"}</dd></div>
-              <div><dt>Quantity shipped</dt><dd>{formatNumber(batch.quantity_shipped)}</dd></div>
-              <div><dt>Carrier</dt><dd>{batch.carrier || "—"}</dd></div>
-              <div><dt>Tracking</dt><dd>{batch.tracking_reference || "—"}</dd></div>
-              <div><dt>Shipped at</dt><dd>{formatDate(batch.shipped_at)}</dd></div>
-              <div><dt>Fulfillment delivery status</dt><dd>{humanize(batch.shipment_status)}</dd></div>
-              <div><dt>Delivered to fulfillment location</dt><dd>{formatDate(batch.delivered_to_fulfillment_at)}</dd></div>
-            </dl>
-            <p className="reorder-guidance">Delivery here means delivery to the Brand, 3PL, or packaging facility. It is not Consumer MD.</p>
-          </section>
-        </>
-      )}
-
-      {tab === "consumer" && (
-        <>
-          <section className="reorder-flat-section">
-            <div className="reorder-section-label">Consumer page</div>
-            <p className="reorder-guidance">Savings and the Survey belong to this Amazon Catalog Item. This Batch publishes them on its consumer page.</p>
-            <p className="reorder-guidance">Discount: {batch.consumerExperience.discount || "Not configured"} · Survey: {batch.consumerExperience.survey || "Not configured"}</p>
-          </section>
-          <section className="reorder-flat-section">
-            <div className="reorder-section-label">Activation</div>
-            {batch.scheduled_activation_at && <p className="reorder-guidance">Scheduled activation: {formatDate(batch.scheduled_activation_at)}</p>}
-            {!readOnly && batch.activation_status !== "retired" && (
-              <div className="reorder-activation-controls">
-                <button className="btn" onClick={() => navigate(withProductContext(`/reorder/preview?batch=${batch.id}`, productQueryId))}>Preview</button>
-                {actions.includes("scheduled") && <input className="cfg-input" type="datetime-local" value={scheduleAt} aria-label="Scheduled activation" onChange={(event) => setScheduleAt(event.target.value)} />}
-                {actions.map((status) => (
-                  <button
-                    key={status}
-                    className={`btn${status === "active" ? " primary" : ""}`}
-                    disabled={saving || (status === "scheduled" && !scheduleAt)}
-                    onClick={() => transition(status)}
-                  >
-                    {saving && pendingStatus === status ? activationBusy(status) : activationVerb(status)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        </>
-      )}
-
-      {tab === "performance" && (
-        <section className="reorder-flat-section">
-          <div className="reorder-section-label">Performance</div>
-          <div className="reorder-performance-row">
-            {["ms", "md", "msi", "mgo", "no"].map((metric) => <div key={metric}><span>{metric.toUpperCase()}</span><strong>{performance[metric] == null ? "—" : formatNumber(performance[metric])}</strong></div>)}
-          </div>
-          <p className="reorder-guidance">{performance.coverageNote || (performance.coverage === "available" ? "Coverage is complete for this Batch." : "Unavailable until coverage is complete for this Batch.")}</p>
-        </section>
-      )}
+        </dl>
+      </section>
     </div>
   );
 }
@@ -2291,32 +2152,26 @@ function BatchDetailPage({ batchId, readOnly }) {
 function DiscountListPage({ readOnly }) {
   const [discounts, setDiscounts] = useState(() => apiGetCache.get("/api/reorder/discounts")?.discounts || []);
   const [loading, setLoading] = useState(() => !apiGetCache.has("/api/reorder/discounts"));
-  const [busyId, setBusyId] = useState("");
-  const [displayPrompt, setDisplayPrompt] = useState(null);
   const [error, setError] = useState("");
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const load = () => api("/api/reorder/discounts").then((data) => setDiscounts(data.discounts || []));
   useEffect(() => {
     load().catch((err) => setError(err.message)).finally(() => setLoading(false));
   }, []);
-  const setVisible = async (discount, visible) => {
-    setBusyId(discount.id); setError("");
-    try {
-      await api(`/api/reorder/discounts/${discount.id}`, { method: "PUT", body: JSON.stringify({ isVisibleOnFc: visible }) });
-      await load();
-    } catch (err) { setError(err.message); } finally { setBusyId(""); }
-  };
   return (
     <div className="reorder-page">
       <PageHeader
         title="Discounts"
         action={!readOnly && (
           <div className="reorder-header-actions">
-            <button className="btn" onClick={() => navigate("/reorder/discounts/new?kind=amazon_coupon")}>Import Amazon Coupon</button>
-            <button className="btn primary" onClick={() => navigate("/reorder/discounts/new?kind=amazon_promotion")}>Add Amazon Promotion</button>
+            <div className="reorder-create-menu">
+              <button className="btn primary" onClick={() => navigate("/reorder/discounts/new?kind=amazon_promotion")}>Add Amazon Promotion</button>
+              <button type="button" className="btn primary reorder-create-menu-trigger" aria-label="More creation options" aria-expanded={createMenuOpen} aria-haspopup="menu" onClick={() => setCreateMenuOpen((open) => !open)}>⌄</button>
+              {createMenuOpen && <div className="reorder-create-menu-popover" role="menu"><button type="button" role="menuitem" onClick={() => navigate("/reorder/discounts/new?kind=amazon_coupon")}>Import Amazon Coupon</button></div>}
+            </div>
           </div>
         )}
       />
-      <p className="reorder-guidance">Import an existing Amazon Coupon or record an Amazon Promotion. FC matches Eligible ASINs to Amazon Catalog Items, then Show or Hide the saving on the FC page. Show and Hide only change FridgeChannel display — they do not turn the Coupon or Promotion on or off on Amazon.</p>
       {loading && discounts.length === 0 && <PageSkeleton label="Loading discounts" />}
       {error && <PageState tone="error">{error}</PageState>}
       {!loading && !error && !discounts.length && (
@@ -2327,7 +2182,7 @@ function DiscountListPage({ readOnly }) {
       {discounts.length > 0 && (
         <div className="reorder-table-wrap">
           <table className="reorder-table">
-            <thead><tr><th>Discount</th><th>Type</th><th>Amazon Catalog Item</th><th>Amazon Period</th><th>Claim Code</th><th>FC Display</th><th>Issue</th></tr></thead>
+            <thead><tr><th>Discount</th><th>Type</th><th>Amazon Catalog Item</th><th>Amazon Period</th><th>FC Display</th><th>Issue</th></tr></thead>
             <tbody>{discounts.map((discount) => (
               <tr key={discount.id} tabIndex="0" onClick={() => navigate(`/reorder/discounts/${discount.id}`)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); navigate(`/reorder/discounts/${discount.id}`); } }}>
                 <td><strong>{discount.title}</strong><small className="reorder-cell-note">{discount.sellingAccount?.label || "—"}</small></td>
@@ -2340,32 +2195,12 @@ function DiscountListPage({ readOnly }) {
                   ))
                   : "—"}</td>
                 <td>{discount.amazon_period || `${formatDate(discount.start_at)}–${formatDate(discount.end_at)}`}</td>
-                <td>{discount.claim_code_label || (discount.discount_kind === "amazon_coupon" ? "—" : humanize(discount.claim_code_mode))}</td>
-                <td>
-                  <FcDisplayStatusButton
-                    discount={discount}
-                    disabled={readOnly || busyId === discount.id}
-                    busy={busyId === discount.id}
-                    onAsk={(item, nextVisible) => setDisplayPrompt({ discount: item, nextVisible })}
-                  />
-                </td>
+                <td>{isShownOnFc(discount) ? "Shown" : "Hidden"}</td>
                 <td>{discountIssueText(discount)}</td>
               </tr>
             ))}</tbody>
           </table>
         </div>
-      )}
-      {displayPrompt && (
-        <FcDisplayConfirmDialog
-          discount={displayPrompt.discount}
-          nextVisible={displayPrompt.nextVisible}
-          busy={busyId === displayPrompt.discount.id}
-          onCancel={() => { if (!busyId) setDisplayPrompt(null); }}
-          onConfirm={async () => {
-            await setVisible(displayPrompt.discount, displayPrompt.nextVisible);
-            setDisplayPrompt(null);
-          }}
-        />
       )}
     </div>
   );
@@ -2412,6 +2247,7 @@ function CouponImportForm({ accounts, product, readOnly, onDone }) {
     <>
       {error && <PageState tone="error">{error}</PageState>}
       <section className="cfg-section">
+        <div className="reorder-section-label">Coupon file</div>
         <p className="reorder-guidance">Upload the Amazon Coupon file. FC records an existing Coupon and matches Eligible ASINs to Amazon Catalog Items. It does not create the Coupon in Amazon.</p>
         <div className="cfg-form grid grid-2">
           <label className="cfg-field"><span className="cfg-label">Selling Account / Marketplace</span><select className="cfg-input" value={sellingAccountId} disabled={readOnly || working || accountLocked} onChange={(event) => { setSellingAccountId(event.target.value); setPreview(null); setFile(null); }}><option value="">Select account</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}</select></label>
@@ -2457,7 +2293,7 @@ function CouponImportForm({ accounts, product, readOnly, onDone }) {
 
 function PromotionForm({ accounts, products, product, readOnly, onDone }) {
   const inheritedAccountId = product?.selling_account_id || accounts[0]?.id || "";
-  const [form, setForm] = useState({
+  const [form, setForm] = useFlowDraft({
     sellingAccountId: inheritedAccountId,
     productVersionIds: product?.id ? [product.id] : [],
     title: "",
@@ -2468,7 +2304,6 @@ function PromotionForm({ accounts, products, product, readOnly, onDone }) {
     endAt: "",
     claimCodeMode: "none",
     groupClaimCode: "",
-    codeLowThreshold: 20,
   });
   const [codeFile, setCodeFile] = useState(null);
   const [codeReport, setCodeReport] = useState(null);
@@ -2515,6 +2350,7 @@ function PromotionForm({ accounts, products, product, readOnly, onDone }) {
         }
         if (visibleOnFc) await api(`/api/reorder/discounts/${discount.id}`, { method: "PUT", body: JSON.stringify({ isVisibleOnFc: true }) });
       }
+      clearFlowDraft();
       if (onDone) onDone();
       else navigate(`/reorder/discounts/${discount.id}`);
     } catch (err) { setError(err.message); } finally { setSaving(false); }
@@ -2524,6 +2360,7 @@ function PromotionForm({ accounts, products, product, readOnly, onDone }) {
     <>
       {error && <PageState tone="error">{error}</PageState>}
       <section className="cfg-section">
+        <div className="reorder-section-label">Promotion scope</div>
         <p className="reorder-guidance">Record an existing Amazon Promotion. FC does not create the Promotion or generate Claim Codes.</p>
         <div className="cfg-form grid grid-2">
           <label className="cfg-field"><span className="cfg-label">Selling Account / Marketplace</span><select className="cfg-input" value={form.sellingAccountId} disabled={readOnly || Boolean(product)} onChange={(event) => { setCatalogOpen(false); setForm({ ...form, sellingAccountId: event.target.value, productVersionIds: product?.id ? [product.id] : [] }); }}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}</select></label>
@@ -2534,7 +2371,7 @@ function PromotionForm({ accounts, products, product, readOnly, onDone }) {
             ) : !eligibleProducts.length ? (
               <>
                 <p className="reorder-guidance">No Amazon Catalog Items on this selling account yet.</p>
-                {!readOnly && <button type="button" className="btn" onClick={() => navigate("/reorder/products/new")}>Add Amazon Catalog Item</button>}
+                {!readOnly && <button type="button" className="btn" onClick={() => openRelated("/reorder/products/new")}>Add Amazon Catalog Item</button>}
               </>
             ) : (
               <>
@@ -2620,13 +2457,10 @@ function PromotionForm({ accounts, products, product, readOnly, onDone }) {
           <label className="cfg-field"><span className="cfg-label">Claim Code Mode</span><select className="cfg-input" value={form.claimCodeMode} disabled={readOnly} onChange={(event) => set("claimCodeMode", event.target.value)}><option value="none">None</option><option value="group">Group</option><option value="single_use">Single-use</option></select></label>
           {form.claimCodeMode === "group" && input("groupClaimCode", "Existing Amazon Group Claim Code")}
           {form.claimCodeMode === "single_use" && (
-            <>
-              {input("codeLowThreshold", "Codes low threshold", { type: "number" })}
-              <div className="cfg-field">
-                <span className="cfg-label">Import Amazon Single-use Claim Codes</span>
-                <FileButton id="reorder-promotion-codes" label={codeFile?.name || "Choose file"} accept=".xlsx,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly} fileName={codeFile?.name} onFile={setCodeFile} />
-              </div>
-            </>
+            <div className="cfg-field">
+              <span className="cfg-label">Import Amazon Single-use Claim Codes</span>
+              <FileButton id="reorder-promotion-codes" label={codeFile?.name || "Choose file"} accept=".xlsx,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly} fileName={codeFile?.name} onFile={setCodeFile} />
+            </div>
           )}
         </div>
         {codeReport && <p className="reorder-guidance">Total {codeReport.total}; accepted {codeReport.accepted}; duplicates {codeReport.duplicates}; rejected {codeReport.rejected}. Accepted means FC can import the Code.</p>}
@@ -2653,7 +2487,7 @@ function PromotionForm({ accounts, products, product, readOnly, onDone }) {
 function AddDiscountPage({ readOnly }) {
   const params = new URLSearchParams(window.location.search);
   const productId = params.get("product") || "";
-  const [kind, setKind] = useState(params.get("kind") === "amazon_promotion" ? "amazon_promotion" : "amazon_coupon");
+  const kind = params.get("kind") === "amazon_promotion" ? "amazon_promotion" : "amazon_coupon";
   const [accounts, setAccounts] = useState([]);
   const [products, setProducts] = useState([]);
   const [product, setProduct] = useState(null);
@@ -2684,15 +2518,11 @@ function AddDiscountPage({ readOnly }) {
   const title = kind === "amazon_promotion" ? "Add Amazon Promotion" : "Import Amazon Coupon";
   if (loading) return <div className="reorder-page"><PageHeader title={title} crumbs={productCrumbs} /><PageSkeleton label="Loading discount form" /></div>;
   return (
-    <div className="reorder-page">
+    <div className="reorder-page reorder-form-page">
       <PageHeader title={title} crumbs={productCrumbs} />
       {error && <PageState tone="error">{error}</PageState>}
-      {!error && !accounts.length && <PageState tone="error">Complete Amazon setup before adding a Discount.</PageState>}
+      {!error && !accounts.length && <><PageState tone="error">Complete Amazon setup before adding a Discount.</PageState><button className="btn primary" onClick={() => openRelated("/reorder/settings/amazon")}>Open Amazon setup</button></>}
       {!error && accounts.length > 0 && <>
-        <div className="reorder-type-switch">
-          <button className={kind === "amazon_coupon" ? "is-active" : ""} onClick={() => setKind("amazon_coupon")}>Import Amazon Coupon</button>
-          <button className={kind === "amazon_promotion" ? "is-active" : ""} onClick={() => setKind("amazon_promotion")}>Add Amazon Promotion</button>
-        </div>
         {kind === "amazon_coupon"
           ? <CouponImportForm accounts={accounts} product={product} readOnly={readOnly} onDone={() => navigate(backTo)} />
           : <PromotionForm accounts={accounts} products={products} product={product} readOnly={readOnly} onDone={() => navigate(backTo)} />}
@@ -2704,11 +2534,13 @@ function AddDiscountPage({ readOnly }) {
 function DiscountDetailPage({ discountId, readOnly }) {
   const [discount, setDiscount] = useState(null);
   const [catalog, setCatalog] = useState([]);
-  const [threshold, setThreshold] = useState(20);
   const [mapIds, setMapIds] = useState([]);
   const [busyAction, setBusyAction] = useState("");
   const [displayPrompt, setDisplayPrompt] = useState(null);
   const [importReport, setImportReport] = useState(null);
+  const [codeInventory, setCodeInventory] = useState(null);
+  const [codeInventoryOpen, setCodeInventoryOpen] = useState(false);
+  const [codeInventoryLoading, setCodeInventoryLoading] = useState(false);
   const [message, setMessage] = useFlashMessage();
   const [error, setError] = useState("");
 
@@ -2717,7 +2549,6 @@ function DiscountDetailPage({ discountId, readOnly }) {
     api("/api/reorder/products"),
   ]).then(([data, productData]) => {
     setDiscount(data);
-    setThreshold(data.code_low_threshold ?? 20);
     setCatalog(productData.products || []);
   });
   useEffect(() => { load().catch((err) => setError(err.message)); }, [discountId]);
@@ -2728,14 +2559,6 @@ function DiscountDetailPage({ discountId, readOnly }) {
       await api(`/api/reorder/discounts/${discountId}`, { method: "PUT", body: JSON.stringify({ isVisibleOnFc: visible }) });
       await load();
       setMessage(visible ? "Shown on FC." : "Hidden on FC. Buy on Amazon is unchanged.");
-    } catch (err) { setError(err.message); } finally { setBusyAction(""); }
-  };
-
-  const saveThreshold = async () => {
-    setBusyAction("save"); setError(""); setMessage("");
-    try {
-      await api(`/api/reorder/discounts/${discountId}`, { method: "PUT", body: JSON.stringify({ codeLowThreshold: Number(threshold) }) });
-      await load(); setMessage("Codes low threshold saved.");
     } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
@@ -2753,12 +2576,16 @@ function DiscountDetailPage({ discountId, readOnly }) {
     } catch (err) { setError(err.message); } finally { setBusyAction(""); }
   };
 
-  const feature = async (productVersionId) => {
-    setBusyAction(`feature:${productVersionId}`); setError(""); setMessage("");
+  const toggleCodeInventory = async () => {
+    if (codeInventoryOpen) { setCodeInventoryOpen(false); return; }
+    setCodeInventoryOpen(true);
+    if (codeInventory) return;
+    setCodeInventoryLoading(true); setError("");
     try {
-      await api(`/api/reorder/discounts/${discountId}/featured`, { method: "PUT", body: JSON.stringify({ productVersionId }) });
-      await load(); setMessage("Featured Discount updated for this Amazon Catalog Item.");
-    } catch (err) { setError(err.message); } finally { setBusyAction(""); }
+      const result = await api(`/api/reorder/discounts/${discountId}/claim-codes`);
+      setCodeInventory(result.codes || []);
+    } catch (err) { setError(err.message); setCodeInventoryOpen(false); }
+    finally { setCodeInventoryLoading(false); }
   };
 
   const mapProducts = async () => {
@@ -2810,18 +2637,20 @@ function DiscountDetailPage({ discountId, readOnly }) {
       {message && <PageState tone="success">{message}</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
       {discount.issue && <PageState tone="error">{discount.issue.label}</PageState>}
-      <p className="reorder-guidance">Show and Hide only change the FC page. Amazon still controls whether this {discountKindNoun(discount)} can be used.</p>
+      <p className="reorder-guidance reorder-discount-guidance">Show and Hide only change the FC page. Amazon still controls whether this {discountKindNoun(discount)} can be used.</p>
       <section className="reorder-flat-section">
         <div className="reorder-section-label">Matched Amazon Catalog Items</div>
         {(discount.products || []).map((product) => (
           <div className="reorder-linked-row reorder-static-row" key={product.id}>
-            <span>
-              {productReturnPath(product.id)
-                ? <button type="button" className="reorder-inline-link" onClick={() => navigate(productTabPath(product.id, "discounts"))}><strong>{product.product_name}</strong></button>
-                : <strong>{product.product_name}</strong>}
-              <small>{product.asin} · Matched</small>
+            <span className="reorder-linked-product">
+              <CatalogItemThumb src={product.image_url} />
+              <span className="reorder-linked-product-copy">
+                {productReturnPath(product.id)
+                  ? <button type="button" className="reorder-inline-link" onClick={() => navigate(productTabPath(product.id, "discounts"))}><strong>{product.product_name}</strong></button>
+                  : <strong>{product.product_name}</strong>}
+                <small>{product.asin} · Matched</small>
+              </span>
             </span>
-            <button className={`btn${product.isFeatured ? " is-disabled" : ""}`} disabled={readOnly || Boolean(busyAction) || product.isFeatured} onClick={() => feature(product.id)}>{product.isFeatured ? "Featured" : busyAction === `feature:${product.id}` ? "Featuring…" : "Feature"}</button>
           </div>
         ))}
         {(discount.unmatched_asins || []).map((asin) => (
@@ -2866,21 +2695,22 @@ function DiscountDetailPage({ discountId, readOnly }) {
         <section className="cfg-section">
           <div className="reorder-section-label">Single-use Claim Code Pool</div>
           <div className="reorder-import-summary">
-            <div><span>Total</span><strong>{discount.codePool?.total || 0}</strong></div>
-            <div><span>Available</span><strong>{discount.codePool?.available || 0}</strong></div>
-            <div><span>Assigned</span><strong>{discount.codePool?.assigned || 0}</strong></div>
+            <div><span>Imported codes</span><button type="button" className={`reorder-code-inventory-toggle${codeInventoryOpen ? " is-open" : ""}`} disabled={codeInventoryLoading} aria-expanded={codeInventoryOpen} aria-controls="reorder-code-inventory" onClick={toggleCodeInventory}><strong>{discount.codePool?.total || 0}</strong><i aria-hidden="true">⌄</i></button></div>
+            <div><span>Ready to issue</span><strong>{discount.codePool?.available || 0}</strong></div>
+            <div><span>Issued to shoppers</span><strong>{discount.codePool?.assigned || 0}</strong></div>
             <div><span>Displayed</span><strong>{discount.codePool?.displayed || 0}</strong></div>
             <div><span>Copied</span><strong>{discount.codePool?.copied || 0}</strong></div>
+            <div><span>Redeemed</span><strong>{discount.codePool?.redeemed || 0}</strong></div>
           </div>
-          <div className="cfg-form grid grid-2">
-            <label className="cfg-field"><span className="cfg-label">Codes low threshold</span><input className="cfg-input" type="number" min="0" value={threshold} disabled={readOnly} onChange={(event) => setThreshold(event.target.value)} /></label>
-            <div className="cfg-field">
-              <span className="cfg-label">Import more codes</span>
-              <FileButton id="reorder-more-codes" label="Choose file" accept=".xlsx,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || Boolean(busyAction)} onFile={importCodes} />
-            </div>
+          {codeInventoryOpen && <div className="reorder-code-inventory" id="reorder-code-inventory">
+            <div className="reorder-section-label">Code inventory · preview data</div>
+            {codeInventoryLoading ? <PageState>Loading codes…</PageState> : <div className="reorder-table-wrap"><table className="reorder-table"><thead><tr><th>Code</th><th>Status</th><th>Displayed</th><th>Copied</th><th>Redeemed</th></tr></thead><tbody>{(codeInventory || []).map((code) => <tr key={code.id}><td className="reorder-mono">{code.code}</td><td>{code.status}</td><td>{code.displayed ? "Yes" : "—"}</td><td>{code.copied ? "Yes" : "—"}</td><td>{code.redeemed ? "Yes" : "—"}</td></tr>)}</tbody></table></div>}
+          </div>}
+          <div className="cfg-field">
+            <span className="cfg-label">Import more codes</span>
+            <FileButton id="reorder-more-codes" label="Choose file" accept=".xlsx,.csv,.txt,text/plain,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || Boolean(busyAction)} onFile={importCodes} />
           </div>
-          {!readOnly && <button className="btn" disabled={Boolean(busyAction)} onClick={saveThreshold}>{busyAction === "save" ? "Saving…" : "Save threshold"}</button>}
-          <p className="reorder-guidance">Copied is not Redeemed. Amazon decides whether a Code is valid at checkout.</p>
+          <p className="reorder-guidance">Redeemed means Amazon accepted the Code at checkout.</p>
           {importReport && (importReport.duplicates > 0 || importReport.rejected > 0) && <button className="btn" onClick={() => downloadClaimCodeIssues(importReport)}>Download Duplicate / Rejected rows</button>}
         </section>
       )}
@@ -2909,8 +2739,7 @@ function ConsumerPreviewCanvas({ snapshot, availableDiscounts }) {
     if (!source) return false;
     return !(discount.claimCodeMode === "single_use" && !source.availableCodes);
   });
-  const ordered = [...visibleDiscounts].sort((left, right) => Number(right.isFeatured) - Number(left.isFeatured));
-  const displayed = ordered.length > 1 && !showAll ? ordered.slice(0, 1) : ordered;
+  const displayed = visibleDiscounts.length > 1 && !showAll ? visibleDiscounts.slice(0, 1) : visibleDiscounts;
   return (
     <div className="reorder-consumer-preview">
       <div className="reorder-consumer-brand">
@@ -2928,7 +2757,7 @@ function ConsumerPreviewCanvas({ snapshot, availableDiscounts }) {
           {discount.claimCodeMode === "single_use" && <code>Unique Code assigned on the live page</code>}
         </div>
       ))}
-      {ordered.length > 1 && <button className="reorder-consumer-link" onClick={() => setShowAll((value) => !value)}>{showAll ? "Show featured" : `View all ${ordered.length} savings`}</button>}
+      {visibleDiscounts.length > 1 && <button className="reorder-consumer-link" onClick={() => setShowAll((value) => !value)}>{showAll ? "Show fewer savings" : `View all ${visibleDiscounts.length} savings`}</button>}
           {snapshot.product.sellerOfferAvailable ? <a className="reorder-consumer-primary" href={snapshot.product.attributionUrl} target="_blank" rel="noreferrer">Buy on Amazon</a> : <p className="reorder-consumer-unavailable">This Seller Offer is currently unavailable.</p>}
       <a className="reorder-consumer-secondary" href={snapshot.fallback.url || "#"} target="_blank" rel="noreferrer">Visit Seller Storefront</a>
       {snapshot.survey && <div className="reorder-consumer-survey"><strong>{snapshot.survey.title}</strong><span>{snapshot.survey.description}</span>{snapshot.survey.questions.map((question) => <fieldset key={question.id}><legend>{question.prompt}</legend>{question.options.map((option) => <label key={option.id}><input disabled type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={`consumer-preview-${question.id}`} /> {option.label}</label>)}</fieldset>)}</div>}
@@ -2941,9 +2770,8 @@ function ConsumerPreviewPage({ readOnly }) {
   const productQueryId = searchProductId();
   const [preview, setPreview] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [scheduleAt, setScheduleAt] = useState("");
   const [loadingPreview, setLoadingPreview] = useState(false);
-  const [publishingStatus, setPublishingStatus] = useState("");
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [publishErrors, setPublishErrors] = useState([]);
 
@@ -2966,30 +2794,26 @@ function ConsumerPreviewPage({ readOnly }) {
     setSelected(next);
     load(next);
   };
-  const publish = async (status) => {
-    setPublishingStatus(status); setError(""); setPublishErrors([]);
+  const save = async () => {
+    setSaving(true); setError(""); setPublishErrors([]);
     try {
       await api(`/api/reorder/batches/${batchId}/activation`, {
         method: "PUT",
-        body: JSON.stringify({
-          status,
-          scheduledActivationAt: status === "scheduled" ? new Date(scheduleAt).toISOString() : null,
-          selectedDiscountIds: selected,
-        }),
+        body: JSON.stringify({ selectedDiscountIds: selected }),
       });
       navigate(withProductContext(`/reorder/batches/${batchId}`, productQueryId));
     } catch (err) {
       setError(err.message);
       setPublishErrors(err.details || []);
-    } finally { setPublishingStatus(""); }
+    } finally { setSaving(false); }
   };
   const goToError = (item) => {
     const discountMatch = /^discounts\.([0-9a-f-]{36})/i.exec(item.field);
-    if (discountMatch) return navigate(withProductContext(`/reorder/discounts/${discountMatch[1]}`, productQueryId));
-    if (item.field.startsWith("amazon.")) return navigate("/reorder/settings/amazon");
-    if (item.field.startsWith("product.")) return navigate(`/reorder/products/${preview?.batch.product_version_id}`);
-    if (item.field.startsWith("survey")) return navigate("/reorder/surveys");
-    return navigate(withProductContext(`/reorder/batches/${batchId}`, productQueryId));
+    if (discountMatch) return openRelated(withProductContext(`/reorder/discounts/${discountMatch[1]}`, productQueryId));
+    if (item.field.startsWith("amazon.")) return openRelated("/reorder/settings/amazon");
+    if (item.field.startsWith("product.")) return openRelated(`/reorder/products/${preview?.batch.product_version_id}`);
+    if (item.field.startsWith("survey")) return openRelated("/reorder/surveys");
+    return openRelated(withProductContext(`/reorder/batches/${batchId}`, productQueryId));
   };
 
   const fromProduct = Boolean(productQueryId) && (!preview || preview.batch?.product_version_id === productQueryId);
@@ -3000,7 +2824,7 @@ function ConsumerPreviewPage({ readOnly }) {
         { label: preview?.batch?.batch_code || "Batch", path: withProductContext(`/reorder/batches/${batchId}`, productQueryId) },
       ]
     : [
-        { label: "Batches", path: "/reorder/orders?view=batches" },
+        { label: "Orders & Batches", path: "/reorder/orders?view=batches" },
         { label: preview?.batch?.batch_code || "Batch", path: `/reorder/batches/${batchId}` },
       ];
 
@@ -3017,10 +2841,10 @@ function ConsumerPreviewPage({ readOnly }) {
           <section className="reorder-flat-section">
             <div className="reorder-section-label">Published savings</div>
             {!preview.availableDiscounts.length && <p className="reorder-guidance">No Discount is required. The Amazon Catalog Item can publish without one.</p>}
-            <div className="reorder-product-options">{preview.availableDiscounts.map((discount) => <label key={discount.id}><input type="checkbox" checked={selected?.includes(discount.id)} disabled={readOnly || loadingPreview || Boolean(publishingStatus)} onChange={() => toggleDiscount(discount.id)} /><span>{discount.title}<small>{discount.benefitSummary} · {humanize(discount.claimCodeMode)}</small></span><small>{discount.id === preview.availableDiscounts.find((item) => item.isFeatured)?.id ? "Featured" : discount.availableCodes != null ? `${discount.availableCodes} Codes` : ""}</small></label>)}</div>
+            <div className="reorder-product-options">{preview.availableDiscounts.map((discount) => <label key={discount.id}><input type="checkbox" checked={selected?.includes(discount.id)} disabled={readOnly || loadingPreview || saving} onChange={() => toggleDiscount(discount.id)} /><span>{discount.title}<small>{discount.benefitSummary} · {humanize(discount.claimCodeMode)}</small></span><small>{discount.availableCodes != null ? `${discount.availableCodes} Codes` : ""}</small></label>)}</div>
           </section>
-          {publishErrors.length > 0 && <section className="reorder-flat-section"><div className="reorder-section-label">Fix before Publish</div><div className="reorder-publish-errors">{publishErrors.map((item) => <button key={`${item.code}-${item.field}`} onClick={() => goToError(item)}><strong>{item.message}</strong><span>{item.field} →</span></button>)}</div></section>}
-          {!readOnly && <section className="reorder-flat-section"><div className="reorder-section-label">Publish</div><div className="reorder-publish-actions"><input className="cfg-input" type="datetime-local" value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} /><button className="btn" disabled={loadingPreview || Boolean(publishingStatus) || !scheduleAt || publishErrors.length > 0} onClick={() => publish("scheduled")}>{publishingStatus === "scheduled" ? "Scheduling…" : "Schedule"}</button><button className="btn primary" disabled={loadingPreview || Boolean(publishingStatus) || publishErrors.length > 0} onClick={() => publish("active")}>{publishingStatus === "active" ? "Publishing…" : "Publish"}</button></div></section>}
+          {publishErrors.length > 0 && <section className="reorder-flat-section"><div className="reorder-section-label">Fix before Save</div><div className="reorder-publish-errors">{publishErrors.map((item) => <button key={`${item.code}-${item.field}`} onClick={() => goToError(item)}><strong>{item.message}</strong><span>{item.field} →</span></button>)}</div></section>}
+          {!readOnly && <section className="reorder-flat-section"><div className="reorder-section-label">Save</div><p className="reorder-guidance">Saving publishes this consumer page immediately.</p><div className="reorder-publish-actions"><button className="btn primary" disabled={loadingPreview || saving || publishErrors.length > 0} onClick={save}>{saving ? "Saving…" : "Save"}</button></div></section>}
         </div>
         <ConsumerPreviewCanvas snapshot={preview.snapshot} availableDiscounts={preview.availableDiscounts.filter((discount) => selected?.includes(discount.id))} />
       </div>}
@@ -3077,9 +2901,7 @@ function SurveyListPage({ readOnly }) {
             <strong>{survey.title}</strong>
             <span>
               {survey.productIds.map((id, index) => (
-                <span key={id}>{index ? " · " : ""}{productReturnPath(id)
-                  ? <button type="button" className="reorder-inline-link" onClick={(event) => stopNavigate(event, `/reorder/products/${id}`)}>{productMap.get(id) || "Amazon Catalog Item"}</button>
-                  : (productMap.get(id) || "Amazon Catalog Item")}</span>
+                <span key={id}>{index ? " · " : ""}{productMap.get(id) || "Amazon Catalog Item"}</span>
               ))}
               {survey.productIds.length ? " · " : ""}
               {survey.questions.length} {survey.questions.length === 1 ? "question" : "questions"}
@@ -3087,13 +2909,112 @@ function SurveyListPage({ readOnly }) {
           </div>
           <SurveyStatus value={survey.status} label={survey.statusLabel} />
           <div className="reorder-survey-metrics">
-            <span><strong>{formatNumber(survey.starts)}</strong><small>Starts</small></span>
             <span><strong>{formatNumber(survey.completions)}</strong><small>Completions</small></span>
             <span><strong>{survey.completionRate}%</strong><small>Completion</small></span>
           </div>
           <span><strong>{formatDate(survey.updatedAt)}</strong><small>Updated</small></span>
         </div>
       ))}</div>}
+    </div>
+  );
+}
+
+function CatalogItemThumb({ src }) {
+  return src ? <img src={src} alt="" /> : <span className="reorder-image-placeholder" aria-hidden="true" />;
+}
+
+function CatalogItemMultiSelect({ products, selectedIds, onChange, disabled, labelledBy }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const selected = products.filter((product) => selectedIds.includes(product.id));
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointer = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const toggle = (productId) => {
+    onChange(selectedIds.includes(productId) ? selectedIds.filter((id) => id !== productId) : [...selectedIds, productId]);
+  };
+  if (!products.length) {
+    return <p className="reorder-guidance">No Amazon Catalog Items yet.</p>;
+  }
+  return (
+    <div className="reorder-catalog-multi" ref={rootRef}>
+      <div
+        className={`reorder-catalog-trigger${open ? " is-open" : ""}${selected.length ? " is-filled" : ""}`}
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls="survey-catalog-item-list"
+        aria-labelledby={labelledBy}
+        aria-disabled={disabled || undefined}
+        tabIndex={disabled ? -1 : 0}
+        onClick={() => { if (!disabled) setOpen((current) => !current); }}
+        onKeyDown={(event) => {
+          if (disabled) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen((current) => !current);
+          }
+        }}
+      >
+        {selected.length ? (
+          <span className="reorder-catalog-chips">
+            {selected.map((product) => (
+              <span className="reorder-catalog-chip" key={product.id}>
+                <CatalogItemThumb src={product.image_url} />
+                <strong>{product.product_name}</strong>
+                {!disabled && (
+                  <button
+                    type="button"
+                    className="reorder-catalog-chip-remove"
+                    aria-label={`Remove ${product.product_name}`}
+                    onClick={(event) => { event.stopPropagation(); toggle(product.id); }}
+                  >×</button>
+                )}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span>Select Amazon Catalog Items</span>
+        )}
+        <i className="reorder-catalog-chevron" aria-hidden="true" />
+      </div>
+      {open && (
+        <div id="survey-catalog-item-list" className="reorder-catalog-picker is-dropdown" role="listbox" aria-multiselectable="true" aria-labelledby={labelledBy}>
+          {products.map((product) => {
+            const isSelected = selectedIds.includes(product.id);
+            return (
+              <button
+                type="button"
+                role="option"
+                key={product.id}
+                className={isSelected ? "is-selected" : ""}
+                aria-selected={isSelected}
+                disabled={disabled}
+                onClick={() => toggle(product.id)}
+              >
+                <CatalogItemThumb src={product.image_url} />
+                <span>
+                  <strong>{product.product_name}</strong>
+                  <small className="reorder-mono">{product.asin || "—"}</small>
+                </span>
+                <i className="reorder-catalog-check" aria-hidden="true" />
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -3106,9 +3027,11 @@ function SurveyEditorPage({ surveyId, readOnly }) {
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState({ title: "", description: "", productIds: [], startsAt: "", endsAt: "", questions: [blankSurveyQuestion()] });
   const [source, setSource] = useState(null);
+  const [activeSurveyId, setActiveSurveyId] = useState(surveyId || "");
+  const [step, setStep] = useState("edit");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [errors, setErrors] = useState([]);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -3117,6 +3040,7 @@ function SurveyEditorPage({ surveyId, readOnly }) {
       setProducts(productData.products || []);
       if (survey) {
         setSource(survey);
+        setActiveSurveyId(survey.id);
         setForm({
           title: survey.title,
           description: survey.description || "",
@@ -3131,49 +3055,91 @@ function SurveyEditorPage({ surveyId, readOnly }) {
   const fieldError = (field) => errors.find((item) => item.field === field)?.message;
   const updateQuestion = (index, patch) => setForm((current) => ({ ...current, questions: current.questions.map((question, questionIndex) => questionIndex === index ? { ...question, ...patch } : question) }));
   const updateOption = (questionIndex, optionIndex, label) => updateQuestion(questionIndex, { options: form.questions[questionIndex].options.map((option, index) => index === optionIndex ? { ...option, label } : option) });
-  const toggleProduct = (id) => setForm({ ...form, productIds: form.productIds.includes(id) ? form.productIds.filter((value) => value !== id) : [...form.productIds, id] });
-  const save = async () => {
+  const persist = async () => {
+    const payload = { ...form, startsAt: form.startsAt ? new Date(form.startsAt).toISOString() : null, endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : null };
+    const survey = await api(activeSurveyId ? `/api/reorder/surveys/${activeSurveyId}` : "/api/reorder/surveys", { method: activeSurveyId ? "PUT" : "POST", body: JSON.stringify(payload) });
+    setActiveSurveyId(survey.id);
+    setSource(survey);
+    return survey;
+  };
+  const saveAndPreview = async () => {
     setSaving(true); setError(""); setErrors([]);
     try {
-      const payload = { ...form, startsAt: form.startsAt ? new Date(form.startsAt).toISOString() : null, endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : null };
-      const survey = await api(surveyId ? `/api/reorder/surveys/${surveyId}` : "/api/reorder/surveys", { method: surveyId ? "PUT" : "POST", body: JSON.stringify(payload) });
-      navigate(`/reorder/surveys/${survey.id}`);
+      await persist();
+      setStep("preview");
     } catch (err) { setError(err.message); setErrors(err.details || []); } finally { setSaving(false); }
+  };
+  const publishSurvey = async () => {
+    if (!activeSurveyId) return;
+    setPublishing(true); setError("");
+    try {
+      await api(`/api/reorder/surveys/${activeSurveyId}/open`, { method: "POST" });
+      navigate(`/reorder/surveys/${activeSurveyId}`);
+    } catch (err) { setError(err.message); } finally { setPublishing(false); }
   };
   if (loading) return <div className="reorder-page"><PageHeader title="Survey" crumbs={[{ label: "Surveys", path: "/reorder/surveys" }]} /><PageSkeleton label="Loading Survey" /></div>;
   const editorTitle = surveyId ? (form.title || source?.title || (source?.lockedAt ? "Create new Survey version" : "Edit survey")) : "Create survey";
+  const preview = (
+    <section className="reorder-survey-preview" aria-label="Survey preview">
+      <div className="reorder-section-label">Question preview</div>
+      <p className="reorder-guidance">Temporary layout for checking questions. The live consumer page looks different.</p>
+      <strong>{form.title || "Untitled Survey"}</strong>
+      <p>{form.description}</p>
+      {form.questions.map((question, index) => (
+        <fieldset key={index}>
+          <legend>{question.prompt || `Question ${index + 1}`}</legend>
+          {question.options.map((option, optionIndex) => (
+            <label key={optionIndex}><input disabled type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={`preview-${index}`} /> {option.label || `Option ${optionIndex + 1}`}</label>
+          ))}
+        </fieldset>
+      ))}
+    </section>
+  );
+  if (step === "preview") {
+    return (
+      <div className="reorder-page">
+        <PageHeader title={form.title || editorTitle} crumbs={[{ label: "Surveys", path: "/reorder/surveys" }]} />
+        {error && <PageState tone="error">{error}</PageState>}
+        {preview}
+        <div className="reorder-editor-actions">
+          <button className="btn" type="button" onClick={() => setStep("edit")}>Back to edit</button>
+          <button className="btn primary" disabled={readOnly || publishing} onClick={publishSurvey}>{publishing ? "Publishing…" : "Publish"}</button>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="reorder-page">
-      <PageHeader title={editorTitle} crumbs={[{ label: "Surveys", path: "/reorder/surveys" }]} action={<button className="btn" onClick={() => navigate(surveyId ? `/reorder/surveys/${surveyId}` : "/reorder/surveys")}>Cancel</button>} />
+    <div className="reorder-page reorder-form-page">
+      <PageHeader title={editorTitle} crumbs={[{ label: "Surveys", path: "/reorder/surveys" }]} />
       {source?.lockedAt && <PageState>This Survey already has responses. Saving creates a new Draft version and preserves the current Results.</PageState>}
       {error && <PageState tone="error">{error}</PageState>}
-      <section className="cfg-section">
-        <div className="reorder-section-label">Survey</div>
+      <section className="cfg-section reorder-survey-basics">
+        <div className="reorder-form-section-heading"><div><div className="reorder-section-label">Basic information</div><p>Set the title, short shopper-facing description, and optional active period.</p></div></div>
         <div className="cfg-form grid grid-2">
-          <label className="cfg-field cfg-field-full"><span className="cfg-label">Survey title</span><input className="cfg-input" maxLength="120" value={form.title} disabled={readOnly} onChange={(event) => setForm({ ...form, title: event.target.value })} />{fieldError("title") && <small className="reorder-field-error">{fieldError("title")}</small>}</label>
-          <label className="cfg-field cfg-field-full"><span className="cfg-label">Short description</span><textarea className="cfg-input reorder-textarea" maxLength="120" value={form.description} disabled={readOnly} onChange={(event) => setForm({ ...form, description: event.target.value })} /><span className="cfg-hint">{form.description.length}/120</span>{fieldError("description") && <small className="reorder-field-error">{fieldError("description")}</small>}</label>
-          <label className="cfg-field"><span className="cfg-label">Start (optional)</span><input className="cfg-input" type="datetime-local" value={form.startsAt} disabled={readOnly} onChange={(event) => setForm({ ...form, startsAt: event.target.value })} /></label>
-          <label className="cfg-field"><span className="cfg-label">End (optional)</span><input className="cfg-input" type="datetime-local" value={form.endsAt} disabled={readOnly} onChange={(event) => setForm({ ...form, endsAt: event.target.value })} />{fieldError("endsAt") && <small className="reorder-field-error">{fieldError("endsAt")}</small>}</label>
+          <label className="cfg-field reorder-survey-title"><span className="cfg-label">Survey title</span><input className="cfg-input" maxLength="120" value={form.title} disabled={readOnly} onChange={(event) => setForm({ ...form, title: event.target.value })} />{fieldError("title") && <small className="reorder-field-error">{fieldError("title")}</small>}</label>
+          <label className="cfg-field reorder-survey-description"><span className="cfg-label">Short description</span><textarea className="cfg-input reorder-textarea" maxLength="120" value={form.description} disabled={readOnly} onChange={(event) => setForm({ ...form, description: event.target.value })} /><span className="cfg-hint">{form.description.length}/120</span>{fieldError("description") && <small className="reorder-field-error">{fieldError("description")}</small>}</label>
+          <div className="reorder-survey-dates">
+            <label className="cfg-field"><span className="cfg-label">Start (optional)</span><input className="cfg-input" type="datetime-local" value={form.startsAt} disabled={readOnly} onChange={(event) => setForm({ ...form, startsAt: event.target.value })} /></label>
+            <label className="cfg-field"><span className="cfg-label">End (optional)</span><input className="cfg-input" type="datetime-local" value={form.endsAt} disabled={readOnly} onChange={(event) => setForm({ ...form, endsAt: event.target.value })} />{fieldError("endsAt") && <small className="reorder-field-error">{fieldError("endsAt")}</small>}</label>
+          </div>
         </div>
       </section>
-      <section className="cfg-section">
-        <div className="reorder-section-label">Eligible Amazon Catalog Items · {form.productIds.length} {form.productIds.length === 1 ? "Amazon Catalog Item" : "Amazon Catalog Items"}</div>
-        <div className="reorder-product-options">{products.map((product) => <label key={product.id}><input type="checkbox" checked={form.productIds.includes(product.id)} disabled={readOnly} onChange={() => toggleProduct(product.id)} /><span>{product.product_name}<small>{product.asin}</small></span></label>)}</div>
+      <section className="cfg-section reorder-survey-catalog">
+        <div className="reorder-form-section-heading"><div><div className="reorder-section-label" id="survey-catalog-item-label">Eligible Amazon Catalog Items <span className="reorder-section-count">{form.productIds.length}</span></div><p>Choose the Amazon Catalog Items whose shoppers can receive this Survey.</p></div></div>
+        <CatalogItemMultiSelect products={products} selectedIds={form.productIds} disabled={readOnly} labelledBy="survey-catalog-item-label" onChange={(productIds) => setForm({ ...form, productIds })} />
         {fieldError("productIds") && <small className="reorder-field-error">{fieldError("productIds")}</small>}
       </section>
       <section className="reorder-survey-editor">
-        <div className="reorder-section-label">Questions</div>
+        <div className="reorder-form-section-heading"><div><div className="reorder-section-label">Questions</div><p>Use 2–5 answer options per question. You can create up to 3 questions.</p></div><button className="btn" disabled={readOnly || form.questions.length >= 3} onClick={() => setForm({ ...form, questions: [...form.questions, blankSurveyQuestion()] })}>Add question</button></div>
         {form.questions.map((question, questionIndex) => <fieldset className="reorder-question-editor" key={questionIndex}>
           <legend>Question {questionIndex + 1}</legend>
-          <label className="cfg-field"><span className="cfg-label">Question</span><input className="cfg-input" maxLength="80" value={question.prompt} disabled={readOnly} onChange={(event) => updateQuestion(questionIndex, { prompt: event.target.value })} />{fieldError(`questions[${questionIndex}].prompt`) && <small className="reorder-field-error">{fieldError(`questions[${questionIndex}].prompt`)}</small>}</label>
+          <label className="cfg-field"><span className="cfg-label">Question</span><input className="cfg-input" maxLength="80" placeholder="Enter the question shoppers will answer" value={question.prompt} disabled={readOnly} onChange={(event) => updateQuestion(questionIndex, { prompt: event.target.value })} />{fieldError(`questions[${questionIndex}].prompt`) && <small className="reorder-field-error">{fieldError(`questions[${questionIndex}].prompt`)}</small>}</label>
           <div className="reorder-question-controls"><label><span>Type</span><select className="cfg-input" value={question.type} disabled={readOnly} onChange={(event) => updateQuestion(questionIndex, { type: event.target.value })}><option value="single_choice">Single choice</option><option value="multiple_choice">Multiple choice</option></select></label><label className="reorder-inline-check"><input type="checkbox" checked={question.required} disabled={readOnly} onChange={(event) => updateQuestion(questionIndex, { required: event.target.checked })} /> Required</label></div>
-          <div className="reorder-option-editor">{question.options.map((option, optionIndex) => <div key={optionIndex}><input className="cfg-input" aria-label={`Question ${questionIndex + 1} option ${optionIndex + 1}`} value={option.label} disabled={readOnly} onChange={(event) => updateOption(questionIndex, optionIndex, event.target.value)} /><button className="reorder-text-button" disabled={readOnly || question.options.length <= 2} onClick={() => updateQuestion(questionIndex, { options: question.options.filter((_, index) => index !== optionIndex) })}>Remove</button>{fieldError(`questions[${questionIndex}].options[${optionIndex}].label`) && <small className="reorder-field-error">{fieldError(`questions[${questionIndex}].options[${optionIndex}].label`)}</small>}</div>)}</div>
-          <div className="reorder-question-footer"><button className="btn" disabled={readOnly || question.options.length >= 5} onClick={() => updateQuestion(questionIndex, { options: [...question.options, { label: "" }] })}>Add option</button><button className="reorder-text-button" disabled={readOnly || form.questions.length <= 1} onClick={() => setForm({ ...form, questions: form.questions.filter((_, index) => index !== questionIndex) })}>Remove question</button></div>
+          <div className="reorder-option-editor"><div className="reorder-option-editor-heading"><span>Answer options</span><small>{question.options.length}/5</small></div><div className="reorder-option-list">{question.options.map((option, optionIndex) => <div key={optionIndex}><span className="reorder-option-marker" aria-hidden="true">{String.fromCharCode(65 + optionIndex)}</span><input className="cfg-input" aria-label={`Question ${questionIndex + 1} option ${optionIndex + 1}`} placeholder={`Option ${optionIndex + 1}`} value={option.label} disabled={readOnly} onChange={(event) => updateOption(questionIndex, optionIndex, event.target.value)} /><button className="btn" disabled={readOnly || !option.label.trim()} onClick={() => updateQuestion(questionIndex, { options: question.options.filter((_, index) => index !== optionIndex) })}>Remove</button>{fieldError(`questions[${questionIndex}].options[${optionIndex}].label`) && <small className="reorder-field-error">{fieldError(`questions[${questionIndex}].options[${optionIndex}].label`)}</small>}</div>)}</div></div>
+          <div className="reorder-question-footer"><button className="btn" disabled={readOnly || question.options.length >= 5} onClick={() => updateQuestion(questionIndex, { options: [...question.options, { label: "" }] })}>Add option</button></div>
         </fieldset>)}
-        <button className="btn" disabled={readOnly || form.questions.length >= 3} onClick={() => setForm({ ...form, questions: [...form.questions, blankSurveyQuestion()] })}>Add question</button>
       </section>
-      {previewing && <section className="reorder-survey-preview" aria-label="Survey preview"><div className="reorder-section-label">Question preview</div><p className="reorder-guidance">Temporary layout for checking questions. The live consumer page looks different.</p><strong>{form.title || "Untitled Survey"}</strong><p>{form.description}</p>{form.questions.map((question, index) => <fieldset key={index}><legend>{question.prompt || `Question ${index + 1}`}</legend>{question.options.map((option, optionIndex) => <label key={optionIndex}><input disabled type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={`preview-${index}`} /> {option.label || `Option ${optionIndex + 1}`}</label>)}</fieldset>)}</section>}
-      <div className="reorder-editor-actions"><button className="btn" type="button" onClick={() => setPreviewing((value) => !value)}>{previewing ? "Hide preview" : "Show preview"}</button><button className="btn primary" disabled={readOnly || saving} onClick={save}>{saving ? "Saving…" : source?.lockedAt ? "Save as new version" : "Save survey"}</button></div>
+      <div className="reorder-editor-actions"><button className="btn primary" disabled={readOnly || saving} onClick={saveAndPreview}>{saving ? "Saving…" : source?.lockedAt ? "Save as new version" : "Save survey"}</button></div>
     </div>
   );
 }
@@ -3181,36 +3147,28 @@ function SurveyEditorPage({ surveyId, readOnly }) {
 function SurveyDetailPage({ surveyId, readOnly }) {
   const [result, setResult] = useState(null);
   const [products, setProducts] = useState([]);
-  const [batches, setBatches] = useState([]);
-  const [filter, setFilter] = useState({ productId: "", batchId: "", from: "", to: "" });
-  const [tab, setTab] = useState(surveyTabFromSearch);
+  const [filter, setFilter] = useState({ productId: "", from: "", to: "" });
+  const [appliedFilter, setAppliedFilter] = useState(filter);
   const [busyAction, setBusyAction] = useState("");
   const [error, setError] = useState("");
   const load = async (next = filter) => {
     setBusyAction("load"); setError("");
     const params = new URLSearchParams();
     if (next.productId) params.set("product_id", next.productId);
-    if (next.batchId) params.set("batch_id", next.batchId);
     if (next.from) params.set("from", new Date(`${next.from}T00:00:00`).toISOString());
     if (next.to) params.set("to", new Date(`${next.to}T23:59:59.999`).toISOString());
-    try { setResult(await api(`/api/reorder/surveys/${surveyId}/results?${params}`)); }
+    try {
+      setResult(await api(`/api/reorder/surveys/${surveyId}/results?${params}`));
+      setAppliedFilter({ ...next });
+    }
     catch (err) { setError(err.message); }
     finally { setBusyAction(""); }
   };
   useEffect(() => {
-    Promise.all([api("/api/reorder/products"), api("/api/reorder/orders-batches")])
-      .then(([productData, fulfillment]) => { setProducts(productData.products || []); setBatches(fulfillment.batches || []); return load(); })
+    api("/api/reorder/products")
+      .then((productData) => { setProducts(productData.products || []); return load(); })
       .catch((err) => { setError(err.message); setBusyAction(""); });
   }, [surveyId]);
-  useEffect(() => {
-    const sync = () => setTab(surveyTabFromSearch());
-    window.addEventListener("popstate", sync);
-    return () => window.removeEventListener("popstate", sync);
-  }, []);
-  const selectTab = (next) => {
-    setTab(next);
-    selectSearchTab(next, "setup");
-  };
   const transition = async (action) => {
     setBusyAction(action); setError("");
     try { await api(`/api/reorder/surveys/${surveyId}/${action}`, { method: "POST" }); await load(); }
@@ -3218,10 +3176,19 @@ function SurveyDetailPage({ surveyId, readOnly }) {
   };
   const exportCsv = () => {
     const query = new URLSearchParams();
-    if (filter.productId) query.set("product_id", filter.productId);
-    if (filter.batchId) query.set("batch_id", filter.batchId);
-    if (filter.from) query.set("from", new Date(`${filter.from}T00:00:00`).toISOString());
-    if (filter.to) query.set("to", new Date(`${filter.to}T23:59:59.999`).toISOString());
+    if (appliedFilter.productId) query.set("product_id", appliedFilter.productId);
+    if (appliedFilter.from) query.set("from", new Date(`${appliedFilter.from}T00:00:00`).toISOString());
+    if (appliedFilter.to) query.set("to", new Date(`${appliedFilter.to}T23:59:59.999`).toISOString());
+    if (window.reorderDemoApi) {
+      const rows = [["Preview data — aggregate question results"], ["Question", "Option", "Responses", "Percentage"],
+        ...result.questions.flatMap((question) => question.options.map((option) => [question.prompt, option.label, option.responses, option.percentage]))];
+      const csv = rows.map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = "survey-preview-results.csv"; link.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
     window.location.href = `/api/reorder/surveys/${surveyId}/results.csv?${query}`;
   };
   if (!result && busyAction === "load") return <div className="reorder-page"><PageHeader title="Survey" /><PageSkeleton label="Loading Results" /></div>;
@@ -3233,36 +3200,50 @@ function SurveyDetailPage({ surveyId, readOnly }) {
   return <div className="reorder-page">
     <PageHeader title={survey.title} crumbs={[{ label: "Surveys", path: "/reorder/surveys" }]} action={actions} />
     {error && <PageState tone="error">{error}</PageState>}
-    <div className="reorder-view-switch" role="tablist" aria-label="Survey views">
-      <button type="button" role="tab" aria-selected={tab === "setup"} className={tab === "setup" ? "is-active" : ""} onClick={() => selectTab("setup")}>Setup</button>
-      <button type="button" role="tab" aria-selected={tab === "results"} className={tab === "results" ? "is-active" : ""} onClick={() => selectTab("results")}>Results</button>
-    </div>
-    {tab === "setup" && (
-      <section className="reorder-flat-section reorder-survey-overview">
-        <div className="reorder-survey-overview-body">
-          <dl className="reorder-detail-grid">
-            <div><dt>Status</dt><dd><SurveyStatus value={survey.status} label={survey.statusLabel} /></dd></div>
-            <div><dt>Version</dt><dd>{survey.version}</dd></div>
-            <div><dt>Questions</dt><dd>{survey.questions.length}</dd></div>
-            <div><dt>Active Period</dt><dd>{formatDate(survey.startsAt)} – {formatDate(survey.endsAt)}</dd></div>
-            <div className="is-wide"><dt>Eligible Amazon Catalog Items</dt><dd>{survey.productIds.map((id, index) => <span key={id}>{index ? " · " : ""}{productReturnPath(id) ? <button type="button" className="reorder-inline-link" onClick={() => navigate(`/reorder/products/${id}`)}>{productMap.get(id) || "Amazon Catalog Item"}</button> : (productMap.get(id) || id)}</span>)}</dd></div>
-          </dl>
+    <section className="reorder-flat-section reorder-survey-overview">
+      <div className="reorder-survey-overview-body">
+        <dl className="reorder-detail-grid">
+          <div><dt>Status</dt><dd><SurveyStatus value={survey.status} label={survey.statusLabel} /></dd></div>
+          <div><dt>Version</dt><dd>{survey.version}</dd></div>
+          <div><dt>Questions</dt><dd>{survey.questions.length}</dd></div>
+          <div><dt>Active Period</dt><dd>{formatDate(survey.startsAt)} – {formatDate(survey.endsAt)}</dd></div>
+          <div className="is-wide"><dt>Eligible Amazon Catalog Items</dt><dd>{survey.productIds.map((id, index) => <span key={id}>{index ? " · " : ""}{productMap.get(id) || id}</span>)}</dd></div>
+        </dl>
+        <div className="reorder-result-summary">
+          <div><span>Starts</span><strong>{result.starts}</strong></div>
+          <div><span>Completions</span><strong>{result.completions}</strong></div>
+          <div><span>Completion Rate</span><strong>{result.completionRate}%</strong></div>
         </div>
-      </section>
-    )}
-    {tab === "results" && (
-      <>
-        <section className="reorder-flat-section">
-          <div className="reorder-result-summary">
-            <div><span>Starts</span><strong>{result.starts}</strong></div>
-            <div><span>Completions</span><strong>{result.completions}</strong></div>
-            <div><span>Completion Rate</span><strong>{result.completionRate}%</strong></div>
-          </div>
-        </section>
-        <section className="reorder-flat-section"><div className="reorder-section-label">Results filters</div><div className="reorder-filter-row"><label><span>From</span><input className="cfg-input" type="date" value={filter.from} onChange={(event) => setFilter({ ...filter, from: event.target.value })} /></label><label><span>To</span><input className="cfg-input" type="date" value={filter.to} onChange={(event) => setFilter({ ...filter, to: event.target.value })} /></label><label><span>Amazon Catalog Item</span><select className="cfg-input" value={filter.productId} onChange={(event) => setFilter({ ...filter, productId: event.target.value, batchId: "" })}><option value="">All Amazon Catalog Items</option>{survey.productIds.map((id) => <option key={id} value={id}>{productMap.get(id) || "Amazon Catalog Item"}</option>)}</select></label><label><span>Batch</span><select className="cfg-input" value={filter.batchId} onChange={(event) => setFilter({ ...filter, batchId: event.target.value })}><option value="">All Batches</option>{batches.filter((batch) => !filter.productId || batch.product_version_id === filter.productId).map((batch) => <option key={batch.id} value={batch.id}>{batch.batch_code}</option>)}</select><small className="cfg-hint">Responses from magnets in this Batch</small></label><button className="btn" disabled={busy} onClick={() => load(filter)}>{busyAction === "load" ? "Applying…" : "Apply"}</button></div></section>
-        <section className="reorder-flat-section"><div className="reorder-section-label">Question Results</div><span className="reorder-sr-only">Each option shows its Response count and Percentage.</span><div className="reorder-question-results">{result.questions.map((question, index) => <article key={question.id}><h2>{index + 1}. {question.prompt}</h2><p>{humanize(question.type)} · {question.respondents} respondents</p>{question.options.map((option) => <div className="reorder-result-option" key={option.id}><span>{option.label}</span><strong>{option.responses} · {option.percentage}%</strong><i style={{ width: `${Math.min(option.percentage, 100)}%` }} /></div>)}</article>)}</div></section>
-      </>
-    )}
+      </div>
+    </section>
+    <section className="reorder-flat-section">
+      <div className="reorder-section-label">Results filters</div>
+      <div className="reorder-filter-row">
+        <label><span>From</span><input className="cfg-input" type="date" value={filter.from} onChange={(event) => setFilter({ ...filter, from: event.target.value })} /></label>
+        <label><span>To</span><input className="cfg-input" type="date" value={filter.to} onChange={(event) => setFilter({ ...filter, to: event.target.value })} /></label>
+        <label><span>Amazon Catalog Item</span><select className="cfg-input" value={filter.productId} onChange={(event) => setFilter({ ...filter, productId: event.target.value })}><option value="">All Amazon Catalog Items</option>{survey.productIds.map((id) => <option key={id} value={id}>{productMap.get(id) || "Amazon Catalog Item"}</option>)}</select></label>
+        <button className="btn" disabled={busy} onClick={() => load(filter)}>{busyAction === "load" ? "Applying…" : "Apply"}</button>
+      </div>
+    </section>
+    <section className="reorder-flat-section">
+      <div className="reorder-section-label">Question Results</div>
+      <span className="reorder-sr-only">Each option shows its Response count and Percentage.</span>
+      <div className="reorder-question-results">
+        {result.questions.map((question, index) => (
+          <article key={question.id}>
+            <h2>{index + 1}. {question.prompt}</h2>
+            <p>{humanize(question.type)} · {question.respondents} respondents</p>
+            {question.options.map((option) => (
+              <div className="reorder-result-option" key={option.id}>
+                <span>{option.label}</span>
+                <strong>{option.responses} · {option.percentage}%</strong>
+                <i style={{ width: `${Math.min(option.percentage, 100)}%` }} />
+              </div>
+            ))}
+          </article>
+        ))}
+      </div>
+    </section>
   </div>;
 }
 
@@ -3283,21 +3264,18 @@ function exportAnalyticsCsv(filters) {
   });
 }
 
-function Breakdown({ title, rows }) {
+function Breakdown({ title, rows, tone, note }) {
   const max = Math.max(...rows.map((row) => Number(row.value) || 0), 1);
-  return <section className="reorder-breakdown"><h2>{title}</h2><div>{rows.map((row) => <span key={row.label}><small>{row.label}</small><i><b style={{ width: `${((Number(row.value) || 0) / max) * 100}%` }} /></i><strong>{row.value === null ? "—" : formatNumber(row.value)}</strong></span>)}</div></section>;
+  return <section className={`reorder-breakdown reorder-analytics-tone-${tone}`}><h2>{title}</h2><div>{rows.map((row) => <span key={row.label}><small>{row.label}</small><i><b style={{ width: `${((Number(row.value) || 0) / max) * 100}%` }} /></i><strong>{row.value === null ? "—" : formatNumber(row.value)}</strong></span>)}</div>{note && <p className="reorder-breakdown-note">{note}</p>}</section>;
 }
 
 function AnalyticsPage() {
   const [filters, setFilters] = useState(defaultDashboardFilters);
   const [expandedBatch, setExpandedBatch] = useState(null);
   const { data, loading, error } = useDashboardData("/api/reorder/analytics", filters, true);
-  const metrics = data?.metrics || [];
-  const totals = Object.fromEntries(metrics.map((metric) => [metric.key, metric.value]));
   return <div className="reorder-page reorder-dashboard-page">
-    <PageHeader title="Analytics" action={<div className="reorder-header-actions">{window.reorderDemoApi && <span className="reorder-demo-label">Local preview data</span>}<button className="btn" disabled={!data?.batches?.length} onClick={() => exportAnalyticsCsv(filters)}>Export CSV</button></div>} />
-    <DashboardFilters filters={filters} onChange={setFilters} products={data?.products} batches={data?.batches} includeWindow />
-    <p className="reorder-observation-note">MGO and NO use the same fixed {filters.observationMonths}-month observation window from each Magnet deployment.</p>
+    <PageHeader title="Analytics" action={<div className="reorder-header-actions">{(window.reorderDemoApi || data?.previewSeeded) && <span className="reorder-demo-label">Preview data</span>}<button className="btn" disabled={!data?.batches?.length} onClick={() => exportAnalyticsCsv(filters)}>Export CSV</button></div>} />
+    <DashboardFilters filters={filters} onChange={setFilters} products={data?.products} batches={data?.batches} />
     {error && <PageState tone="error">{error}</PageState>}
     {loading && !data && <PageSkeleton label="Loading Analytics" rows={5} />}
     {data && !data.batches?.length ? <PageState>No covered data matches the selected range. Metrics are unavailable, not zero.</PageState> : null}
@@ -3305,23 +3283,12 @@ function AnalyticsPage() {
       <section className="reorder-analytics-totals" aria-label="Totals">
         <h2 className="reorder-zone-label">Totals</h2>
         <AnalyticsFunnel data={data} products={data.products} batches={data.batches} observationMonths={filters.observationMonths} />
-        <div className="reorder-rate-strip"><span><strong>{formatRate(data.rates?.delivery)}</strong><small>MS → MD</small></span><span><strong>{formatRate(data.rates?.activation)}</strong><small>MD → MSI</small></span><span><strong>{formatRate(data.rates?.orderGenerating)}</strong><small>MD → MGO</small></span><span><strong>{data.rates?.orderDepth == null ? "—" : Number(data.rates.orderDepth).toFixed(2)}</strong><small>NO / MGO</small></span></div>
-        <p className="reorder-data-rule">NO is based on final paid orders. Refunded, cancelled and chargeback orders remain visible below but are excluded from NO.</p>
-        <div className="reorder-two-column">
-          <Breakdown title="Order type" rows={data.orderTypes || []} />
-          <Breakdown title="Order status" rows={data.orderStatuses || []} />
-        </div>
       </section>
       <section className="reorder-flat-section">
         <div className="reorder-section-label">Consumer page</div>
-        <section className="reorder-filter-diagnostic">
-          <div><h2>Valid interaction filter</h2><p>MSI counts unique FC IDs only after a meaningful action. A page open alone never qualifies.</p></div>
-          <div className="reorder-filter-count"><strong>{totals.msi === null || totals.msi === undefined ? "—" : formatNumber(totals.msi)}</strong><span>Valid unique Magnets</span></div>
-          <dl>{(data.interactionFilter?.reasons || []).map((item) => <div key={item.reason}><dt>{item.label}</dt><dd>{item.value === null ? "—" : formatNumber(item.value)}</dd></div>)}</dl>
-        </section>
         <div className="reorder-two-column">
-          <Breakdown title="Discount diagnostics" rows={data.discountDiagnostics || []} />
-          <Breakdown title="Survey diagnostics" rows={data.surveyDiagnostics || []} />
+          <Breakdown title="Discount diagnostics" tone="conversion" rows={data.discountDiagnostics || []} />
+          <Breakdown title="Survey diagnostics" tone="activation" rows={data.surveyDiagnostics || []} note="View the corresponding survey to review the detailed responses collected." />
         </div>
       </section>
       <section className="reorder-batch-analysis">
@@ -3340,7 +3307,7 @@ function AnalyticsPage() {
             <span><strong>{formatNumber(row.diagnostics.discountAction)}</strong><small>Discount actions</small></span>
             <span><strong>{formatNumber(row.diagnostics.surveyCompleted)}</strong><small>Survey completions</small></span>
             <p>
-              <button type="button" className="reorder-inline-link" onClick={() => navigate(`/reorder/batches/${row.id}`)}>Open {row.code}</button>
+              <button type="button" className="reorder-inline-link" onClick={() => openRelated(`/reorder/batches/${row.id}`)}>Open {row.code}</button>
               {row.productId ? <> · <button type="button" className="reorder-inline-link" onClick={() => navigate(productReturnPath(row.productId))}>{row.productName || "Amazon Catalog Item"}</button></> : null}
               {" · "}Sources: {row.sources.join(" · ")}
             </p>
@@ -3385,8 +3352,8 @@ function resolvePage(path, readOnly) {
 function ReorderApp() {
   const initialPath = canonicalizePath(window.location.pathname);
   const [path, setPath] = useState(initialPath);
+  const [locationKey, setLocationKey] = useState(`${initialPath}${window.location.search}`);
   const [auth, setAuth] = useState({ loading: true, user: null });
-  const [mountedPaths, setMountedPaths] = useState(() => KEEP_ALIVE_PATHS.has(initialPath) ? [initialPath] : []);
 
   useEffect(() => {
     const canonical = canonicalizePath(window.location.pathname);
@@ -3394,15 +3361,14 @@ function ReorderApp() {
       window.history.replaceState({}, "", `${canonical}${window.location.search}`);
       setPath(canonical);
     }
-    const update = () => setPath(canonicalizePath(window.location.pathname));
+    const update = () => {
+      const nextPath = canonicalizePath(window.location.pathname);
+      setPath(nextPath);
+      setLocationKey(`${nextPath}${window.location.search}`);
+    };
     window.addEventListener("popstate", update);
     return () => window.removeEventListener("popstate", update);
   }, []);
-
-  useEffect(() => {
-    if (!KEEP_ALIVE_PATHS.has(path)) return;
-    setMountedPaths((current) => current.includes(path) ? current : [...current, path]);
-  }, [path]);
 
   useEffect(() => {
     api("/api/auth/me")
@@ -3418,15 +3384,10 @@ function ReorderApp() {
       <span className="page-loading-spinner" aria-hidden="true" />
     </div>
   );
-  const readOnly = auth.user?.access?.canWriteConfig === false;
+  const readOnly = window.reorderDemoApi ? false : auth.user?.access?.canWriteConfig === false;
   return (
     <AppShell currentPath={path} user={auth.user}>
-      {mountedPaths.map((mountedPath) => (
-        <div key={mountedPath} hidden={mountedPath !== path}>
-          {resolvePage(mountedPath, readOnly)}
-        </div>
-      ))}
-      {!KEEP_ALIVE_PATHS.has(path) && resolvePage(path, readOnly)}
+      <div key={locationKey}>{resolvePage(path, readOnly)}</div>
     </AppShell>
   );
 }

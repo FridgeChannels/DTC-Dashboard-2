@@ -143,32 +143,18 @@ export async function previewReorderConsumerExperience(customerId: number, batch
 export async function publishReorderConsumerExperience(
   customerId: number,
   batchId: string,
-  input: { status?: unknown; scheduledActivationAt?: unknown; selectedDiscountIds?: unknown },
+  input: { selectedDiscountIds?: unknown },
 ) {
-  const status = String(input.status ?? "") as "scheduled" | "active";
-  if (!(["scheduled", "active"] as string[]).includes(status)) throw new ReorderValidationError("Publish status must be Scheduled or Active");
   const loaded = await loadBatchExperience(customerId, batchId, input.selectedDiscountIds);
   if (!loaded) return null;
   const errors = validateConsumerExperience(loaded.input);
-  if (status === "active" && !["ready", "shipped"].includes(loaded.batch.production_status)) {
-    errors.push({ code: "production_not_ready", field: "batch.productionStatus", message: "Batch Production must be Ready before activation." });
-  }
-  let scheduledAt: string | null = null;
-  if (status === "scheduled") {
-    const parsed = Date.parse(String(input.scheduledActivationAt ?? ""));
-    if (!Number.isFinite(parsed) || parsed <= Date.now()) {
-      errors.push({ code: "schedule_invalid", field: "batch.scheduledActivationAt", message: "Scheduled activation must be a future date and time." });
-    } else {
-      scheduledAt = new Date(parsed).toISOString();
-    }
-  }
   if (errors.length) throw new ConsumerPublishValidationError(errors);
   const snapshot = buildConsumerSnapshot(loaded.input);
   return consumerRepo.publishConsumerExperience({
     customerId,
     batchId,
-    status,
-    scheduledAt,
+    status: "active",
+    scheduledAt: null,
     snapshot,
     discountIds: loaded.input.discounts.map((discount) => discount.id),
   });

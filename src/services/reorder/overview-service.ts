@@ -170,7 +170,7 @@ export async function getReorderOverview(
   const funnelKeys: ReorderMetricKey[] = ["ms", "md", "msi", "mgo"];
   const visible = scopedWorkspace(workspace, filter);
   const activeProducts = visible.products.filter((product) => product.status === "active" || product.status === "ready");
-  const activeBatches = visible.batches.filter((batch) => batch.activationStatus === "active");
+  const countedBatches = visible.batches;
   return {
     filter: { from: filter.from, to: filter.to, productId: filter.productId, batchId: filter.batchId, observationMonths: filter.observationMonths },
     metrics,
@@ -194,8 +194,8 @@ export async function getReorderOverview(
       behavioral: behavioralDiagnostics(snapshot, scoped, byKey.msi),
       configuration: [
         { key: "products", label: "Amazon Catalog Items", value: activeProducts.length },
-        { key: "batches", label: "Batches", value: activeBatches.length },
-        { key: "fcIds", label: "FC IDs", value: activeBatches.reduce((sum, batch) => sum + batch.fcIdCount, 0) },
+        { key: "batches", label: "Batches", value: countedBatches.length },
+        { key: "fcIds", label: "FC IDs", value: countedBatches.reduce((sum, batch) => sum + batch.fcIdCount, 0) },
         { key: "discounts", label: "Discounts", value: workspace.discounts.filter((item) => item.isVisibleOnFc).length },
         { key: "surveys", label: "Surveys", value: workspace.surveys.filter((item) => item.status === "open").length },
       ],

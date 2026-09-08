@@ -86,14 +86,13 @@ describe("Reorder fulfillment API", () => {
     const out = response();
     const id = "00000000-0000-4000-8000-000000000010";
     await handlePutReorderBatchActivation(
-      request({ status: "active", productionStatus: "shipped", quantity: 1 }),
+      request({ selectedDiscountIds: ["00000000-0000-4000-8000-000000000099"], productionStatus: "shipped", quantity: 1 }),
       out.res,
       id,
     );
     expect(out.status()).toBe(200);
     expect(transitionActivation).toHaveBeenCalledWith(7, id, {
-      status: "active",
-      scheduledActivationAt: undefined,
+      selectedDiscountIds: ["00000000-0000-4000-8000-000000000099"],
     });
   });
 

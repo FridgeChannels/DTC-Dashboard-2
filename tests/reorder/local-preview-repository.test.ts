@@ -25,4 +25,11 @@ describe("Reorder local preview repository", () => {
     expect(demo).toContain("localStorage.removeItem(storageKey)");
     expect(app).toContain("Reset preview data");
   });
+
+  it("supports the signed-in account menu and local preview sign out", () => {
+    expect(app).toContain("reorder-account-trigger");
+    expect(app).toContain("Sign out");
+    expect(app).toContain('api("/api/auth/logout", { method: "POST" })');
+    expect(demo).toContain('path === "/api/auth/logout" && method === "POST"');
+  });
 });

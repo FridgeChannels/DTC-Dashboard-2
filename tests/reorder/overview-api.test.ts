@@ -128,7 +128,7 @@ describe("Reorder Overview metrics", () => {
     expect(result.diagnostics.behavioral.find((item) => item.key === "pdp")?.value).toBe(1);
     expect(result.diagnostics.configuration).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "products", value: 1 }),
-      expect.objectContaining({ key: "batches", value: 1 }),
+      expect.objectContaining({ key: "batches", value: 2 }),
       expect.objectContaining({ key: "surveys", value: 1 }),
     ]));
   });

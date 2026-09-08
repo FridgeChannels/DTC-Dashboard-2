@@ -135,8 +135,7 @@ export async function getReorderAnalytics(
       { label: "Copied / viewed on Amazon", value: eventCount(["discount_copied"]) },
     ],
     surveyDiagnostics: [
-      { label: "Shown", value: eventCount(["survey_started", "survey_completed"]) },
-      { label: "Started", value: eventCount(["survey_started"]) },
+      { label: "Magnets shown", value: eventCount(["survey_started", "survey_completed"]) },
       { label: "Completed", value: eventCount(["survey_completed"]) },
     ],
     batches,

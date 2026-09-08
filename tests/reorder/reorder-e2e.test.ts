@@ -145,11 +145,11 @@ describe("Reorder isolation and accessibility contracts", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("@media (max-width: 640px)");
     expect(css).not.toContain("text-transform: uppercase");
-    expect(app).toContain('metric.value === null ? "—"');
+    expect(app).toContain('stage.value === null ? "—"');
   });
 
   it("uses view/edit verbs after a saved configuration", () => {
-    expect(app).toContain("function activationVerb");
+    expect(app).not.toContain("function activationVerb");
     expect(app).toContain("function useFlashMessage");
     expect(app).toContain(">Edit</button>");
     expect(app).toContain('This workspace is view-only.');

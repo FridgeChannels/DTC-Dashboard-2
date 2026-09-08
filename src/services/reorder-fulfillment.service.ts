@@ -9,7 +9,6 @@ import {
 import { getFcOrderDetail, listFcOrders } from "./fc-order.service.js";
 import { getReorderOverview } from "./reorder/overview-service.js";
 import type {
-  ReorderActivationStatus,
   ReorderAllocationRow,
   ReorderBatchEventRow,
   ReorderBatchRow,
@@ -289,22 +288,22 @@ function orderTimeline(input: {
   batchEvents: ReorderBatchEventRow[];
 }) {
   const events = [
-    input.orderedAt ? { id: "order-established", label: "FC Order established", state: "completed", completedAt: input.orderedAt } : null,
-    ...input.auditHistory.map((event) => ({
-      id: `audit-${event.id}`,
-      label: event.action === "submit_for_production"
-        ? "Submitted for production"
-        : event.action === "submit_allocation"
-          ? "Allocation submitted"
-          : event.action === "brand_create_batch"
-            ? "Batch created"
+    ...input.auditHistory.flatMap((event) => {
+      if (event.action === "brand_create_batch") return [];
+      return [{
+        id: `audit-${event.id}`,
+        label: event.action === "submit_for_production"
+          ? "Submitted for production"
+          : event.action === "submit_allocation"
+            ? "Allocation submitted"
             : event.action === "brand_update_batch"
               ? "Batch updated"
               : "Allocation saved",
-      state: "completed",
-      completedAt: event.created_at,
-    })),
-    ...input.batchEvents.map((event) => ({
+        state: "completed",
+        completedAt: event.created_at,
+      }];
+    }),
+    ...input.batchEvents.filter((event) => event.event_type !== "batch_created" && event.title !== "Batch created").map((event) => ({
       id: `batch-event-${event.id}`,
       label: event.title,
       state: event.actor_type === "fc_ops" ? "ops" : "completed",
@@ -636,13 +635,6 @@ export async function submitReorderBrandBatches(customerId: number, orderNumber:
   }
 }
 
-const transitions: Record<ReorderActivationStatus, ReorderActivationStatus[]> = {
-  draft: ["scheduled", "active", "retired"],
-  scheduled: ["draft", "active", "paused", "retired"],
-  active: ["paused", "retired"],
-  paused: ["scheduled", "active", "retired"],
-  retired: [],
-};
 
 export async function getReorderBatchDetail(customerId: number, batchId: string) {
   const batch = await reorderRepo.findBatch(customerId, batchId);
@@ -674,27 +666,14 @@ export async function getReorderBatchDetail(customerId: number, batchId: string)
 export async function transitionReorderBatchActivation(
   customerId: number,
   batchId: string,
-  input: { status?: unknown; scheduledActivationAt?: unknown; selectedDiscountIds?: unknown },
+  input: { selectedDiscountIds?: unknown } = {},
 ) {
   const batch = await reorderRepo.findBatch(customerId, batchId);
   if (!batch) return null;
-  const status = String(input.status ?? "") as ReorderActivationStatus;
-  if (!transitions[batch.activation_status].includes(status)) {
-    throw new ReorderValidationError(`Cannot change activation from ${batch.activation_status} to ${status}`);
-  }
-  if (status === "active" || status === "scheduled") {
-    await publishReorderConsumerExperience(customerId, batchId, input);
-    return reorderRepo.findBatch(customerId, batchId);
-  }
-  const updated = await reorderRepo.updateBatchActivation({
-    customerId,
-    batchId,
-    fromStatus: batch.activation_status,
-    toStatus: status,
-    scheduledActivationAt: null,
+  await publishReorderConsumerExperience(customerId, batchId, {
+    selectedDiscountIds: input.selectedDiscountIds,
   });
-  if (!updated) throw new ReorderValidationError("Batch activation changed; refresh and try again", 409);
-  return updated;
+  return reorderRepo.findBatch(customerId, batchId);
 }
 
 export async function listReorderProductBatches(customerId: number, productVersionId: string) {

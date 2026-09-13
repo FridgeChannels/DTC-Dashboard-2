@@ -15,10 +15,14 @@ export interface MagnetBrandParamRow {
   product_name: string | null;
   product_image_url: string | null;
   asin_survey_campaign_id: string | null;
+  discount_benefit: string | null;
+  discount_claim_code: string | null;
+  discount_ends_at: string | null;
+  discount_asin: string | null;
 }
 
 const BRAND_PARAM_SELECT =
-  "id, customer_id, magnet_id, magnet_sn, experience, brand_name, brand_logo, website, store_website, product_name, product_image_url, asin_survey_campaign_id";
+  "id, customer_id, magnet_id, magnet_sn, experience, brand_name, brand_logo, website, store_website, product_name, product_image_url, asin_survey_campaign_id, discount_benefit, discount_claim_code, discount_ends_at, discount_asin";
 
 function throwIfError(error: unknown) {
   if (error) throw error;

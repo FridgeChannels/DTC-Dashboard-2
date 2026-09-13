@@ -188,6 +188,45 @@ async function resolveBrandParamSurvey(
   return consumerSurvey;
 }
 
+function extractAsinFromAmazonUrl(value: string): string {
+  try {
+    const pathname = new URL(value).pathname;
+    return pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})(?:\/|$)/i)?.[1]?.toUpperCase() || "";
+  } catch {
+    return "";
+  }
+}
+
+function buildBrandParamSavings(brandParam: MagnetBrandParamRow, productAsin: string) {
+  const claimCode = String(brandParam.discount_claim_code ?? "").trim();
+  if (!claimCode) return [];
+  const benefit = String(brandParam.discount_benefit ?? "").trim() || "Special offer";
+  const asin = String(brandParam.discount_asin ?? "").trim().toUpperCase() || productAsin;
+  const endAt = brandParam.discount_ends_at || null;
+  const startAt = "2020-01-01T00:00:00.000Z";
+  const discount = {
+    id: `magnet-brand-discount-${brandParam.id}`,
+    kind: "amazon_promotion" as const,
+    title: benefit,
+    sellingAccountId: null,
+    marketplaceCode: "US",
+    eligibleAsins: asin ? [asin] : [],
+    benefitSummary: benefit,
+    qualifyingCondition: null,
+    appliesTo: null,
+    startAt,
+    endAt: endAt || "2099-12-31T23:59:59.000Z",
+    amazonConfirmed: true,
+    couponType: null,
+    claimCodeMode: "group" as const,
+    groupClaimCode: claimCode,
+    availableCodeCount: null,
+    isFeatured: true,
+    claimCode,
+  };
+  return [discount];
+}
+
 async function buildExperienceFromBrandParam(
   fcId: string,
   brandParam: MagnetBrandParamRow,
@@ -199,7 +238,10 @@ async function buildExperienceFromBrandParam(
   const imageUrl = String(brandParam.product_image_url ?? "").trim() || null;
   const brandName = String(brandParam.brand_name ?? "").trim() || "Brand";
   const offerAvailable = /^https:\/\//i.test(productUrl);
+  const productAsin = String(brandParam.discount_asin ?? "").trim().toUpperCase()
+    || extractAsinFromAmazonUrl(productUrl);
   const survey = await resolveBrandParamSurvey(brandParam, fcId, magnetCustomerId);
+  const savings = buildBrandParamSavings(brandParam, productAsin);
 
   return {
     state: offerAvailable ? "ready" : "product_unavailable",
@@ -213,7 +255,7 @@ async function buildExperienceFromBrandParam(
       id: `magnet-brand-${brandParam.id}`,
       name: productName || "Product",
       imageUrl,
-      asin: "",
+      asin: productAsin,
       sellerOfferAvailable: offerAvailable,
       attributionUrl: productUrl,
       variant: "",
@@ -229,9 +271,9 @@ async function buildExperienceFromBrandParam(
     fallback: storeUrl
       ? { type: "seller_storefront", url: storeUrl }
       : { type: "safe_message", url: null },
-    featuredDiscount: null,
-    availableSavings: [],
-    showDiscounts: false,
+    featuredDiscount: savings[0] ?? null,
+    availableSavings: savings,
+    showDiscounts: savings.length > 0,
     survey,
   };
 }

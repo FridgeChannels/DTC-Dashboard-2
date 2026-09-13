@@ -70,15 +70,15 @@ GET /api/fc/reward-plan?touchId={sn}                → 200
 | 3 | 店铺 URL | `website` |
 | 4 | 产品图（建议） | `product_image_url` |
 | 5 | 可选问卷 | `asin_survey_*` + `magnet_brand_param.asin_survey_campaign_id` |
-| 6 | **不要**为 ASIN 写 DTC 券/游戏 | 走 `/api/reorder/consumer/{sn}`，不依赖 reward-plan |
+| 6 | **Discount code（落地页券码）** | `magnet_brand_param.discount_claim_code` + `discount_benefit`（详见 [ASIN discount 更新文档](./2026-09-13-asin-plus-discount-code-provisioning.md)） |
+| 7 | **不要**为 ASIN 写 DTC 券/游戏 | 走 `/api/reorder/consumer/{sn}`，不依赖 reward-plan |
 
 **验收（ASIN）：**
 
 ```
 GET /api/fc/experience/{sn}              → asin_plus
-GET /api/reorder/consumer/{sn}           → state=ready, product + optional survey
+GET /api/reorder/consumer/{sn}           → state=ready, product + availableSavings[].claimCode + optional survey
 ```
-
 ### 0.4 工具不要做的事
 
 - **不要**给每个新 customer 克隆 `game_instance`（引擎已共享 customer 5）
@@ -196,13 +196,19 @@ where mbp.id = :brand_param_id
 | `product_name` | 可选展示名 | 商品标题 | ASIN **必填** |
 | `product_image_url` | 可选 | 商品主图 URL | ASIN 建议 |
 | `asin_survey_campaign_id` | `NULL` | 绑 `asin_survey_campaign.id` | 有问卷则填 |
+| `discount_benefit` | — | 券利益点文案，如 `Save 10%` | 有码建议填 |
+| `discount_claim_code` | — | Amazon **group** claim code | **有码必填** |
+| `discount_asin` | — | 可选 ASIN；空则解析 PDP URL | 建议 |
+| `discount_ends_at` | — | 可选截止日期 | 可选 |
 | `created_at` | 系统 | 系统 | 默认 |
 
 **Consumer 判定（ASIN Plus，现网代码）：**
 
 - `experience = asin_plus` 且 `product_name` + `store_website` 非空 → 可出落地页
 - 另有 `asin_survey_campaign_id` 且 campaign `status = open` → 出 Quick survey
+- 另有 `discount_claim_code` → `availableSavings` 含该 group code，落地页展示 Code
 
+折扣专项说明：[2026-09-13-asin-plus-discount-code-provisioning.md](./2026-09-13-asin-plus-discount-code-provisioning.md)
 ### 5.2 建议新增列（工具长期方案）
 
 现网 **DTC 问卷未** 在 `magnet_brand_param` 上绑 FK；Tap 按 `magnet_id` + `customer_id` 在 `q_survey_campaigns` 里解析。若工具需要「每卡一条配置 + 指定 DTC 问卷」，建议 migration：
@@ -436,6 +442,10 @@ create unique index if not exists magnet_brand_param_customer_experience_unbound
   "storeWebsite": "Amazon PDP URL",
   "productName": "required",
   "productImageUrl": "",
+  "discountBenefit": "Save 10%",
+  "discountClaimCode": "PURA10",
+  "discountAsin": "B0FCSEA001",
+  "discountEndsAt": null,
   "asinSurvey": { "title": "", "description": "", "questions": [] }
 }
 ```
@@ -447,6 +457,7 @@ create unique index if not exists magnet_brand_param_customer_experience_unbound
 - [ ] `customer.product_line` 覆盖所选 `line`
 - [ ] `magnet_brand_param.experience` 与工具 `line` 一致；`customer_id` 与 magnet 对齐
 - [ ] ASIN：`product_name`、`store_website` 非空
+- [ ] ASIN 折扣：`discount_claim_code` + `discount_benefit`（见 ASIN discount 文档）
 - [ ] ASIN 问卷：写 `asin_survey_*` 并绑 `asin_survey_campaign_id`
 - [ ] DTC 问卷：`q_survey_*` 且 `reorder_version_group_id is null`
 - [ ] DTC：`realtime_single.enabled = true`
@@ -466,6 +477,7 @@ create unique index if not exists magnet_brand_param_customer_experience_unbound
 | `20260913130000_magnet_brand_param_experience.sql` | `experience` |
 | `20260913140000_magnet_brand_param_product_fields.sql` | `product_name`, `product_image_url` |
 | `20260913150000_magnet_brand_param_asin_survey.sql` | `asin_survey_campaign_id` |
+| `20260913170000_magnet_brand_param_discount.sql` | `discount_benefit` / `discount_claim_code` / `discount_asin` / `discount_ends_at` |
 | `20260913122000_asin_survey_tables_and_dtc_isolation.sql` | `asin_survey_*` + DTC 隔离 |
 | `20260610000000_fc_coupon_schema.sql` | `fc_coupon_campaign` / `fc_coupon_code` / `customer_shopify_config` |
 | `scripts/fill_magnet_brand_param_15VZQSHR7R.sql` | ASIN 产品字段示例 |

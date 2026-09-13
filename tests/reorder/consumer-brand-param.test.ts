@@ -57,6 +57,10 @@ const brandParamRow = {
   product_name: "PURA Orange Juice",
   product_image_url: "https://cdn.example.com/product.png",
   asin_survey_campaign_id: "a15a0001-0000-4000-8000-000000000001",
+  discount_benefit: "Save 10%",
+  discount_claim_code: "PURA10",
+  discount_ends_at: "2099-12-31T23:59:59.000Z",
+  discount_asin: "B0FCSEA001",
 };
 
 const openSurvey = {
@@ -105,10 +109,16 @@ describe("resolvePublishedReorderExperience from magnet_brand_param", () => {
         name: "PURA Orange Juice",
         imageUrl: "https://cdn.example.com/product.png",
         attributionUrl: "https://www.amazon.com/dp/B0FCSEA001?tag=fc",
+        asin: "B0FCSEA001",
       },
       primaryCta: "https://www.amazon.com/dp/B0FCSEA001?tag=fc",
       fallback: { type: "seller_storefront", url: "https://www.amazon.com/stores/PURA" },
-      availableSavings: [],
+      showDiscounts: true,
+      availableSavings: [{
+        claimCode: "PURA10",
+        benefitSummary: "Save 10%",
+        claimCodeMode: "group",
+      }],
       survey: { id: openSurvey.id, title: "Quick product feedback" },
     });
     expect(consumerRepo.findFcUnit).not.toHaveBeenCalled();

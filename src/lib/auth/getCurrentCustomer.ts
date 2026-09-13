@@ -5,7 +5,7 @@ import { getSupabase } from "../supabase/admin.js";
 import { ensureCurrentCustomer } from "./ensureCurrentCustomer.js";
 import type { CurrentCustomer, CustomerRecord } from "./types.js";
 
-const CUSTOMER_SELECT = "id, auth_user_id, nickname, email, avatar_url, status";
+const CUSTOMER_SELECT = "id, auth_user_id, nickname, email, avatar_url, status, product_line";
 const AUTH_CACHE_TTL_MS = 20_000;
 const SESSION_REFRESH_SKEW_MS = 15_000;
 

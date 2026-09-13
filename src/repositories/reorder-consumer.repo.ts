@@ -37,6 +37,16 @@ export async function findFcUnit(fcId: string) {
   return data as ReorderFcUnitRow | null;
 }
 
+export async function findFcUnitByMagnetId(magnetId: number) {
+  const { data, error } = await getSupabase()
+    .from("reorder_fc_unit")
+    .select("*")
+    .eq("magnet_id", magnetId)
+    .maybeSingle();
+  throwIfError(error);
+  return data as ReorderFcUnitRow | null;
+}
+
 export async function findCurrentPublication(customerId: number, batchId: string) {
   const { data, error } = await getSupabase()
     .from("reorder_consumer_publication")

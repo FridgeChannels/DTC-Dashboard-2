@@ -2,7 +2,7 @@ import { getSupabase } from './supabase.js';
 import { uploadImage } from './storage.js';
 
 const BRAND_PARAM_SELECT =
-  'id, customer_id, magnet_sn, magnet_id, brand_name, brand_logo, primary_color, secondary_color, website, store_website';
+  'id, customer_id, magnet_sn, magnet_id, brand_name, brand_logo, primary_color, secondary_color, website, store_website, experience, product_name, product_image_url, asin_survey_campaign_id';
 
 /** Brand Info 页面保存时仅更新这两条 magnet 的品牌参数 */
 export const BRAND_INFO_MAGNET_SNS = ['DA9V3EG9QG', 'E2V5TQGYE8'];
@@ -23,6 +23,18 @@ function buildUpdatePayload(fields) {
 
   if (fields.storeWebsite !== undefined) {
     payload.store_website = fields.storeWebsite?.trim() || null;
+  }
+
+  if (fields.productName !== undefined) {
+    payload.product_name = fields.productName?.trim() || null;
+  }
+
+  if (fields.productImageUrl !== undefined) {
+    payload.product_image_url = fields.productImageUrl?.trim() || null;
+  }
+
+  if (fields.experience !== undefined) {
+    payload.experience = fields.experience;
   }
 
   if (fields.primaryColor !== undefined) {
@@ -222,12 +234,16 @@ function mapBrandParamRow(row) {
     customerId: row.customer_id,
     magnetSn: row.magnet_sn,
     magnetId: row.magnet_id,
+    experience: row.experience,
     brandName: row.brand_name,
     brandLogo: row.brand_logo,
     primaryColor: row.primary_color,
     secondaryColor: row.secondary_color,
     website: row.website,
     storeWebsite: row.store_website,
+    productName: row.product_name,
+    productImageUrl: row.product_image_url,
+    asinSurveyCampaignId: row.asin_survey_campaign_id,
   };
 }
 

@@ -68,6 +68,7 @@ export async function listSurveyCampaignsByCustomerId(
     .from("q_survey_campaigns")
     .select("*")
     .eq("customer_id", customerId)
+    .is("reorder_version_group_id", null)
     .order("updated_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as QSurveyCampaignRow[];

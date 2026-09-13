@@ -155,6 +155,7 @@ import {
   handleShopifyCustomerOAuthStart,
 } from "./api/shopify-customer-oauth.js";
 import { handleGetTapContext } from "./api/tap-context.js";
+import { handleGetFcExperience } from "./api/fc-experience.js";
 import { requireApiKey } from "./lib/auth/api-key.js";
 
 function redirect(res: ServerResponse, location: string): void {
@@ -283,6 +284,12 @@ const server = createServer(async (req, res) => {
   const reorderConsumerMatch = /^\/api\/reorder\/consumer\/([^/]+)$/.exec(pathname);
   if (req.method === "GET" && reorderConsumerMatch) {
     await handleGetPublishedReorderExperience(res, reorderConsumerMatch[1]);
+    return;
+  }
+
+  const fcExperienceMatch = /^\/api\/fc\/experience\/([^/]+)$/.exec(pathname);
+  if (req.method === "GET" && fcExperienceMatch) {
+    await handleGetFcExperience(res, fcExperienceMatch[1]);
     return;
   }
 

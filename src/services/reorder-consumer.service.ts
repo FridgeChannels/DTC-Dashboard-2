@@ -3,6 +3,9 @@ import * as consumerRepo from "../repositories/reorder-consumer.repo.js";
 import * as discountRepo from "../repositories/reorder-discount.repo.js";
 import * as fulfillmentRepo from "../repositories/reorder-fulfillment.repo.js";
 import * as productRepo from "../repositories/reorder-product.repo.js";
+import * as magnetRepo from "../repositories/magnet.repo.js";
+import * as brandParamRepo from "../repositories/magnet-brand-param.repo.js";
+import * as asinSurveyRepo from "../repositories/asin-survey.repo.js";
 import {
   buildConsumerSnapshot,
   orderConsumerDiscounts,
@@ -10,12 +13,14 @@ import {
   type ConsumerDiscountInput,
   type ConsumerExperienceInput,
   type ConsumerPublishError,
+  type ConsumerSurveyInput,
 } from "../reorder/consumer-experience.js";
 import { canDisplayDiscountOnConsumer } from "../reorder/discount-display.js";
 import { ReorderValidationError } from "../reorder/amazon-url.js";
 import { revealClaimCode } from "./reorder/claim-code-crypto.js";
 import { listReorderDiscounts } from "./reorder-discount.service.js";
 import { listReorderSurveys } from "./reorder/survey-service.js";
+import type { MagnetBrandParamRow } from "../repositories/magnet-brand-param.repo.js";
 
 export class ConsumerPublishValidationError extends ReorderValidationError {
   constructor(readonly errors: ConsumerPublishError[]) {
@@ -166,9 +171,85 @@ function isSnapshot(value: unknown): value is Snapshot {
   return Boolean(value && typeof value === "object" && "schemaVersion" in value && "product" in value && "discounts" in value);
 }
 
+async function resolveBrandParamSurvey(
+  brandParam: MagnetBrandParamRow,
+  fcId: string,
+  magnetCustomerId?: number | null,
+): Promise<ConsumerSurveyInput | null> {
+  const campaignId = brandParam.asin_survey_campaign_id;
+  if (!campaignId) return null;
+  const preferredCustomerId = magnetCustomerId ?? brandParam.customer_id;
+  const survey = await asinSurveyRepo.getOpenConsumerAsinSurvey(campaignId, preferredCustomerId);
+  if (!survey) return null;
+  // DEMO: keep returning survey after submit so landing always shows Quick survey.
+  // Restore one-response-per-FC by uncommenting:
+  // if (await asinSurveyRepo.hasCompletedAsinSurvey(survey.customerId, campaignId, fcId)) return null;
+  const { customerId: _customerId, ...consumerSurvey } = survey;
+  return consumerSurvey;
+}
+
+async function buildExperienceFromBrandParam(
+  fcId: string,
+  brandParam: MagnetBrandParamRow,
+  magnetCustomerId?: number | null,
+) {
+  const productUrl = String(brandParam.store_website ?? "").trim();
+  const storeUrl = String(brandParam.website ?? "").trim();
+  const productName = String(brandParam.product_name ?? "").trim();
+  const imageUrl = String(brandParam.product_image_url ?? "").trim() || null;
+  const brandName = String(brandParam.brand_name ?? "").trim() || "Brand";
+  const offerAvailable = /^https:\/\//i.test(productUrl);
+  const survey = await resolveBrandParamSurvey(brandParam, fcId, magnetCustomerId);
+
+  return {
+    state: offerAvailable ? "ready" : "product_unavailable",
+    source: "magnet_brand_param" as const,
+    fcId,
+    brand: {
+      name: brandName,
+      logoUrl: brandParam.brand_logo || null,
+    },
+    product: {
+      id: `magnet-brand-${brandParam.id}`,
+      name: productName || "Product",
+      imageUrl,
+      asin: "",
+      sellerOfferAvailable: offerAvailable,
+      attributionUrl: productUrl,
+      variant: "",
+    },
+    amazon: {
+      sellingAccountId: null,
+      sellerLabel: brandName,
+      sellerId: null,
+      marketplaceCode: "US",
+      storefrontUrl: storeUrl || null,
+    },
+    primaryCta: offerAvailable ? productUrl : null,
+    fallback: storeUrl
+      ? { type: "seller_storefront", url: storeUrl }
+      : { type: "safe_message", url: null },
+    featuredDiscount: null,
+    availableSavings: [],
+    showDiscounts: false,
+    survey,
+  };
+}
+
 export async function resolvePublishedReorderExperience(fcIdValue: string) {
   const fcId = fcIdValue.trim().toUpperCase();
   if (!/^[A-Z0-9-]{4,80}$/.test(fcId)) throw new ReorderValidationError("FC ID is invalid");
+
+  // Prefer magnet_brand_param when ASIN Plus product fields are present.
+  const magnet = await magnetRepo.getMagnetBySn(fcId);
+  if (magnet) {
+    const brandParam = await brandParamRepo.findMagnetBrandParamByMagnetId(magnet.id)
+      ?? await brandParamRepo.findMagnetBrandParamBySn(fcId);
+    if (brandParamRepo.hasAsinPlusBrandParamContent(brandParam)) {
+      return buildExperienceFromBrandParam(fcId, brandParam!, magnet.customer_id);
+    }
+  }
+
   const unit = await consumerRepo.findFcUnit(fcId);
   if (!unit) return null;
   const publication = unit.status === "active"
@@ -245,11 +326,12 @@ export async function resolvePublishedReorderExperience(fcIdValue: string) {
     resolvedDiscounts.push(discount);
   }
   const savings = orderConsumerDiscounts(resolvedDiscounts);
-  const survey = snapshot.survey && !await consumerRepo.hasCompletedSurvey(unit.customer_id, snapshot.survey.id, fcId)
-    ? snapshot.survey
-    : null;
+  // DEMO: always expose published survey (ignore per-FC completion).
+  // Restore: snapshot.survey && !await consumerRepo.hasCompletedSurvey(...) ? snapshot.survey : null
+  const survey = snapshot.survey ?? null;
   return {
     state: snapshot.product?.sellerOfferAvailable ? "ready" : "product_unavailable",
+    source: "reorder_publication" as const,
     fcId,
     brand: snapshot.brand,
     product: snapshot.product,
@@ -297,9 +379,33 @@ export function validatePublishedSurveyAnswers(
 }
 
 export async function startPublishedReorderSurvey(fcIdValue: string, surveyId: string) {
+  const fcId = fcIdValue.trim().toUpperCase();
+  const magnet = await magnetRepo.getMagnetBySn(fcId);
+  if (magnet) {
+    const brandParam = await brandParamRepo.findMagnetBrandParamByMagnetId(magnet.id)
+      ?? await brandParamRepo.findMagnetBrandParamBySn(fcId);
+    if (
+      brandParamRepo.hasAsinPlusBrandParamContent(brandParam)
+      && brandParam?.asin_survey_campaign_id === surveyId
+    ) {
+      const survey = await asinSurveyRepo.getOpenConsumerAsinSurvey(
+        surveyId,
+        magnet.customer_id ?? brandParam.customer_id,
+      );
+      if (!survey) return null;
+      return asinSurveyRepo.startAsinSurveyResponse({
+        customerId: survey.customerId,
+        campaignId: surveyId,
+        fcId,
+        magnetId: magnet.id,
+      });
+    }
+  }
+
   const experience = await resolvePublishedReorderExperience(fcIdValue);
   if (!experience || experience.state !== "ready" || !experience.survey || experience.survey.id !== surveyId) return null;
-  return consumerRepo.startSurveyResponse(fcIdValue.trim().toUpperCase(), surveyId);
+  if (experience.source === "magnet_brand_param") return null;
+  return consumerRepo.startSurveyResponse(fcId, surveyId);
 }
 
 export async function submitPublishedReorderSurvey(
@@ -308,11 +414,38 @@ export async function submitPublishedReorderSurvey(
   responseId: string,
   answers: unknown,
 ) {
+  const fcId = fcIdValue.trim().toUpperCase();
+  const magnet = await magnetRepo.getMagnetBySn(fcId);
+  if (magnet) {
+    const brandParam = await brandParamRepo.findMagnetBrandParamByMagnetId(magnet.id)
+      ?? await brandParamRepo.findMagnetBrandParamBySn(fcId);
+    if (
+      brandParamRepo.hasAsinPlusBrandParamContent(brandParam)
+      && brandParam?.asin_survey_campaign_id === surveyId
+    ) {
+      const survey = await asinSurveyRepo.getOpenConsumerAsinSurvey(
+        surveyId,
+        magnet.customer_id ?? brandParam.customer_id,
+      );
+      if (!survey) return null;
+      const errors = validatePublishedSurveyAnswers(survey, answers);
+      if (errors.length) throw new ConsumerPublishValidationError(errors);
+      return asinSurveyRepo.submitAsinSurveyResponse({
+        customerId: survey.customerId,
+        campaignId: surveyId,
+        fcId,
+        responseId,
+        answers: answers as Record<string, unknown>,
+      });
+    }
+  }
+
   const experience = await resolvePublishedReorderExperience(fcIdValue);
   if (!experience || experience.state !== "ready" || !experience.survey || experience.survey.id !== surveyId) return null;
+  if (experience.source === "magnet_brand_param") return null;
   const errors = validatePublishedSurveyAnswers(experience.survey, answers);
   if (errors.length) throw new ConsumerPublishValidationError(errors);
-  return consumerRepo.submitSurveyResponse(fcIdValue.trim().toUpperCase(), surveyId, responseId, answers as Record<string, unknown>);
+  return consumerRepo.submitSurveyResponse(fcId, surveyId, responseId, answers as Record<string, unknown>);
 }
 
 export async function markPublishedClaimCodeCopied(fcIdValue: string, discountId: string) {

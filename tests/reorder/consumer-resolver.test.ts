@@ -6,6 +6,19 @@ vi.mock("../../src/repositories/reorder-consumer.repo.js", () => ({
   findLatestPublication: vi.fn(),
   publishConsumerExperience: vi.fn(),
 }));
+vi.mock("../../src/repositories/magnet.repo.js", () => ({
+  getMagnetBySn: vi.fn(),
+}));
+vi.mock("../../src/repositories/magnet-brand-param.repo.js", async () => {
+  const actual = await vi.importActual<typeof import("../../src/repositories/magnet-brand-param.repo.js")>(
+    "../../src/repositories/magnet-brand-param.repo.js",
+  );
+  return {
+    ...actual,
+    findMagnetBrandParamByMagnetId: vi.fn(),
+    findMagnetBrandParamBySn: vi.fn(),
+  };
+});
 vi.mock("../../src/repositories/reorder-discount.repo.js", () => ({
   allocateSingleUseClaimCode: vi.fn(),
   markClaimCodeEvent: vi.fn(),
@@ -16,6 +29,8 @@ vi.mock("../../src/repositories/reorder-product.repo.js", () => ({}));
 vi.mock("../../src/services/reorder-discount.service.js", () => ({ listReorderDiscounts: vi.fn() }));
 
 import * as consumerRepo from "../../src/repositories/reorder-consumer.repo.js";
+import * as magnetRepo from "../../src/repositories/magnet.repo.js";
+import * as brandParamRepo from "../../src/repositories/magnet-brand-param.repo.js";
 import * as discountRepo from "../../src/repositories/reorder-discount.repo.js";
 import * as discountService from "../../src/services/reorder-discount.service.js";
 import { resolvePublishedReorderExperience } from "../../src/services/reorder-consumer.service.js";
@@ -79,6 +94,9 @@ function liveDiscount(overrides = {}) {
 describe("published Reorder Consumer resolver", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(magnetRepo.getMagnetBySn).mockResolvedValue(null);
+    vi.mocked(brandParamRepo.findMagnetBrandParamByMagnetId).mockResolvedValue(null);
+    vi.mocked(brandParamRepo.findMagnetBrandParamBySn).mockResolvedValue(null);
     vi.mocked(discountService.listReorderDiscounts).mockResolvedValue([liveDiscount()]);
     vi.mocked(consumerRepo.findFcUnit).mockResolvedValue({
       fc_id: "FC-1001",

@@ -9,7 +9,7 @@ export async function ensureCurrentCustomer(authUser: User): Promise<CustomerRec
   const admin = getSupabase();
   const { data: existing, error: existingError } = await admin
     .from("customer")
-    .select("id, auth_user_id, nickname, email, avatar_url, status")
+    .select("id, auth_user_id, nickname, email, avatar_url, status, product_line")
     .eq("auth_user_id", authUser.id)
     .maybeSingle();
 
@@ -22,6 +22,7 @@ export async function ensureCurrentCustomer(authUser: User): Promise<CustomerRec
     .insert({
       auth_user_id: authUser.id,
       email: authUser.email,
+      product_line: "dtc",
       nickname:
         meta.nickname ??
         meta.name ??

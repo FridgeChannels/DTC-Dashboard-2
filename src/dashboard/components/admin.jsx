@@ -65,6 +65,7 @@ const ALL_SECTIONS = [
 function buildNavGroups(conn, setupProgress) {
   const shopifyReady = conn.shopifyReady;
   const klaviyoReady = conn.klaviyoReady;
+  const productLine = conn.productLine || "both";
   return [
     ...buildOnboardingNavGroup(setupProgress),
     {
@@ -77,26 +78,26 @@ function buildNavGroups(conn, setupProgress) {
     {
       label: "Grow",
       items: [
-        { ...REORDER_SECTION, icon: I.navProduct },
+        { ...REORDER_SECTION, icon: I.navProduct, locked: productLine === "dtc", lockHint: "ASIN Plus is not enabled for this account." },
         {
           ...COUPON_CAMPAIGNS_SECTION,
           label: "Coupons",
           icon: I.navCoupons,
-          locked: !shopifyReady,
-          lockHint: "Connect Shopify before creating coupons.",
+          locked: productLine === "asin_plus" || !shopifyReady,
+          lockHint: productLine === "asin_plus" ? "Coupons are part of DTC. This account is ASIN Plus only." : "Connect Shopify before creating coupons.",
         },
         {
           ...SEGMENT_CONFIG_SECTION,
           label: "Segments",
           icon: I.navSegments,
-          locked: !klaviyoReady,
-          lockHint: "Connect Klaviyo and sync segments before configuring coupons.",
+          locked: productLine === "asin_plus" || !klaviyoReady,
+          lockHint: productLine === "asin_plus" ? "Segments are part of DTC. This account is ASIN Plus only." : "Connect Klaviyo and sync segments before configuring coupons.",
         },
         {
           ...SURVEY_CAMPAIGNS_SECTION,
           icon: I.navSurveys,
-          locked: !klaviyoReady,
-          lockHint: "Connect Klaviyo before running surveys.",
+          locked: productLine === "asin_plus" || !klaviyoReady,
+          lockHint: productLine === "asin_plus" ? "Brand surveys are part of DTC. Use Reorder Surveys for ASIN Plus." : "Connect Klaviyo before running surveys.",
         },
       ],
     },
@@ -171,7 +172,10 @@ function AdminNavItem({ item, active, onSelect }) {
 }
 
 function AdminSidebar({ section, onSectionChange, connections, setupProgress }) {
-  const groups = buildNavGroups(connections, setupProgress);
+  const groups = buildNavGroups(
+    { ...connections, productLine: auth.user?.customer?.product_line || "both" },
+    setupProgress,
+  );
   const accountsActive = ACCOUNT_MATCH.includes(section);
   return (
     <aside className="admin-sidebar">

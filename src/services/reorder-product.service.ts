@@ -21,17 +21,6 @@ export interface CreateReorderProductInput {
   listingConfirmed?: boolean;
 }
 
-function requiredText(value: unknown, field: string, maxLength = 500): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new ReorderValidationError(`${field} is required`);
-  }
-  const normalized = value.trim();
-  if (normalized.length > maxLength) {
-    throw new ReorderValidationError(`${field} is too long`);
-  }
-  return normalized;
-}
-
 export async function listReorderProducts(customerId: number) {
   const [products, sellingAccounts] = await Promise.all([
     productRepo.listCurrentProducts(customerId),

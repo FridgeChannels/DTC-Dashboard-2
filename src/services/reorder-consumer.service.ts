@@ -173,7 +173,7 @@ function isSnapshot(value: unknown): value is Snapshot {
 
 async function resolveBrandParamSurvey(
   brandParam: MagnetBrandParamRow,
-  fcId: string,
+  _fcId: string,
   magnetCustomerId?: number | null,
 ): Promise<ConsumerSurveyInput | null> {
   const campaignId = brandParam.asin_survey_campaign_id;
@@ -183,7 +183,7 @@ async function resolveBrandParamSurvey(
   if (!survey) return null;
   // DEMO: keep returning survey after submit so landing always shows Quick survey.
   // Restore one-response-per-FC by uncommenting:
-  // if (await asinSurveyRepo.hasCompletedAsinSurvey(survey.customerId, campaignId, fcId)) return null;
+  // if (await asinSurveyRepo.hasCompletedAsinSurvey(survey.customerId, campaignId, _fcId)) return null;
   const { customerId: _customerId, ...consumerSurvey } = survey;
   return consumerSurvey;
 }

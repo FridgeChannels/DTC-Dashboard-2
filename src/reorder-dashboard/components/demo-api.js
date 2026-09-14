@@ -534,8 +534,34 @@
       persist();
       return presentDiscount(row);
     }
-    if (path === "/api/reorder/discounts/coupons/preview") return { review: { couponsDetected: 1, productsMatched: 1, productMappingRequired: 0, rowsWithParsingIssues: 0, unmappedColumns: [], canImport: true }, rows: [{ rowNumber: 2, errors: [], mappingStatus: "Matched", matchedProducts: [{ id: ids.hydration, name: "Daily Hydration", asin: "B0DH4T156M" }], missingAsins: [] }] };
-    if (path === "/api/reorder/discounts/coupons/import") { const row = discount(uuid(), "amazon_coupon", "Imported Coupon", [findProduct(input.sellingAccountId === ids.account ? ids.hydration : ids.hydration)].filter(Boolean), { benefit_summary: "15% off", coupon_type: "reorder", is_visible_on_fc: input.isVisibleOnFc === true }); state.discounts.unshift(row); persist(); return { imported: 1, discounts: [presentDiscount(row)] }; }
+    if (path === "/api/reorder/discounts/coupons/preview") return {
+      review: { couponsDetected: 1, rowsWithParsingIssues: 0, unmappedColumns: [] },
+      rows: [{
+        rowNumber: 2,
+        title: "Reorder 15%",
+        eligibleAsins: ["B0DH4T156M"],
+        benefitKind: "percentage_off",
+        benefitValue: 15,
+        benefitSummary: "15% off",
+        startAt: "2026-09-01T00:00:00Z",
+        endAt: "2026-10-01T00:00:00Z",
+        couponType: "reorder",
+        couponBudget: 1000,
+        onePerCustomer: true,
+        targetedSegment: "All buyers",
+        stackingConfiguration: "No",
+        errors: [],
+      }],
+    };
+    if (path === "/api/reorder/discounts/coupons/import") {
+      const assignment = (input.assignments || [])[0] || {};
+      const selectedProducts = state.products.filter((item) => (assignment.productVersionIds || []).includes(item.id));
+      if (!input.sellingAccountId || !selectedProducts.length) fail("Match Amazon Catalog Items for every Coupon");
+      const row = discount(uuid(), "amazon_coupon", "Imported Coupon", selectedProducts, { benefit_summary: "15% off", coupon_type: "reorder", is_visible_on_fc: input.isVisibleOnFc === true });
+      state.discounts.unshift(row);
+      persist();
+      return { imported: 1, discounts: [presentDiscount(row)] };
+    }
     const discountMatch = path.match(/^\/api\/reorder\/discounts\/([^/]+)(\/claim-codes\/import|\/claim-codes|\/products)?$/);
     if (discountMatch) { const row = findDiscount(discountMatch[1]); if (!row) fail("Discount not found"); if (!discountMatch[2]) { if (method === "PUT") { if (input.couponType) row.coupon_type = input.couponType; if (typeof input.amazonConfirmed === "boolean") row.amazon_confirmed = input.amazonConfirmed; if (typeof input.isVisibleOnFc === "boolean") row.is_visible_on_fc = input.isVisibleOnFc; persist(); } return presentDiscount(row); } if (discountMatch[2] === "/claim-codes") return { codes: claimCodeInventory(row) }; if (discountMatch[2] === "/products") { const mapped = state.products.filter((item) => (input.productVersionIds || []).includes(item.id)); mapped.forEach((productRow) => { if (!row.products.some((item) => item.id === productRow.id)) row.products.push({ ...productRow }); }); persist(); return presentDiscount(row); } const added = 3; row.codePool = row.codePool || { total: 0, available: 0, assigned: 0, displayed: 0, copied: 0, status: "exhausted" }; row.codePool.total += added; row.codePool.available += added; row.codePool.status = "low"; persist(); return { total: added, accepted: added, duplicates: 0, rejected: 0, duplicateRows: [], rejectedRows: [] }; }
     if (path === "/api/reorder/surveys" && method === "GET") return { surveys: state.surveys };

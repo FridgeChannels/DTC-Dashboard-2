@@ -637,6 +637,7 @@ export async function handleImportReorderCoupons(req: IncomingMessage, res: Serv
       sellingAccountId?: unknown;
       fileName?: unknown;
       fileBase64?: unknown;
+      assignments?: unknown;
       acknowledgeUnmappedColumns?: unknown;
       isVisibleOnFc?: unknown;
     }>(req);

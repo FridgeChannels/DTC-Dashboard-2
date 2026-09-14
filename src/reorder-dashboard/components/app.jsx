@@ -2206,16 +2206,16 @@ function DiscountListPage({ readOnly }) {
   );
 }
 
-function CouponImportForm({ accounts, product, readOnly, onDone }) {
+function CouponImportForm({ accounts, products, product, readOnly, onDone }) {
   const inheritedAccountId = product?.selling_account_id || accounts[0]?.id || "";
   const [sellingAccountId, setSellingAccountId] = useState(inheritedAccountId);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [assignments, setAssignments] = useState({});
   const [acknowledged, setAcknowledged] = useState(false);
   const [visibleOnFc, setVisibleOnFc] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
-  const accountLocked = Boolean(product);
 
   const previewFile = async (selected) => {
     if (!selected || !sellingAccountId) return;
@@ -2223,20 +2223,51 @@ function CouponImportForm({ accounts, product, readOnly, onDone }) {
     try {
       const fileBase64 = await readFileAsDataUrl(selected);
       const next = { fileName: selected.name, fileBase64 };
-      setFile(next);
-      setPreview(await api("/api/reorder/discounts/coupons/preview", {
+      const result = await api("/api/reorder/discounts/coupons/preview", {
         method: "POST",
         body: JSON.stringify({ sellingAccountId, ...next }),
-      }));
+      });
+      const initialAssignments = {};
+      (result.rows || []).forEach((row) => {
+        const eligibleAsins = Array.isArray(row.eligibleAsins) ? row.eligibleAsins : [];
+        const matches = (products || []).filter((item) =>
+          item.selling_account_id === inheritedAccountId && eligibleAsins.includes(item.asin));
+        initialAssignments[row.rowNumber] = {
+          productVersionIds: matches.map((item) => item.id),
+        };
+      });
+      setFile(next);
+      setAssignments(initialAssignments);
+      setPreview(result);
     } catch (err) { setError(err.message); } finally { setWorking(false); }
   };
+
+  const assignmentFor = (row) => assignments[row.rowNumber] || { productVersionIds: [] };
+  const setAssignment = (rowNumber, update) => setAssignments((current) => ({
+    ...current,
+    [rowNumber]: { ...(current[rowNumber] || { productVersionIds: [] }), ...update },
+  }));
+  const allRowsAssigned = preview?.rows?.every((row) => {
+    if ((row.errors || []).length) return true;
+    const assignment = assignmentFor(row);
+    const matchedAsins = new Set((products || [])
+      .filter((item) => item.selling_account_id === sellingAccountId && assignment.productVersionIds.includes(item.id))
+      .map((item) => item.asin));
+    return (row.eligibleAsins || []).every((asin) => matchedAsins.has(asin));
+  });
 
   const importFile = async () => {
     setWorking(true); setError("");
     try {
       await api("/api/reorder/discounts/coupons/import", {
         method: "POST",
-        body: JSON.stringify({ sellingAccountId, ...file, acknowledgeUnmappedColumns: acknowledged, isVisibleOnFc: visibleOnFc }),
+        body: JSON.stringify({
+          sellingAccountId,
+          ...file,
+          assignments: Object.entries(assignments).map(([rowNumber, assignment]) => ({ rowNumber: Number(rowNumber), ...assignment })),
+          acknowledgeUnmappedColumns: acknowledged,
+          isVisibleOnFc: visibleOnFc,
+        }),
       });
       if (onDone) onDone();
       else navigate("/reorder/discounts");
@@ -2248,9 +2279,9 @@ function CouponImportForm({ accounts, product, readOnly, onDone }) {
       {error && <PageState tone="error">{error}</PageState>}
       <section className="cfg-section">
         <div className="reorder-section-label">Coupon file</div>
-        <p className="reorder-guidance">Upload the Amazon Coupon file. FC records an existing Coupon and matches Eligible ASINs to Amazon Catalog Items. It does not create the Coupon in Amazon.</p>
+        <p className="reorder-guidance">Choose the Selling Account first. Then upload the Amazon Coupon file and confirm matching Amazon Catalog Items for every Coupon.</p>
         <div className="cfg-form grid grid-2">
-          <label className="cfg-field"><span className="cfg-label">Selling Account / Marketplace</span><select className="cfg-input" value={sellingAccountId} disabled={readOnly || working || accountLocked} onChange={(event) => { setSellingAccountId(event.target.value); setPreview(null); setFile(null); }}><option value="">Select account</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}</select></label>
+          <label className="cfg-field"><span className="cfg-label">Selling Account / Marketplace</span><select className="cfg-input" value={sellingAccountId} disabled={readOnly || working || Boolean(product)} onChange={(event) => { setSellingAccountId(event.target.value); setPreview(null); setFile(null); setAssignments({}); }}><option value="">Select account</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.label} · {account.marketplace_code}</option>)}</select></label>
           <div className="cfg-field">
             <span className="cfg-label">Amazon Coupon file</span>
             <FileButton id="reorder-coupon-file" label={file?.fileName || "Choose file"} accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={readOnly || working || !sellingAccountId} fileName={file?.fileName} onFile={previewFile} />
@@ -2260,21 +2291,25 @@ function CouponImportForm({ accounts, product, readOnly, onDone }) {
       {working && !preview && <PageState>Reading Amazon workbook…</PageState>}
       {preview && (
         <section className="reorder-flat-section">
-          <div className="reorder-section-label">Review</div>
+          <div className="reorder-section-label">Review coupons</div>
           <div className="reorder-import-summary">
             <div><span>Coupons detected</span><strong>{preview.review.couponsDetected}</strong></div>
-            <div><span>Amazon Catalog Items matched</span><strong>{preview.review.productsMatched}</strong></div>
-            <div><span>Amazon Catalog Item mapping required</span><strong>{preview.review.productMappingRequired}</strong></div>
             <div><span>Parsing issues</span><strong>{preview.review.rowsWithParsingIssues}</strong></div>
           </div>
-          {preview.rows.map((row) => (
-            <p className={row.errors.length ? "reorder-import-row-error" : "reorder-guidance"} key={row.rowNumber}>
-              Row {row.rowNumber} · {row.mappingStatus || (row.missingAsins?.length ? "Amazon Catalog Item mapping required" : "Matched")}
-              {row.matchedProducts?.length ? ` · ${row.matchedProducts.map((item) => item.name).join(", ")}` : ""}
-              {row.missingAsins?.length ? ` · unmatched ${row.missingAsins.join(", ")}` : ""}
-              {row.errors.length ? ` · ${row.errors.join(" · ")}` : ""}
-            </p>
-          ))}
+          <div className="reorder-table-wrap">
+            <table className="reorder-table reorder-coupon-review-table">
+              <thead>
+                <tr>
+                  <th>Row</th><th>Coupon title</th><th>Discount</th><th>Eligible ASINs</th><th>Budget</th>
+                  <th>Period</th><th>Coupon type</th><th>One per buyer</th><th>Target buyers</th>
+                  <th>Stacked promotions</th><th>Match Amazon Catalog Items</th>
+                </tr>
+              </thead>
+              <tbody>{preview.rows.map((row) => (
+                <CouponImportReviewRow key={row.rowNumber} row={row} products={products} sellingAccountId={sellingAccountId} assignment={assignmentFor(row)} readOnly={readOnly} onChange={(update) => setAssignment(row.rowNumber, update)} />
+              ))}</tbody>
+            </table>
+          </div>
           {preview.review.unmappedColumns.length > 0 && (
             <PageState tone="error">
               Unmapped Amazon columns: {preview.review.unmappedColumns.join(", ")}
@@ -2283,11 +2318,46 @@ function CouponImportForm({ accounts, product, readOnly, onDone }) {
           )}
           <div className="reorder-editor-actions">
             <FcDisplaySwitch checked={visibleOnFc} disabled={readOnly || working} onChange={setVisibleOnFc} />
-            <button className="btn primary" disabled={readOnly || working || !preview.review.canImport || (preview.review.unmappedColumns.length > 0 && !acknowledged)} onClick={importFile}>{working ? "Saving…" : "Import"}</button>
+            <button className="btn primary" disabled={readOnly || working || !allRowsAssigned || (preview.review.unmappedColumns.length > 0 && !acknowledged)} onClick={importFile}>{working ? "Saving…" : "Import"}</button>
           </div>
         </section>
       )}
     </>
+  );
+}
+
+function CouponImportReviewRow({ row, products, sellingAccountId, assignment, readOnly, onChange }) {
+  const eligibleAsins = Array.isArray(row.eligibleAsins) ? row.eligibleAsins : [];
+  const errors = Array.isArray(row.errors) ? row.errors : [];
+  const candidates = (products || []).filter((item) =>
+    item.selling_account_id === sellingAccountId && eligibleAsins.includes(item.asin));
+  const selectedIds = assignment.productVersionIds || [];
+  const matchedAsins = new Set(candidates.filter((item) => selectedIds.includes(item.id)).map((item) => item.asin));
+  const missingAsins = eligibleAsins.filter((asin) => !matchedAsins.has(asin));
+  const toggleProduct = (id) => onChange({
+    productVersionIds: selectedIds.includes(id) ? selectedIds.filter((value) => value !== id) : [...selectedIds, id],
+  });
+  return (
+    <tr className={errors.length ? "is-static" : ""}>
+      <td className="reorder-mono">{row.rowNumber}</td>
+      <td><strong>{row.title || "—"}</strong></td>
+      <td>{row.benefitSummary || "—"}</td>
+      <td className="reorder-mono">{eligibleAsins.join(", ") || "—"}</td>
+      <td>{row.couponBudget == null ? "—" : `$${row.couponBudget}`}</td>
+      <td>{row.startAt && row.endAt ? `${formatDate(row.startAt)} – ${formatDate(row.endAt)}` : "—"}</td>
+      <td>{row.couponType ? humanize(row.couponType) : "—"}</td>
+      <td>{row.onePerCustomer == null ? "—" : row.onePerCustomer ? "Yes" : "No"}</td>
+      <td>{row.targetedSegment || "—"}</td>
+      <td>{row.stackingConfiguration || "—"}</td>
+      <td>
+        {errors.length > 0 ? <span className="reorder-import-row-error">{errors.join(" · ")}</span>
+          : !candidates.length ? <span className="reorder-import-row-error">No matching Catalog Items.</span>
+          : <div className="reorder-product-options">{candidates.map((item) => (
+            <label key={item.id}><input type="checkbox" checked={selectedIds.includes(item.id)} disabled={readOnly} onChange={() => toggleProduct(item.id)} /><span>{item.product_name}<small className="reorder-mono">{item.asin}</small></span></label>
+          ))}</div>}
+        {missingAsins.length > 0 && <p className="reorder-import-row-error">Still needs: {missingAsins.join(", ")}</p>}
+      </td>
+    </tr>
   );
 }
 
@@ -2524,7 +2594,7 @@ function AddDiscountPage({ readOnly }) {
       {!error && !accounts.length && <><PageState tone="error">Complete Amazon setup before adding a Discount.</PageState><button className="btn primary" onClick={() => openRelated("/reorder/settings/amazon")}>Open Amazon setup</button></>}
       {!error && accounts.length > 0 && <>
         {kind === "amazon_coupon"
-          ? <CouponImportForm accounts={accounts} product={product} readOnly={readOnly} onDone={() => navigate(backTo)} />
+          ? <CouponImportForm accounts={accounts} products={products} product={product} readOnly={readOnly} onDone={() => navigate(backTo)} />
           : <PromotionForm accounts={accounts} products={products} product={product} readOnly={readOnly} onDone={() => navigate(backTo)} />}
       </>}
     </div>

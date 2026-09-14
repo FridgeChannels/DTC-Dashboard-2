@@ -8,20 +8,43 @@ const TEMPLATE_VERSION = "amazon_spc_2025_interim";
 const COUPON_EXTENSIONS = [".xlsx", ".xls"];
 const CLAIM_CODE_EXTENSIONS = [".csv", ".txt", ".xlsx", ".xls"];
 
-const KNOWN_COUPON_HEADERS = new Set([
-  "asin list",
-  "discount type ($ off or % off)",
-  "coupon discount \"% off\" value",
-  "coupon discount \"$ off\" value",
-  "coupon title",
-  "coupon budget",
-  "coupon start date",
-  "coupon end date",
-  "limit redemption to one per customer",
-  "targeted segment",
-  "stacked promotions",
-  "coupon type",
-]);
+const COUPON_HEADER_ALIASES: Record<string, string> = {
+  "asin list": "asin list",
+  "asin 列表": "asin list",
+  "discount type ($ off or % off)": "discount type ($ off or % off)",
+  "折扣类型（满减$或折扣）": "discount type ($ off or % off)",
+  "折扣类型(满减$或折扣)": "discount type ($ off or % off)",
+  'coupon discount "% off" value': 'coupon discount "% off" value',
+  'coupon discount “% off” value': 'coupon discount "% off" value',
+  '优惠券“折扣”数值': 'coupon discount "% off" value',
+  '优惠券"%折扣"数值': 'coupon discount "% off" value',
+  'coupon discount "$ off" value': 'coupon discount "$ off" value',
+  'coupon discount “$ off” value': 'coupon discount "$ off" value',
+  '优惠券折扣“满减$”金额': 'coupon discount "$ off" value',
+  '优惠券“满减$”金额': 'coupon discount "$ off" value',
+  "coupon title": "coupon title",
+  "优惠券名称": "coupon title",
+  "coupon budget": "coupon budget",
+  "优惠券预算": "coupon budget",
+  "coupon start date": "coupon start date",
+  "优惠券开始日期": "coupon start date",
+  "coupon end date": "coupon end date",
+  "优惠券结束日期": "coupon end date",
+  "limit redemption to one per customer": "limit redemption to one per customer",
+  "限制每位买家只能兑换一次": "limit redemption to one per customer",
+  "coupon type": "coupon type",
+  "优惠券类型": "coupon type",
+  "targeted segment": "targeted segment",
+  "目标买家": "targeted segment",
+  "stacked promotions": "stacked promotions",
+  "叠加使用的促销": "stacked promotions",
+  "upload result": "upload result",
+  "上传结果": "upload result",
+  error: "error",
+  "错误": "error",
+};
+
+const KNOWN_COUPON_HEADERS = new Set(Object.values(COUPON_HEADER_ALIASES));
 
 export interface UploadedDiscountFile {
   fileName?: unknown;
@@ -57,6 +80,11 @@ export interface ParsedCouponFile {
 
 function normalizeHeader(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function canonicalCouponHeader(value: string): string {
+  const normalized = normalizeHeader(value);
+  return COUPON_HEADER_ALIASES[normalized] ?? normalized;
 }
 
 function requireFile(input: UploadedDiscountFile, allowedExtensions: string[]) {
@@ -111,6 +139,14 @@ function parseNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseNumericCell(cell: ExcelJS.Cell): number | null {
+  if (typeof cell.value === "number") {
+    const format = String(cell.numFmt || "").replace(/\s+/g, "");
+    return format.includes("%") ? cell.value * 100 : cell.value;
+  }
+  return parseNumber(cellText(cell));
+}
+
 function parseDate(cell: ExcelJS.Cell): string | null {
   if (cell.value instanceof Date) return cell.value.toISOString();
   if (typeof cell.value === "number") {
@@ -127,13 +163,16 @@ function parseDate(cell: ExcelJS.Cell): string | null {
 function parseBoolean(value: string): boolean | null {
   if (!value.trim()) return null;
   const normalized = value.trim().toLowerCase();
-  if (["yes", "y", "true", "1"].includes(normalized)) return true;
-  if (["no", "n", "false", "0"].includes(normalized)) return false;
+  if (["yes", "y", "true", "1", "是"].includes(normalized)) return true;
+  if (["no", "n", "false", "0", "否"].includes(normalized)) return false;
   return null;
 }
 
 function parseCouponType(value: string): ParsedCouponRow["couponType"] {
   const normalized = value.trim().toLowerCase().replace(/[&\s-]+/g, "_");
+  if (normalized.includes("标准")) return "standard";
+  if (normalized.includes("回购")) return "reorder";
+  if (normalized.includes("订购省")) return "subscribe_and_save";
   if (normalized === "standard") return "standard";
   if (normalized === "reorder") return "reorder";
   if (["subscribe_save", "subscribe_and_save"].includes(normalized)) return "subscribe_and_save";
@@ -145,11 +184,14 @@ function findCouponHeader(worksheet: ExcelJS.Worksheet) {
   for (let rowNumber = 1; rowNumber <= limit; rowNumber += 1) {
     const row = worksheet.getRow(rowNumber);
     const headers = new Map<string, number>();
+    const rawHeaders: string[] = [];
     row.eachCell({ includeEmpty: false }, (cell, columnNumber) => {
-      headers.set(normalizeHeader(cellText(cell)), columnNumber);
+      const raw = normalizeHeader(cellText(cell));
+      rawHeaders.push(raw);
+      headers.set(canonicalCouponHeader(raw), columnNumber);
     });
     if (headers.has("asin list") && headers.has("coupon title")) {
-      return { rowNumber, headers };
+      return { rowNumber, headers, rawHeaders };
     }
   }
   throw new ReorderValidationError("The workbook does not match the verified Amazon Coupon template");
@@ -170,8 +212,8 @@ export async function parseAmazonCouponWorkbook(input: UploadedDiscountFile): Pr
   const worksheet = workbook.worksheets[0];
   if (!worksheet) throw new ReorderValidationError("Workbook does not contain a worksheet");
   const header = findCouponHeader(worksheet);
-  const unmappedColumns = [...header.headers.keys()]
-    .filter((value) => value && !KNOWN_COUPON_HEADERS.has(value));
+  const unmappedColumns = header.rawHeaders
+    .filter((value) => value && !KNOWN_COUPON_HEADERS.has(canonicalCouponHeader(value)));
   const column = (name: string) => header.headers.get(name) ?? 0;
   const rows: ParsedCouponRow[] = [];
 
@@ -184,8 +226,12 @@ export async function parseAmazonCouponWorkbook(input: UploadedDiscountFile): Pr
     const title = get("coupon title");
     const eligibleAsins = asins(get("asin list"));
     const discountType = get("discount type ($ off or % off)").toLowerCase();
-    const percentage = parseNumber(get("coupon discount \"% off\" value"));
-    const amount = parseNumber(get("coupon discount \"$ off\" value"));
+    const percentage = column('coupon discount "% off" value')
+      ? parseNumericCell(cellValue(worksheet, rowNumber, column('coupon discount "% off" value')))
+      : null;
+    const amount = column('coupon discount "$ off" value')
+      ? parseNumericCell(cellValue(worksheet, rowNumber, column('coupon discount "$ off" value')))
+      : null;
     const benefitKind = discountType.includes("%") || (percentage != null && amount == null)
       ? "percentage_off" as const
       : "money_off" as const;

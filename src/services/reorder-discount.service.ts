@@ -167,82 +167,110 @@ export async function getReorderDiscount(customerId: number, discountId: string)
   });
 }
 
-async function buildCouponReview(customerId: number, sellingAccountId: unknown, file: UploadedDiscountFile) {
-  const account = await requireAccount(customerId, sellingAccountId);
-  const [parsed, products] = await Promise.all([
-    parseAmazonCouponWorkbook(file),
-    productRepo.listCurrentProducts(customerId),
-  ]);
-  const eligibleProducts = products.filter((product) => product.selling_account_id === account.id);
-  const rows = parsed.rows.map((row) => {
-    const matches = eligibleProducts.filter((product) => row.eligibleAsins.includes(product.asin));
-    const matchedAsins = new Set(matches.map((product) => product.asin));
-    const missingAsins = row.eligibleAsins.filter((asin) => !matchedAsins.has(asin));
-    return {
-      ...row,
-      productVersionIds: matches.map((product) => product.id),
-      matchedProducts: matches.map((product) => ({ id: product.id, name: product.product_name, asin: product.asin })),
-      missingAsins,
-      mappingStatus: missingAsins.length ? "Amazon Catalog Item mapping required" : "Matched",
-      errors: [...row.errors],
-    };
-  });
-  const matchedIds = new Set(rows.flatMap((row) => row.productVersionIds));
-  const parseErrors = rows.filter((row) => row.errors.length).length;
-  return {
-    account,
-    parsed,
-    rows,
-    review: {
-      couponsDetected: rows.length,
-      productsMatched: matchedIds.size,
-      productMappingRequired: rows.filter((row) => row.missingAsins.length).length,
-      rowsWithParsingIssues: parseErrors,
-      unmappedColumns: parsed.unmappedColumns,
-      canImport: rows.some((row) => !row.errors.length),
-    },
-  };
+export interface CouponImportAssignment {
+  rowNumber?: unknown;
+  productVersionIds?: unknown;
+}
+
+async function parseCouponFile(file: UploadedDiscountFile) {
+  return parseAmazonCouponWorkbook(file);
 }
 
 export async function previewAmazonCouponImport(
   customerId: number,
   input: UploadedDiscountFile & { sellingAccountId?: unknown },
 ) {
-  const result = await buildCouponReview(customerId, input.sellingAccountId, input);
-  return { review: result.review, rows: result.rows };
+  await requireAccount(customerId, input.sellingAccountId);
+  const parsed = await parseCouponFile(input);
+  return {
+    review: {
+      couponsDetected: parsed.rows.length,
+      rowsWithParsingIssues: parsed.rows.filter((row) => row.errors.length).length,
+      unmappedColumns: parsed.unmappedColumns,
+    },
+    rows: parsed.rows,
+  };
 }
 
 export async function importAmazonCoupons(
   customerId: number,
-  input: UploadedDiscountFile & { sellingAccountId?: unknown; acknowledgeUnmappedColumns?: unknown; isVisibleOnFc?: unknown },
+  input: UploadedDiscountFile & {
+    sellingAccountId?: unknown;
+    assignments?: unknown;
+    acknowledgeUnmappedColumns?: unknown;
+    isVisibleOnFc?: unknown;
+  },
 ) {
-  const result = await buildCouponReview(customerId, input.sellingAccountId, input);
-  if (result.parsed.unmappedColumns.length && input.acknowledgeUnmappedColumns !== true) {
+  const parsed = await parseCouponFile(input);
+  if (parsed.unmappedColumns.length && input.acknowledgeUnmappedColumns !== true) {
     throw new ReorderValidationError("Review and acknowledge unmapped Amazon columns before importing");
   }
-  const accepted = result.rows.filter((row) => !row.errors.length);
-  if (!accepted.length) throw new ReorderValidationError("No importable Coupon rows were found");
+  if (!Array.isArray(input.assignments)) {
+    throw new ReorderValidationError("Match Amazon Catalog Items for every Coupon");
+  }
+  const assignmentByRow = new Map<number, CouponImportAssignment>();
+  for (const assignment of input.assignments) {
+    if (!assignment || typeof assignment !== "object") continue;
+    const rowNumber = Number((assignment as CouponImportAssignment).rowNumber);
+    if (!Number.isInteger(rowNumber) || assignmentByRow.has(rowNumber)) {
+      throw new ReorderValidationError("Coupon assignments are invalid");
+    }
+    assignmentByRow.set(rowNumber, assignment as CouponImportAssignment);
+  }
+
+  const validRows = parsed.rows.filter((row) => !row.errors.length);
+  if (!validRows.length) throw new ReorderValidationError("No importable Coupon rows were found");
+  const account = await requireAccount(customerId, input.sellingAccountId);
+  const products = await productRepo.listCurrentProducts(customerId);
+  const rows: unknown[] = [];
+
+  for (const row of validRows) {
+    const assignment = assignmentByRow.get(row.rowNumber);
+    if (!Array.isArray(assignment?.productVersionIds) || !assignment.productVersionIds.length) {
+      throw new ReorderValidationError(`Row ${row.rowNumber}: match at least one Amazon Catalog Item`);
+    }
+    const selectedIds = [...new Set(assignment.productVersionIds.map((value) => uuid(value, "Amazon Catalog Item")))];
+    const selectedProducts = products.filter((product) =>
+      selectedIds.includes(product.id)
+      && product.selling_account_id === account.id
+      && row.eligibleAsins.includes(product.asin),
+    );
+    const matchedAsins = new Set(selectedProducts.map((product) => product.asin));
+    const missingAsins = row.eligibleAsins.filter((asin) => !matchedAsins.has(asin));
+    if (selectedProducts.length !== selectedIds.length || missingAsins.length) {
+      throw new ReorderValidationError(`Row ${row.rowNumber}: match every eligible ASIN to an Amazon Catalog Item on the selected Selling Account`);
+    }
+    rows.push({
+      ...row,
+      productVersionIds: selectedIds,
+      marketplaceCode: account.marketplace_code,
+      errors: undefined,
+    });
+  }
+
   const imported = await discountRepo.importAmazonCoupons({
     customerId,
-    sellingAccountId: result.account.id,
-    fileName: result.parsed.fileName,
-    sha256: result.parsed.sha256,
-    fileBase64: result.parsed.fileBase64,
-    templateVersion: result.parsed.templateVersion,
-    unmappedColumns: result.parsed.unmappedColumns,
-    totalRows: result.rows.length,
-    rejectedRows: result.rows.length - accepted.length,
+    sellingAccountId: account.id,
+    fileName: parsed.fileName,
+    sha256: parsed.sha256,
+    fileBase64: parsed.fileBase64,
+    templateVersion: parsed.templateVersion,
+    unmappedColumns: parsed.unmappedColumns,
+    totalRows: rows.length,
+    rejectedRows: 0,
     visible: input.isVisibleOnFc === true,
-    rows: accepted.map((row) => ({
-      ...row,
-      marketplaceCode: result.account.marketplace_code,
-      errors: undefined,
-      matchedProducts: undefined,
-      missingAsins: undefined,
-      mappingStatus: undefined,
-    })),
+    rows,
   });
-  return { imported: imported.length, rejected: result.rows.length - imported.length, discounts: imported, review: result.review };
+  return {
+    imported: imported.length,
+    rejected: parsed.rows.length - validRows.length,
+    discounts: imported,
+    review: {
+      couponsDetected: parsed.rows.length,
+      rowsWithParsingIssues: parsed.rows.length - validRows.length,
+      unmappedColumns: parsed.unmappedColumns,
+    },
+  };
 }
 
 export interface CreatePromotionInput {

@@ -43,6 +43,52 @@ async function couponWorkbook(extraHeader?: string) {
   return Buffer.from(buffer).toString("base64");
 }
 
+async function localizedCouponWorkbook() {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("上传模板");
+  sheet.addRow(["说明："]);
+  sheet.addRow(["必填列已标红。提交前，请先填完必填列。"]);
+  sheet.addRow(["仅需填写灰色单元格"]);
+  sheet.addRow(["请勿填写橙色单元格"]);
+  sheet.addRow([]);
+  sheet.addRow(["模板说明"]);
+  sheet.addRow([
+    "ASIN 列表",
+    "折扣类型（满减$或折扣）",
+    "优惠券“折扣”数值",
+    "优惠券折扣“满减$”金额",
+    "优惠券名称",
+    "优惠券预算",
+    "优惠券开始日期",
+    "优惠券结束日期",
+    "限制每位买家只能兑换一次",
+    "优惠券类型",
+    "目标买家",
+    "叠加使用的促销",
+    "上传结果",
+    "错误",
+  ]);
+  sheet.addRow([
+    "B0DH4T156M; B012345678",
+    "折扣",
+    0.15,
+    "",
+    "回购 15%",
+    1000,
+    new Date("2026-09-01T00:00:00Z"),
+    new Date("2026-10-01T00:00:00Z"),
+    "是",
+    "回购优惠券",
+    "所有买家",
+    "否",
+    "",
+    "",
+  ]);
+  sheet.getRow(8).getCell(3).numFmt = "0%";
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer).toString("base64");
+}
+
 describe("Amazon Coupon workbook parser", () => {
   it("maps the verified 2025 interim schema without asking for duplicate FC fields", async () => {
     const result = await parseAmazonCouponWorkbook({
@@ -68,6 +114,27 @@ describe("Amazon Coupon workbook parser", () => {
       fileBase64: await couponWorkbook("New Amazon Field"),
     });
     expect(result.unmappedColumns).toEqual(["new amazon field"]);
+  });
+
+  it("parses the localized Amazon coupon template used by Import Amazon Coupon", async () => {
+    const result = await parseAmazonCouponWorkbook({
+      fileName: "Coupon_SPC_Template.xlsx",
+      fileBase64: await localizedCouponWorkbook(),
+    });
+    expect(result.unmappedColumns).toEqual([]);
+    expect(result.rows[0]).toEqual(expect.objectContaining({
+      title: "回购 15%",
+      eligibleAsins: ["B0DH4T156M", "B012345678"],
+      benefitKind: "percentage_off",
+      benefitValue: 15,
+      benefitSummary: "15% off",
+      couponType: "reorder",
+      couponBudget: 1000,
+      onePerCustomer: true,
+      targetedSegment: "所有买家",
+      stackingConfiguration: "否",
+      errors: [],
+    }));
   });
 });
 

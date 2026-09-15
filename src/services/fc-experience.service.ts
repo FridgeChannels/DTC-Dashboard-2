@@ -9,6 +9,9 @@ export type ExperienceResolveResult = {
   reason?: string;
   customerId?: number;
   magnetId?: number;
+  /** From magnet_brand_param.brand_logo — for entry loading shell (no extra round-trip). */
+  brandLogo?: string | null;
+  brandName?: string | null;
 };
 
 const SN_PATTERN = /^[A-Z0-9-]{4,80}$/;
@@ -16,6 +19,7 @@ const SN_PATTERN = /^[A-Z0-9-]{4,80}$/;
 /**
  * /p/{sn} router: magnet is card SoT; experience comes from magnet_brand_param.
  * Not DTC ⇒ asin_plus. Does not use reorder_fc_unit or /api/reorder/consumer.
+ * brandLogo/brandName piggyback on the same brand_param read (no extra query / endpoint).
  */
 export async function resolveFcExperience(snValue: string): Promise<ExperienceResolveResult> {
   const sn = String(snValue ?? "").trim().toUpperCase();
@@ -39,5 +43,7 @@ export async function resolveFcExperience(snValue: string): Promise<ExperienceRe
     sn,
     customerId: magnet.customer_id,
     magnetId: magnet.id,
+    brandLogo: brandParam?.brand_logo ?? null,
+    brandName: brandParam?.brand_name ?? null,
   };
 }

@@ -54,6 +54,8 @@ describe("resolveFcExperience via magnet_brand_param", () => {
       sn: "DTC001",
       customerId: 3,
       magnetId: 11,
+      brandLogo: null,
+      brandName: "Brand",
     });
   });
 
@@ -73,7 +75,7 @@ describe("resolveFcExperience via magnet_brand_param", () => {
       magnet_sn: "ASIN01",
       experience: "asin_plus",
       brand_name: "Brand",
-      brand_logo: null,
+      brand_logo: "https://cdn.example.com/brand.png",
       website: null,
       store_website: null,
       product_name: null,
@@ -85,6 +87,8 @@ describe("resolveFcExperience via magnet_brand_param", () => {
       sn: "ASIN01",
       customerId: 9,
       magnetId: 22,
+      brandLogo: "https://cdn.example.com/brand.png",
+      brandName: "Brand",
     });
   });
 
@@ -104,6 +108,8 @@ describe("resolveFcExperience via magnet_brand_param", () => {
       sn: "LEGACY1",
       customerId: 1,
       magnetId: 33,
+      brandLogo: null,
+      brandName: null,
     });
   });
 });

@@ -171,9 +171,9 @@ function AdminNavItem({ item, active, onSelect }) {
   );
 }
 
-function AdminSidebar({ section, onSectionChange, connections, setupProgress }) {
+function AdminSidebar({ section, onSectionChange, connections, setupProgress, productLine }) {
   const groups = buildNavGroups(
-    { ...connections, productLine: auth.user?.customer?.product_line || "both" },
+    { ...connections, productLine: productLine || "both" },
     setupProgress,
   );
   const accountsActive = ACCOUNT_MATCH.includes(section);
@@ -455,6 +455,7 @@ function AdminApp() {
         onSectionChange={handleSectionChange}
         connections={connections}
         setupProgress={setupProgress}
+        productLine={auth.user?.customer?.product_line || "both"}
       />
       <div className="admin-main">
         {section === DASHBOARD_SECTION.id

@@ -67,6 +67,16 @@ describe("product_line and magnet-bound unit migrations", () => {
     expect(sql).toContain("discount_asin");
   });
 
+  it("magnet_brand_param adds amazon_asin_url and amazon_frontstore", () => {
+    const sql = readFileSync(
+      resolve("supabase/migrations/20260929120000_magnet_brand_param_amazon_urls.sql"),
+      "utf8",
+    );
+    expect(sql).toContain("amazon_asin_url");
+    expect(sql).toContain("amazon_frontstore");
+    expect(sql).toContain("experience = 'asin_plus'");
+  });
+
   it("T6 creates asin_survey tables and isolates DTC availability", () => {
     const sql = readFileSync(
       resolve("supabase/migrations/20260913122000_asin_survey_tables_and_dtc_isolation.sql"),

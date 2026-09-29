@@ -52,8 +52,10 @@ const brandParamRow = {
   experience: "asin_plus" as const,
   brand_name: "PURA JUICE",
   brand_logo: "https://cdn.example.com/logo.svg",
-  website: "https://www.amazon.com/stores/PURA",
-  store_website: "https://www.amazon.com/dp/B0FCSEA001?tag=fc",
+  website: "https://brand.example.com",
+  store_website: "https://shop.example.com/products/pura",
+  amazon_asin_url: "https://www.amazon.com/dp/B0FCSEA001?tag=fc",
+  amazon_frontstore: "https://www.amazon.com/stores/PURA",
   product_name: "PURA Orange Juice",
   product_image_url: "https://cdn.example.com/product.png",
   asin_survey_campaign_id: "a15a0001-0000-4000-8000-000000000001",
@@ -122,6 +124,56 @@ describe("resolvePublishedReorderExperience from magnet_brand_param", () => {
       survey: { id: openSurvey.id, title: "Quick product feedback" },
     });
     expect(consumerRepo.findFcUnit).not.toHaveBeenCalled();
+  });
+
+  it("prefers amazon_* URLs over shared website/store_website for asin_plus", async () => {
+    vi.mocked(magnetRepo.getMagnetBySn).mockResolvedValue({
+      id: 2122,
+      customer_id: 5,
+      sn: "15VZQSHR7R",
+      url: null,
+      role: null,
+      stage: null,
+    });
+    vi.mocked(brandParamRepo.findMagnetBrandParamByMagnetId).mockResolvedValue({
+      ...brandParamRow,
+      store_website: "https://shop.example.com/products/dtc-only",
+      website: "https://brand.example.com",
+      amazon_asin_url: "https://www.amazon.com/dp/B0FCSEA001?tag=fc",
+      amazon_frontstore: "https://www.amazon.com/stores/PURA",
+    });
+
+    const experience = await resolvePublishedReorderExperience("15VZQSHR7R");
+    expect(experience).toMatchObject({
+      primaryCta: "https://www.amazon.com/dp/B0FCSEA001?tag=fc",
+      product: { attributionUrl: "https://www.amazon.com/dp/B0FCSEA001?tag=fc" },
+      fallback: { type: "seller_storefront", url: "https://www.amazon.com/stores/PURA" },
+      amazon: { storefrontUrl: "https://www.amazon.com/stores/PURA" },
+    });
+  });
+
+  it("falls back to store_website/website when amazon_* are empty", async () => {
+    vi.mocked(magnetRepo.getMagnetBySn).mockResolvedValue({
+      id: 2122,
+      customer_id: 5,
+      sn: "15VZQSHR7R",
+      url: null,
+      role: null,
+      stage: null,
+    });
+    vi.mocked(brandParamRepo.findMagnetBrandParamByMagnetId).mockResolvedValue({
+      ...brandParamRow,
+      amazon_asin_url: null,
+      amazon_frontstore: null,
+      store_website: "https://www.amazon.com/dp/B0LEGACY001?tag=fc",
+      website: "https://www.amazon.com/stores/LEGACY",
+    });
+
+    const experience = await resolvePublishedReorderExperience("15VZQSHR7R");
+    expect(experience).toMatchObject({
+      primaryCta: "https://www.amazon.com/dp/B0LEGACY001?tag=fc",
+      fallback: { type: "seller_storefront", url: "https://www.amazon.com/stores/LEGACY" },
+    });
   });
 
   it("DEMO: still returns survey when already completed for this FC ID", async () => {

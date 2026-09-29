@@ -232,8 +232,9 @@ async function buildExperienceFromBrandParam(
   brandParam: MagnetBrandParamRow,
   magnetCustomerId?: number | null,
 ) {
-  const productUrl = String(brandParam.store_website ?? "").trim();
-  const storeUrl = String(brandParam.website ?? "").trim();
+  // ASIN URLs live in amazon_*; store_website/website stay DTC Shopify / brand site.
+  const productUrl = brandParamRepo.resolveAsinProductUrl(brandParam);
+  const storeUrl = brandParamRepo.resolveAsinStorefrontUrl(brandParam);
   const productName = String(brandParam.product_name ?? "").trim();
   const imageUrl = String(brandParam.product_image_url ?? "").trim() || null;
   const brandName = String(brandParam.brand_name ?? "").trim() || "Brand";

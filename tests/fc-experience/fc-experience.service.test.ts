@@ -112,4 +112,57 @@ describe("resolveFcExperience via magnet_brand_param", () => {
       brandName: null,
     });
   });
+
+  it("honors preferred asin_plus for dual-channel magnets", async () => {
+    vi.mocked(magnetRepo.getMagnetBySn).mockResolvedValue({
+      id: 9977,
+      customer_id: 5,
+      sn: "F180360D",
+      url: null,
+      role: null,
+      stage: null,
+    });
+    vi.mocked(brandParamRepo.findMagnetBrandParamByMagnetId).mockImplementation(async (_id, experience) => {
+      if (experience === "asin_plus") {
+        return {
+          id: 767,
+          customer_id: 401,
+          magnet_id: 9977,
+          magnet_sn: "F180360D",
+          experience: "asin_plus",
+          brand_name: "Aiya",
+          brand_logo: "https://cdn.example.com/aiya.png",
+          website: null,
+          store_website: null,
+          product_name: "Matcha",
+          product_image_url: null,
+          asin_survey_campaign_id: null,
+        };
+      }
+      return {
+        id: 740,
+        customer_id: 401,
+        magnet_id: 9977,
+        magnet_sn: "F180360D",
+        experience: "dtc",
+        brand_name: "Aiya",
+        brand_logo: "https://cdn.example.com/aiya.png",
+        website: null,
+        store_website: null,
+        product_name: null,
+        product_image_url: null,
+        asin_survey_campaign_id: null,
+      };
+    });
+    await expect(resolveFcExperience("F180360D", "asin_plus")).resolves.toMatchObject({
+      experience: "asin_plus",
+      sn: "F180360D",
+      magnetId: 9977,
+      brandName: "Aiya",
+    });
+    await expect(resolveFcExperience("F180360D")).resolves.toMatchObject({
+      experience: "dtc",
+      sn: "F180360D",
+    });
+  });
 });

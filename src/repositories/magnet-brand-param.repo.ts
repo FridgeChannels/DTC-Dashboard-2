@@ -52,25 +52,57 @@ export function resolveAsinStorefrontUrl(row: MagnetBrandParamRow): string {
   return trimUrl(row.amazon_frontstore) || trimUrl(row.website);
 }
 
-export async function findMagnetBrandParamByMagnetId(magnetId: number) {
+/**
+ * Dual-channel bind keeps one row per (magnet, experience).
+ * maybeSingle() 500s with PGRST116 when both dtc and asin_plus exist.
+ * Default pick: dtc (sample /p/{sn} live demo), else the oldest row.
+ */
+export function pickMagnetBrandParam(
+  rows: MagnetBrandParamRow[] | null | undefined,
+  experience?: MagnetBrandExperience,
+): MagnetBrandParamRow | null {
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row != null);
+  if (!list.length) return null;
+  const sorted = [...list].sort((a, b) => a.id - b.id);
+  if (experience) {
+    return sorted.find((row) => row.experience === experience) ?? null;
+  }
+  return sorted.find((row) => row.experience === "dtc") ?? sorted[0];
+}
+
+export async function listMagnetBrandParamsByMagnetId(magnetId: number) {
   const { data, error } = await getSupabase()
     .from("magnet_brand_param")
     .select(BRAND_PARAM_SELECT)
     .eq("magnet_id", magnetId)
-    .maybeSingle();
+    .order("id", { ascending: true });
   throwIfError(error);
-  return data as MagnetBrandParamRow | null;
+  return (data ?? []) as MagnetBrandParamRow[];
 }
 
-export async function findMagnetBrandParamBySn(sn: string) {
+export async function listMagnetBrandParamsBySn(sn: string) {
   const normalized = String(sn ?? "").trim().toUpperCase();
   const { data, error } = await getSupabase()
     .from("magnet_brand_param")
     .select(BRAND_PARAM_SELECT)
     .eq("magnet_sn", normalized)
-    .maybeSingle();
+    .order("id", { ascending: true });
   throwIfError(error);
-  return data as MagnetBrandParamRow | null;
+  return (data ?? []) as MagnetBrandParamRow[];
+}
+
+export async function findMagnetBrandParamByMagnetId(
+  magnetId: number,
+  experience?: MagnetBrandExperience,
+) {
+  return pickMagnetBrandParam(await listMagnetBrandParamsByMagnetId(magnetId), experience);
+}
+
+export async function findMagnetBrandParamBySn(
+  sn: string,
+  experience?: MagnetBrandExperience,
+) {
+  return pickMagnetBrandParam(await listMagnetBrandParamsBySn(sn), experience);
 }
 
 /** Enough fields to render ASIN Plus landing without reorder publication. */

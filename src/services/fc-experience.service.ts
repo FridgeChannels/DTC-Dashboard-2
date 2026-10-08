@@ -16,12 +16,24 @@ export type ExperienceResolveResult = {
 
 const SN_PATTERN = /^[A-Z0-9-]{4,80}$/;
 
+function normalizePreferredExperience(value: string | null | undefined): "dtc" | "asin_plus" | undefined {
+  const wanted = String(value ?? "").trim().toLowerCase();
+  if (wanted === "asin_plus" || wanted === "dtc") return wanted;
+  return undefined;
+}
+
 /**
  * /p/{sn} router: magnet is card SoT; experience comes from magnet_brand_param.
- * Not DTC ⇒ asin_plus. Does not use reorder_fc_unit or /api/reorder/consumer.
+ * Dual-channel magnets keep both dtc and asin_plus rows; default pick is dtc
+ * so sample live demo /p/{sn} stays on FridgeChannel. Pass preferredExperience
+ * (query ?experience=asin_plus) to select the sibling row.
+ * Does not use reorder_fc_unit or /api/reorder/consumer.
  * brandLogo/brandName piggyback on the same brand_param read (no extra query / endpoint).
  */
-export async function resolveFcExperience(snValue: string): Promise<ExperienceResolveResult> {
+export async function resolveFcExperience(
+  snValue: string,
+  preferredExperience?: string | null,
+): Promise<ExperienceResolveResult> {
   const sn = String(snValue ?? "").trim().toUpperCase();
   if (!SN_PATTERN.test(sn)) {
     return { experience: "unknown", sn, reason: "invalid_sn" };
@@ -32,8 +44,9 @@ export async function resolveFcExperience(snValue: string): Promise<ExperienceRe
     return { experience: "unknown", sn, reason: "magnet_not_found" };
   }
 
-  const brandParam = await brandParamRepo.findMagnetBrandParamByMagnetId(magnet.id)
-    ?? await brandParamRepo.findMagnetBrandParamBySn(sn);
+  const wanted = normalizePreferredExperience(preferredExperience);
+  const brandParam = await brandParamRepo.findMagnetBrandParamByMagnetId(magnet.id, wanted)
+    ?? await brandParamRepo.findMagnetBrandParamBySn(sn, wanted);
 
   // Missing brand param row: treat as DTC (legacy magnets).
   const line = brandParam?.experience === "asin_plus" ? "asin_plus" : "dtc";

@@ -286,8 +286,7 @@ export async function resolvePublishedReorderExperience(fcIdValue: string) {
   // Prefer magnet_brand_param when ASIN Plus product fields are present.
   const magnet = await magnetRepo.getMagnetBySn(fcId);
   if (magnet) {
-    const brandParam = await brandParamRepo.findMagnetBrandParamByMagnetId(magnet.id)
-      ?? await brandParamRepo.findMagnetBrandParamBySn(fcId);
+    const brandParam = await findAsinPlusBrandParam(magnet.id, fcId);
     if (brandParamRepo.hasAsinPlusBrandParamContent(brandParam)) {
       return buildExperienceFromBrandParam(fcId, brandParam!, magnet.customer_id);
     }
@@ -421,12 +420,18 @@ export function validatePublishedSurveyAnswers(
   return errors;
 }
 
+async function findAsinPlusBrandParam(magnetId: number, sn: string) {
+  return (
+    (await brandParamRepo.findMagnetBrandParamByMagnetId(magnetId, "asin_plus"))
+    ?? (await brandParamRepo.findMagnetBrandParamBySn(sn, "asin_plus"))
+  );
+}
+
 export async function startPublishedReorderSurvey(fcIdValue: string, surveyId: string) {
   const fcId = fcIdValue.trim().toUpperCase();
   const magnet = await magnetRepo.getMagnetBySn(fcId);
   if (magnet) {
-    const brandParam = await brandParamRepo.findMagnetBrandParamByMagnetId(magnet.id)
-      ?? await brandParamRepo.findMagnetBrandParamBySn(fcId);
+    const brandParam = await findAsinPlusBrandParam(magnet.id, fcId);
     if (
       brandParamRepo.hasAsinPlusBrandParamContent(brandParam)
       && brandParam?.asin_survey_campaign_id === surveyId
@@ -460,8 +465,7 @@ export async function submitPublishedReorderSurvey(
   const fcId = fcIdValue.trim().toUpperCase();
   const magnet = await magnetRepo.getMagnetBySn(fcId);
   if (magnet) {
-    const brandParam = await brandParamRepo.findMagnetBrandParamByMagnetId(magnet.id)
-      ?? await brandParamRepo.findMagnetBrandParamBySn(fcId);
+    const brandParam = await findAsinPlusBrandParam(magnet.id, fcId);
     if (
       brandParamRepo.hasAsinPlusBrandParamContent(brandParam)
       && brandParam?.asin_survey_campaign_id === surveyId

@@ -2,9 +2,13 @@ import type { ServerResponse } from "node:http";
 import { errorJson, json, toErrorMessage } from "./http.js";
 import { resolveFcExperience } from "../services/fc-experience.service.js";
 
-export async function handleGetFcExperience(res: ServerResponse, rawSn: string) {
+export async function handleGetFcExperience(
+  res: ServerResponse,
+  rawSn: string,
+  preferredExperience?: string | null,
+) {
   try {
-    const result = await resolveFcExperience(decodeURIComponent(rawSn));
+    const result = await resolveFcExperience(decodeURIComponent(rawSn), preferredExperience);
     json(res, 200, result);
   } catch (error) {
     errorJson(res, 500, toErrorMessage(error, "Failed to resolve FC experience"));

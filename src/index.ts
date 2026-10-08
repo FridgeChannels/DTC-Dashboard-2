@@ -289,7 +289,7 @@ const server = createServer(async (req, res) => {
 
   const fcExperienceMatch = /^\/api\/fc\/experience\/([^/]+)$/.exec(pathname);
   if (req.method === "GET" && fcExperienceMatch) {
-    await handleGetFcExperience(res, fcExperienceMatch[1]);
+    await handleGetFcExperience(res, fcExperienceMatch[1], url.searchParams.get("experience"));
     return;
   }
 

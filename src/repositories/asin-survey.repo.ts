@@ -51,52 +51,34 @@ export function hashAsinSurveyFcId(customerId: number, fcId: string): string {
     .digest("hex");
 }
 
-export async function findOpenAsinSurveyCampaign(campaignId: string, customerId?: number | null) {
-  let query = getSupabase()
-    .from("asin_survey_campaign")
-    .select("id, customer_id, title, description, status")
-    .eq("id", campaignId)
-    .eq("status", "open");
-  if (customerId != null) query = query.eq("customer_id", customerId);
-  const { data, error } = await query.maybeSingle();
-  throwIfError(error);
-  return data as AsinSurveyCampaignRow | null;
-}
+type OpenCampaignWithQuestions = AsinSurveyCampaignRow & {
+  asin_survey_question: (Pick<AsinSurveyQuestionRow, "id" | "prompt" | "question_type" | "required" | "sort_order"> & {
+    asin_survey_question_option: Pick<AsinSurveyOptionRow, "id" | "label" | "sort_order">[];
+  })[];
+};
 
-export async function listAsinSurveyQuestions(campaignId: string) {
-  const { data, error } = await getSupabase()
-    .from("asin_survey_question")
-    .select("id, campaign_id, customer_id, prompt, question_type, required, sort_order")
-    .eq("campaign_id", campaignId)
-    .order("sort_order", { ascending: true });
-  throwIfError(error);
-  return (data ?? []) as AsinSurveyQuestionRow[];
-}
-
-export async function listAsinSurveyOptions(questionIds: string[]) {
-  if (!questionIds.length) return [] as AsinSurveyOptionRow[];
-  const { data, error } = await getSupabase()
-    .from("asin_survey_question_option")
-    .select("id, question_id, customer_id, label, sort_order")
-    .in("question_id", questionIds)
-    .order("sort_order", { ascending: true });
-  throwIfError(error);
-  return (data ?? []) as AsinSurveyOptionRow[];
-}
+const bySortOrder = (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order;
 
 export async function getOpenConsumerAsinSurvey(
   campaignId: string,
-  customerId?: number | null,
+  // Campaign id is the primary key, so a customer preference can't change which row matches;
+  // magnet_brand_param.customer_id may differ from magnet.customer_id and must still resolve.
+  _customerId?: number | null,
 ): Promise<(ConsumerSurveyInput & { customerId: number }) | null> {
-  // Prefer exact customer match; fall back to campaign id alone so mismatched
-  // magnet_brand_param.customer_id vs magnet.customer_id still resolves.
-  const campaign = (customerId != null
-    ? await findOpenAsinSurveyCampaign(campaignId, customerId)
-    : null) ?? await findOpenAsinSurveyCampaign(campaignId);
+  // One round trip: the consumer landing waits on this on every open.
+  const { data, error } = await getSupabase()
+    .from("asin_survey_campaign")
+    .select(`id, customer_id, title, description, status,
+      asin_survey_question(id, prompt, question_type, required, sort_order,
+        asin_survey_question_option(id, label, sort_order))`)
+    .eq("id", campaignId)
+    .eq("status", "open")
+    .maybeSingle();
+  throwIfError(error);
+  const campaign = data as OpenCampaignWithQuestions | null;
   if (!campaign) return null;
-  const questions = await listAsinSurveyQuestions(campaign.id);
+  const questions = [...(campaign.asin_survey_question ?? [])].sort(bySortOrder);
   if (!questions.length) return null;
-  const options = await listAsinSurveyOptions(questions.map((question) => question.id));
   return {
     id: campaign.id,
     customerId: campaign.customer_id,
@@ -108,8 +90,8 @@ export async function getOpenConsumerAsinSurvey(
       prompt: question.prompt,
       type: question.question_type,
       required: question.required,
-      options: options
-        .filter((option) => option.question_id === question.id)
+      options: [...(question.asin_survey_question_option ?? [])]
+        .sort(bySortOrder)
         .map((option) => ({ id: option.id, label: option.label })),
     })),
   };

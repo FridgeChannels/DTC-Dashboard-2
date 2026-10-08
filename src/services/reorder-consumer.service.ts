@@ -227,10 +227,16 @@ function buildBrandParamSavings(brandParam: MagnetBrandParamRow, productAsin: st
   return [discount];
 }
 
+function prefetchBrandParamSurvey(brandParam: MagnetBrandParamRow, fcId: string, magnetCustomerId?: number | null) {
+  const promise = resolveBrandParamSurvey(brandParam, fcId, magnetCustomerId);
+  promise.catch(() => {});
+  return { campaignId: brandParam.asin_survey_campaign_id, promise };
+}
+
 async function buildExperienceFromBrandParam(
   fcId: string,
   brandParam: MagnetBrandParamRow,
-  magnetCustomerId?: number | null,
+  survey: ConsumerSurveyInput | null,
 ) {
   // ASIN URLs live in amazon_*; store_website/website stay DTC Shopify / brand site.
   const productUrl = brandParamRepo.resolveAsinProductUrl(brandParam);
@@ -241,7 +247,6 @@ async function buildExperienceFromBrandParam(
   const offerAvailable = /^https:\/\//i.test(productUrl);
   const productAsin = String(brandParam.discount_asin ?? "").trim().toUpperCase()
     || extractAsinFromAmazonUrl(productUrl);
-  const survey = await resolveBrandParamSurvey(brandParam, fcId, magnetCustomerId);
   const savings = buildBrandParamSavings(brandParam, productAsin);
 
   return {
@@ -284,11 +289,23 @@ export async function resolvePublishedReorderExperience(fcIdValue: string) {
   if (!/^[A-Z0-9-]{4,80}$/.test(fcId)) throw new ReorderValidationError("FC ID is invalid");
 
   // Prefer magnet_brand_param when ASIN Plus product fields are present.
-  const magnet = await magnetRepo.getMagnetBySn(fcId);
+  // Same precedence as findAsinPlusBrandParam (magnet_id row, then magnet_sn row), but the
+  // independent reads run concurrently because each Supabase round trip is slow from the server.
+  const [magnet, bySn] = await Promise.all([
+    magnetRepo.getMagnetBySn(fcId),
+    brandParamRepo.findMagnetBrandParamBySn(fcId, "asin_plus"),
+  ]);
   if (magnet) {
-    const brandParam = await findAsinPlusBrandParam(magnet.id, fcId);
+    const speculativeSurvey = brandParamRepo.hasAsinPlusBrandParamContent(bySn)
+      ? prefetchBrandParamSurvey(bySn!, fcId, magnet.customer_id)
+      : null;
+    const byMagnetId = await brandParamRepo.findMagnetBrandParamByMagnetId(magnet.id, "asin_plus");
+    const brandParam = byMagnetId ?? bySn;
     if (brandParamRepo.hasAsinPlusBrandParamContent(brandParam)) {
-      return buildExperienceFromBrandParam(fcId, brandParam!, magnet.customer_id);
+      const survey = speculativeSurvey && speculativeSurvey.campaignId === brandParam!.asin_survey_campaign_id
+        ? await speculativeSurvey.promise
+        : await resolveBrandParamSurvey(brandParam!, fcId, magnet.customer_id);
+      return buildExperienceFromBrandParam(fcId, brandParam!, survey);
     }
   }
 

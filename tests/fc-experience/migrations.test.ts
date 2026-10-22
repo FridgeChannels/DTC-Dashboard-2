@@ -36,6 +36,15 @@ describe("product_line and magnet-bound unit migrations", () => {
     expect(sql).toContain("magnet_brand_param_experience_check");
   });
 
+  it("magnet_brand_param.experience allows investor", () => {
+    const sql = readFileSync(
+      resolve("supabase/migrations/20261022120000_magnet_brand_param_experience_investor.sql"),
+      "utf8",
+    );
+    expect(sql).toContain("magnet_brand_param_experience_check");
+    expect(sql).toContain("'investor'");
+  });
+
   it("magnet_brand_param adds product_name and product_image_url", () => {
     const sql = readFileSync(
       resolve("supabase/migrations/20260913140000_magnet_brand_param_product_fields.sql"),

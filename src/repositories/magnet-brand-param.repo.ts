@@ -1,13 +1,15 @@
 import { getSupabase } from "../clients/supabase.client.js";
 
 export type MagnetBrandExperience = "dtc" | "asin_plus";
+/** `investor` rows carry both DTC and ASIN fields and serve whichever channel is requested. */
+export type MagnetBrandRowExperience = MagnetBrandExperience | "investor";
 
 export interface MagnetBrandParamRow {
   id: number;
   customer_id: number | null;
   magnet_id: number | null;
   magnet_sn: string | null;
-  experience: MagnetBrandExperience;
+  experience: MagnetBrandRowExperience;
   brand_name: string | null;
   brand_logo: string | null;
   website: string | null;
@@ -56,6 +58,7 @@ export function resolveAsinStorefrontUrl(row: MagnetBrandParamRow): string {
  * Dual-channel bind keeps one row per (magnet, experience).
  * maybeSingle() 500s with PGRST116 when both dtc and asin_plus exist.
  * Default pick: dtc (sample /p/{sn} live demo), else the oldest row.
+ * A requested channel without an exact row falls back to the investor row.
  */
 export function pickMagnetBrandParam(
   rows: MagnetBrandParamRow[] | null | undefined,
@@ -65,7 +68,9 @@ export function pickMagnetBrandParam(
   if (!list.length) return null;
   const sorted = [...list].sort((a, b) => a.id - b.id);
   if (experience) {
-    return sorted.find((row) => row.experience === experience) ?? null;
+    return sorted.find((row) => row.experience === experience)
+      ?? sorted.find((row) => row.experience === "investor")
+      ?? null;
   }
   return sorted.find((row) => row.experience === "dtc") ?? sorted[0];
 }
@@ -107,7 +112,7 @@ export async function findMagnetBrandParamBySn(
 
 /** Enough fields to render ASIN Plus landing without reorder publication. */
 export function hasAsinPlusBrandParamContent(row: MagnetBrandParamRow | null | undefined): boolean {
-  if (!row || row.experience !== "asin_plus") return false;
+  if (!row || (row.experience !== "asin_plus" && row.experience !== "investor")) return false;
   const productUrl = resolveAsinProductUrl(row);
   const productName = String(row.product_name ?? "").trim();
   return Boolean(productUrl && productName);

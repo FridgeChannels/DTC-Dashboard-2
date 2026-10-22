@@ -51,4 +51,11 @@ describe("pickMagnetBrandParam", () => {
     expect(pickMagnetBrandParam(rows, "asin_plus")?.id).toBe(767);
     expect(pickMagnetBrandParam(rows, "dtc")?.id).toBe(740);
   });
+
+  it("falls back to the investor row for any requested channel", () => {
+    const rows = [row(801, "investor")];
+    expect(pickMagnetBrandParam(rows, "asin_plus")?.id).toBe(801);
+    expect(pickMagnetBrandParam(rows, "dtc")?.id).toBe(801);
+    expect(pickMagnetBrandParam([row(740, "dtc"), row(801, "investor")], "dtc")?.id).toBe(740);
+  });
 });

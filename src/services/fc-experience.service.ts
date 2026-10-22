@@ -49,7 +49,10 @@ export async function resolveFcExperience(
     ?? await brandParamRepo.findMagnetBrandParamBySn(sn, wanted);
 
   // Missing brand param row: treat as DTC (legacy magnets).
-  const line = brandParam?.experience === "asin_plus" ? "asin_plus" : "dtc";
+  // Investor rows follow ?experience= (investor deck demos) and default to DTC on a real tap.
+  const line = brandParam?.experience === "investor"
+    ? (wanted ?? "dtc")
+    : brandParam?.experience === "asin_plus" ? "asin_plus" : "dtc";
 
   return {
     experience: line,

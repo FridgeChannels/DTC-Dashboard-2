@@ -165,4 +165,32 @@ describe("resolveFcExperience via magnet_brand_param", () => {
       sn: "F180360D",
     });
   });
+
+  it("serves the requested channel for investor rows and defaults to dtc", async () => {
+    vi.mocked(magnetRepo.getMagnetBySn).mockResolvedValue({
+      id: 44,
+      customer_id: 7,
+      sn: "INV001",
+      url: null,
+      role: null,
+      stage: null,
+    });
+    vi.mocked(brandParamRepo.findMagnetBrandParamByMagnetId).mockResolvedValue({
+      id: 4,
+      customer_id: 7,
+      magnet_id: 44,
+      magnet_sn: "INV001",
+      experience: "investor",
+      brand_name: "Brand",
+      brand_logo: null,
+      website: null,
+      store_website: null,
+      product_name: "Matcha",
+      product_image_url: null,
+      asin_survey_campaign_id: null,
+    });
+    await expect(resolveFcExperience("INV001", "asin_plus")).resolves.toMatchObject({ experience: "asin_plus" });
+    await expect(resolveFcExperience("INV001", "dtc")).resolves.toMatchObject({ experience: "dtc" });
+    await expect(resolveFcExperience("INV001")).resolves.toMatchObject({ experience: "dtc" });
+  });
 });

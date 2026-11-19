@@ -86,6 +86,15 @@ describe("product_line and magnet-bound unit migrations", () => {
     expect(sql).toContain("experience = 'asin_plus'");
   });
 
+  it("magnet_brand_param adds brand_wordmark_url", () => {
+    const sql = readFileSync(
+      resolve("supabase/migrations/20261119170000_magnet_brand_param_brand_wordmark_url.sql"),
+      "utf8",
+    );
+    expect(sql).toContain("brand_wordmark_url");
+    expect(sql).toContain("offers-wordmark");
+  });
+
   it("T6 creates asin_survey tables and isolates DTC availability", () => {
     const sql = readFileSync(
       resolve("supabase/migrations/20260913122000_asin_survey_tables_and_dtc_isolation.sql"),

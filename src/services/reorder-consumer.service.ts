@@ -256,6 +256,9 @@ async function buildExperienceFromBrandParam(
     brand: {
       name: brandName,
       logoUrl: brandParam.brand_logo || null,
+      primaryColor: String(brandParam.primary_color ?? "").trim() || null,
+      secondaryColor: String(brandParam.secondary_color ?? "").trim() || null,
+      storeUrl: String(brandParam.website ?? "").trim() || null,
     },
     product: {
       id: `magnet-brand-${brandParam.id}`,

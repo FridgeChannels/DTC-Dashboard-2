@@ -12,6 +12,10 @@ export interface MagnetBrandParamRow {
   experience: MagnetBrandRowExperience;
   brand_name: string | null;
   brand_logo: string | null;
+  /** Processed hero wordmark for DTC Rewards Home; distinct from brand_logo. */
+  brand_wordmark_url: string | null;
+  primary_color: string | null;
+  secondary_color: string | null;
   website: string | null;
   store_website: string | null;
   /** ASIN Plus Amazon PDP; preferred over store_website when experience=asin_plus. */
@@ -28,7 +32,7 @@ export interface MagnetBrandParamRow {
 }
 
 const BRAND_PARAM_SELECT =
-  "id, customer_id, magnet_id, magnet_sn, experience, brand_name, brand_logo, website, store_website, amazon_asin_url, amazon_frontstore, product_name, product_image_url, asin_survey_campaign_id, discount_benefit, discount_claim_code, discount_ends_at, discount_asin";
+  "id, customer_id, magnet_id, magnet_sn, experience, brand_name, brand_logo, brand_wordmark_url, primary_color, secondary_color, website, store_website, amazon_asin_url, amazon_frontstore, product_name, product_image_url, asin_survey_campaign_id, discount_benefit, discount_claim_code, discount_ends_at, discount_asin";
 
 function throwIfError(error: unknown) {
   if (error) throw error;

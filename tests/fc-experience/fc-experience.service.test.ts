@@ -43,9 +43,9 @@ describe("resolveFcExperience via magnet_brand_param", () => {
       experience: "dtc",
       brand_name: "Brand",
       brand_logo: null,
-      brand_wordmark_url: null,
-      primary_color: null,
-      secondary_color: null,
+      brand_wordmark_url: "https://cdn.example.com/relief.webp",
+      primary_color: "#f4c145",
+      secondary_color: "#321e3a",
       website: null,
       store_website: null,
       amazon_asin_url: null,
@@ -65,6 +65,9 @@ describe("resolveFcExperience via magnet_brand_param", () => {
       magnetId: 11,
       brandLogo: null,
       brandName: "Brand",
+      wordmarkUrl: "https://cdn.example.com/relief.webp",
+      primaryColor: "#f4c145",
+      secondaryColor: "#321e3a",
     });
   });
 

@@ -12,6 +12,9 @@ export type ExperienceResolveResult = {
   /** From magnet_brand_param.brand_logo — for entry loading shell (no extra round-trip). */
   brandLogo?: string | null;
   brandName?: string | null;
+  wordmarkUrl?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
 };
 
 const SN_PATTERN = /^[A-Z0-9-]{4,80}$/;
@@ -61,5 +64,8 @@ export async function resolveFcExperience(
     magnetId: magnet.id,
     brandLogo: brandParam?.brand_logo ?? null,
     brandName: brandParam?.brand_name ?? null,
+    ...(line === "dtc" && brandParam?.brand_wordmark_url && { wordmarkUrl: brandParam.brand_wordmark_url }),
+    ...(line === "dtc" && brandParam?.primary_color && { primaryColor: brandParam.primary_color }),
+    ...(line === "dtc" && brandParam?.secondary_color && { secondaryColor: brandParam.secondary_color }),
   };
 }

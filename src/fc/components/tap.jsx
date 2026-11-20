@@ -130,6 +130,40 @@ function ReorderSurvey({ sn, survey, onComplete }) {
   return <div className="reorder-tap-survey is-open"><strong>{survey.title}</strong>{survey.description && <span>{survey.description}</span>}{survey.questions.map((question, questionIndex) => <fieldset key={question.id}><legend>{questionIndex + 1}. {question.prompt}{question.required ? " *" : ""}</legend>{question.options.map((option) => <label key={option.id}><input type={question.type === "multiple_choice" ? "checkbox" : "radio"} name={question.id} value={option.id} checked={question.type === "multiple_choice" ? (answers[question.id] || []).includes(option.id) : answers[question.id] === option.id} onChange={(event) => choose(question, option.id, event.target.checked)} /> <span>{option.label}</span></label>)}</fieldset>)}{error && <small>{error}</small>}<button className="reorder-tap-survey-start" disabled={phase === "submitting"} onClick={submit}>{phase === "submitting" ? "Submitting…" : "Submit"}</button></div>;
 }
 
+function tapColor(value, fallback) {
+  const hex = String(value || "").trim().replace(/^#/, "");
+  if (/^[a-f\d]{3}$/i.test(hex)) return "#" + [...hex].map(channel => channel.repeat(2)).join("");
+  return /^[a-f\d]{6}$/i.test(hex) ? "#" + hex : fallback;
+}
+
+function tapText(color) {
+  const channels = color.slice(1).match(/../g).map(hex => {
+    const value = parseInt(hex, 16) / 255;
+    return value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
+  });
+  return .2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2] > .179 ? "#000" : "#fff";
+}
+
+function TapStatus({ brand, children }) {
+  const palette = new URLSearchParams(window.location.hash.slice(1));
+  const primary = tapColor(brand?.primaryColor, tapColor(palette.get("primary"), "#315d4c"));
+  const secondary = tapColor(brand?.secondaryColor, tapColor(palette.get("secondary"), "#f6f1df"));
+  const [failed, setFailed] = useState([]);
+  const logo = [brand?.wordmarkUrl, brand?.brandLogo].find(source => source && !failed.includes(source));
+  return (
+    <main className="tap-status" style={{
+      "--tap-accent": primary, "--tap-on-accent": tapText(primary),
+      "--tap-page": secondary, "--tap-text": tapText(secondary),
+    }}>
+      <div className="tap-status-content">
+        {logo ? <img src={logo} alt={brand.brandName || "Brand"} onError={() => setFailed(previous => [...previous, logo])} />
+          : <strong>{brand?.brandName || "FridgeChannel"}</strong>}
+        {children}
+      </div>
+    </main>
+  );
+}
+
 function TapPage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const sn = useMemo(() => parseTapSn(), []);
@@ -144,6 +178,17 @@ function TapPage() {
   const unlinkError = params.get("error");
 
   const [phase, setPhase] = useState("loading");
+  const [brand, setBrand] = useState(null);
+  const brandedHandoff = brand?.experience === "dtc" || new URLSearchParams(window.location.hash.slice(1)).get("rewards") === "dtc";
+  useEffect(() => {
+    if (!sn || !redirectedFrom) return;
+    const controller = new AbortController();
+    fetch(`/api/fc/experience/${encodeURIComponent(sn)}?experience=dtc`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : null)
+      .then(identity => { if (identity?.experience === "dtc" && !controller.signal.aborted) setBrand(identity); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [sn, redirectedFrom]);
   const [error, setError] = useState(null);
   const [reorderExperience, setReorderExperience] = useState(null);
   const [showAllSavings, setShowAllSavings] = useState(false);
@@ -327,11 +372,9 @@ function TapPage() {
   ]);
 
   if (phase === "loading") {
-    return (
-      <div className="tap-page tap-page-minimal">
-        <div className="tap-loading">Loading…</div>
-      </div>
-    );
+    return brandedHandoff
+      ? <TapStatus brand={brand}><p role="status">Connecting to Shopify…</p></TapStatus>
+      : <div className="tap-page tap-page-minimal"><div className="tap-loading">Loading…</div></div>;
   }
 
 
@@ -384,10 +427,10 @@ function TapPage() {
     );
   }
 
-  return (
-    <div className="tap-page">
-      <div className="tap-card">
-        <div className="tap-alert error">{error || "Could not start Shopify sign-in"}</div>
+  const failure = (
+    <>
+        {brandedHandoff && <h1>Connection unavailable</h1>}
+        <p className={brandedHandoff ? undefined : "tap-alert error"} role="alert">{error || "Could not start Shopify sign-in"}</p>
         <div className="tap-actions">
           {action !== "unlink" && !error?.includes("already linked") ? (
             <button
@@ -399,9 +442,11 @@ function TapPage() {
             </button>
           ) : null}
         </div>
-      </div>
-    </div>
+    </>
   );
+  return brandedHandoff
+    ? <TapStatus brand={brand}>{failure}</TapStatus>
+    : <div className="tap-page"><div className="tap-card">{failure}</div></div>;
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));

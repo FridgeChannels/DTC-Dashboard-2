@@ -33,6 +33,22 @@ html, body {
 
 button { font-family: inherit; }
 
+.tap-status {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--tap-page);
+  color: var(--tap-text);
+  text-align: center;
+}
+.tap-status-content { display: grid; gap: 16px; width: min(100%, 360px); }
+.tap-status-content img { width: min(76%, 240px); height: 104px; object-fit: contain; margin: auto; }
+.tap-status-content strong, .tap-status-content h1 { font: 650 2rem/1.08 Georgia, serif; letter-spacing: -.035em; }
+.tap-status-content :is(h1, p) { margin: 0; overflow-wrap: anywhere; }
+.tap-status .tap-btn.shopify { min-height: 48px; border: 0; border-radius: 14px; background: var(--tap-accent); color: var(--tap-on-accent); }
+
 .tap-page {
   min-height: 100vh;
   display: grid;
